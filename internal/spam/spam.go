@@ -49,8 +49,8 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 	metadata := mailparse.Parse(raw)
 	fromDomain := firstAddressDomain(metadata.From)
 	dkimResult, dkimDomain := verifyDKIM(raw)
-	spfResult := spfPlaceholder(smtp)
-	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain)
+	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
+	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain, spfResult, spfDomain)
 	listKind, listAction := c.senderRuleMatch(ctx, metadata, smtp, recipients)
 
 	score, reasons := score(spfResult, dkimResult, dmarcResult, dmarcPolicy, listKind)
@@ -66,6 +66,8 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 		Reasons: reasons,
 		AuthResults: map[string]any{
 			"spf":          string(spfResult),
+			"spf_domain":   spfDomain,
+			"spf_reason":   spfReason,
 			"dkim":         string(dkimResult),
 			"dkim_domain":  dkimDomain,
 			"dmarc":        string(dmarcResult),
@@ -129,14 +131,7 @@ func verifyDKIM(raw []byte) (authres.ResultValue, string) {
 	return authres.ResultFail, verifications[0].Domain
 }
 
-func spfPlaceholder(smtp SMTPContext) authres.ResultValue {
-	if smtp.RemoteIP == "" || smtp.MailFrom == "" {
-		return authres.ResultNone
-	}
-	return authres.ResultNeutral
-}
-
-func checkDMARC(fromDomain string, dkimResult authres.ResultValue, dkimDomain string) (authres.ResultValue, dmarc.Policy) {
+func checkDMARC(fromDomain string, dkimResult authres.ResultValue, dkimDomain string, spfResult authres.ResultValue, spfDomain string) (authres.ResultValue, dmarc.Policy) {
 	if fromDomain == "" {
 		return authres.ResultNone, dmarc.PolicyNone
 	}
@@ -148,6 +143,9 @@ func checkDMARC(fromDomain string, dkimResult authres.ResultValue, dkimDomain st
 		return authres.ResultTempError, dmarc.PolicyNone
 	}
 	if dkimResult == authres.ResultPass && strings.EqualFold(fromDomain, dkimDomain) {
+		return authres.ResultPass, record.Policy
+	}
+	if spfResult == authres.ResultPass && strings.EqualFold(fromDomain, spfDomain) {
 		return authres.ResultPass, record.Policy
 	}
 	return authres.ResultFail, record.Policy
@@ -162,6 +160,9 @@ func score(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcR
 	}
 	if spfResult == authres.ResultFail {
 		add(2, "spf_fail")
+	}
+	if spfResult == authres.ResultSoftFail {
+		add(1, "spf_softfail")
 	}
 	if dkimResult == authres.ResultFail {
 		add(2, "dkim_fail")
