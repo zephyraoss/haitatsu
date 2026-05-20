@@ -14,19 +14,21 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
+	"github.com/zephyraoss/haitatsu/internal/outbound"
 )
 
 type Handler struct {
-	client *ent.Client
-	store  MessageStore
+	client   *ent.Client
+	store    MessageStore
+	outbound *outbound.Submission
 }
 
 type MessageStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 }
 
-func Register(router fiber.Router, client *ent.Client, store MessageStore, cfg config.APIConfig) {
-	h := &Handler{client: client, store: store}
+func Register(router fiber.Router, client *ent.Client, store MessageStore, outboundService *outbound.Submission, cfg config.APIConfig) {
+	h := &Handler{client: client, store: store, outbound: outboundService}
 	v1 := router.Group("/api/v1", ServiceTokenMiddleware(cfg))
 
 	v1.Get("/mailboxes", h.listMailboxes)
@@ -65,6 +67,7 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, cfg c
 	v1.Get("/mailboxes/:mailbox_id/messages", h.listMessages)
 	v1.Get("/messages/:id", h.getMessage)
 	v1.Get("/messages/:id/raw", h.downloadRawMessage)
+	v1.Post("/mailboxes/:mailbox_id/outbound", h.createOutboundMessage)
 	v1.Patch("/messages/:id", h.updateMailboxMessage)
 	v1.Post("/messages/:id/move", h.moveMessage)
 	v1.Delete("/messages/:id", h.deleteMessage)
@@ -73,6 +76,10 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, cfg c
 	v1.Delete("/messages/:id/labels/:label_id", h.removeMessageLabel)
 
 	v1.Get("/audit_events", h.listAuditEvents)
+
+	v1.Get("/dkim_keys", h.listDKIMKeys)
+	v1.Post("/dkim_keys", h.createDKIMKey)
+	v1.Get("/dkim_keys/:id", h.getDKIMKey)
 }
 
 type mailboxRequest struct {

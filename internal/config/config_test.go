@@ -40,9 +40,10 @@ func validConfig() Config {
 			PublicHostname: "mail.example.com",
 			InstanceName:   "dev-01",
 		},
-		SMTP:     SMTPConfig{InboundAddr: "127.0.0.1:2525"},
-		IMAP:     IMAPConfig{Addr: "127.0.0.1:1143"},
-		Postgres: PostgresConfig{DSN: "postgres://localhost/haitatsu"},
+		SMTP:       SMTPConfig{InboundAddr: "127.0.0.1:2525"},
+		IMAP:       IMAPConfig{Addr: "127.0.0.1:1143"},
+		Submission: SubmissionConfig{StartTLSAddr: "127.0.0.1:1587", TLSAddr: "127.0.0.1:1465"},
+		Postgres:   PostgresConfig{DSN: "postgres://localhost/haitatsu"},
 		S3: S3Config{
 			Endpoint:        "localhost:9000",
 			Bucket:          "haitatsu",

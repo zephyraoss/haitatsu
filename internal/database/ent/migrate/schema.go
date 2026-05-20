@@ -85,6 +85,29 @@ var (
 			},
 		},
 	}
+	// DkimKeysColumns holds the columns for the "dkim_keys" table.
+	DkimKeysColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "domain", Type: field.TypeString},
+		{Name: "selector", Type: field.TypeString, Default: "zpr1"},
+		{Name: "private_key_pem", Type: field.TypeString},
+		{Name: "public_key_pem", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// DkimKeysTable holds the schema information for the "dkim_keys" table.
+	DkimKeysTable = &schema.Table{
+		Name:       "dkim_keys",
+		Columns:    DkimKeysColumns,
+		PrimaryKey: []*schema.Column{DkimKeysColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "dkimkey_domain_selector",
+				Unique:  true,
+				Columns: []*schema.Column{DkimKeysColumns[1], DkimKeysColumns[2]},
+			},
+		},
+	}
 	// FoldersColumns holds the columns for the "folders" table.
 	FoldersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -280,6 +303,43 @@ var (
 			},
 		},
 	}
+	// OutboundJobsColumns holds the columns for the "outbound_jobs" table.
+	OutboundJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "mailbox_id", Type: field.TypeString},
+		{Name: "message_id", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString, Default: "queued"},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "locked_by", Type: field.TypeString, Nullable: true},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "next_attempt_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// OutboundJobsTable holds the schema information for the "outbound_jobs" table.
+	OutboundJobsTable = &schema.Table{
+		Name:       "outbound_jobs",
+		Columns:    OutboundJobsColumns,
+		PrimaryKey: []*schema.Column{OutboundJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "outboundjob_status_next_attempt_at",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundJobsColumns[3], OutboundJobsColumns[7]},
+			},
+			{
+				Name:    "outboundjob_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundJobsColumns[6]},
+			},
+			{
+				Name:    "outboundjob_message_id",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundJobsColumns[2]},
+			},
+		},
+	}
 	// RoutesColumns holds the columns for the "routes" table.
 	RoutesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -349,12 +409,14 @@ var (
 	Tables = []*schema.Table{
 		AppPasswordsTable,
 		AuditEventsTable,
+		DkimKeysTable,
 		FoldersTable,
 		LabelsTable,
 		MailboxesTable,
 		MailboxMessagesTable,
 		MailboxMessageLabelsTable,
 		MessagesTable,
+		OutboundJobsTable,
 		RoutesTable,
 		RoutingRulesTable,
 	}

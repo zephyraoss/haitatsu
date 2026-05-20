@@ -16,12 +16,14 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 )
@@ -35,6 +37,8 @@ type Client struct {
 	AppPassword *AppPasswordClient
 	// AuditEvent is the client for interacting with the AuditEvent builders.
 	AuditEvent *AuditEventClient
+	// DKIMKey is the client for interacting with the DKIMKey builders.
+	DKIMKey *DKIMKeyClient
 	// Folder is the client for interacting with the Folder builders.
 	Folder *FolderClient
 	// Label is the client for interacting with the Label builders.
@@ -47,6 +51,8 @@ type Client struct {
 	MailboxMessageLabel *MailboxMessageLabelClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
+	// OutboundJob is the client for interacting with the OutboundJob builders.
+	OutboundJob *OutboundJobClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
@@ -64,12 +70,14 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AppPassword = NewAppPasswordClient(c.config)
 	c.AuditEvent = NewAuditEventClient(c.config)
+	c.DKIMKey = NewDKIMKeyClient(c.config)
 	c.Folder = NewFolderClient(c.config)
 	c.Label = NewLabelClient(c.config)
 	c.Mailbox = NewMailboxClient(c.config)
 	c.MailboxMessage = NewMailboxMessageClient(c.config)
 	c.MailboxMessageLabel = NewMailboxMessageLabelClient(c.config)
 	c.Message = NewMessageClient(c.config)
+	c.OutboundJob = NewOutboundJobClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
 }
@@ -166,12 +174,14 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:              cfg,
 		AppPassword:         NewAppPasswordClient(cfg),
 		AuditEvent:          NewAuditEventClient(cfg),
+		DKIMKey:             NewDKIMKeyClient(cfg),
 		Folder:              NewFolderClient(cfg),
 		Label:               NewLabelClient(cfg),
 		Mailbox:             NewMailboxClient(cfg),
 		MailboxMessage:      NewMailboxMessageClient(cfg),
 		MailboxMessageLabel: NewMailboxMessageLabelClient(cfg),
 		Message:             NewMessageClient(cfg),
+		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
 	}, nil
@@ -195,12 +205,14 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:              cfg,
 		AppPassword:         NewAppPasswordClient(cfg),
 		AuditEvent:          NewAuditEventClient(cfg),
+		DKIMKey:             NewDKIMKeyClient(cfg),
 		Folder:              NewFolderClient(cfg),
 		Label:               NewLabelClient(cfg),
 		Mailbox:             NewMailboxClient(cfg),
 		MailboxMessage:      NewMailboxMessageClient(cfg),
 		MailboxMessageLabel: NewMailboxMessageLabelClient(cfg),
 		Message:             NewMessageClient(cfg),
+		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
 	}, nil
@@ -232,8 +244,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.MailboxMessage,
-		c.MailboxMessageLabel, c.Message, c.Route, c.RoutingRule,
+		c.AppPassword, c.AuditEvent, c.DKIMKey, c.Folder, c.Label, c.Mailbox,
+		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundJob, c.Route,
+		c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -243,8 +256,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.MailboxMessage,
-		c.MailboxMessageLabel, c.Message, c.Route, c.RoutingRule,
+		c.AppPassword, c.AuditEvent, c.DKIMKey, c.Folder, c.Label, c.Mailbox,
+		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundJob, c.Route,
+		c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -257,6 +271,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AppPassword.mutate(ctx, m)
 	case *AuditEventMutation:
 		return c.AuditEvent.mutate(ctx, m)
+	case *DKIMKeyMutation:
+		return c.DKIMKey.mutate(ctx, m)
 	case *FolderMutation:
 		return c.Folder.mutate(ctx, m)
 	case *LabelMutation:
@@ -269,6 +285,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.MailboxMessageLabel.mutate(ctx, m)
 	case *MessageMutation:
 		return c.Message.mutate(ctx, m)
+	case *OutboundJobMutation:
+		return c.OutboundJob.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
 	case *RoutingRuleMutation:
@@ -541,6 +559,139 @@ func (c *AuditEventClient) mutate(ctx context.Context, m *AuditEventMutation) (V
 		return (&AuditEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditEvent mutation op: %q", m.Op())
+	}
+}
+
+// DKIMKeyClient is a client for the DKIMKey schema.
+type DKIMKeyClient struct {
+	config
+}
+
+// NewDKIMKeyClient returns a client for the DKIMKey from the given config.
+func NewDKIMKeyClient(c config) *DKIMKeyClient {
+	return &DKIMKeyClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `dkimkey.Hooks(f(g(h())))`.
+func (c *DKIMKeyClient) Use(hooks ...Hook) {
+	c.hooks.DKIMKey = append(c.hooks.DKIMKey, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `dkimkey.Intercept(f(g(h())))`.
+func (c *DKIMKeyClient) Intercept(interceptors ...Interceptor) {
+	c.inters.DKIMKey = append(c.inters.DKIMKey, interceptors...)
+}
+
+// Create returns a builder for creating a DKIMKey entity.
+func (c *DKIMKeyClient) Create() *DKIMKeyCreate {
+	mutation := newDKIMKeyMutation(c.config, OpCreate)
+	return &DKIMKeyCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of DKIMKey entities.
+func (c *DKIMKeyClient) CreateBulk(builders ...*DKIMKeyCreate) *DKIMKeyCreateBulk {
+	return &DKIMKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *DKIMKeyClient) MapCreateBulk(slice any, setFunc func(*DKIMKeyCreate, int)) *DKIMKeyCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &DKIMKeyCreateBulk{err: fmt.Errorf("calling to DKIMKeyClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*DKIMKeyCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &DKIMKeyCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for DKIMKey.
+func (c *DKIMKeyClient) Update() *DKIMKeyUpdate {
+	mutation := newDKIMKeyMutation(c.config, OpUpdate)
+	return &DKIMKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *DKIMKeyClient) UpdateOne(_m *DKIMKey) *DKIMKeyUpdateOne {
+	mutation := newDKIMKeyMutation(c.config, OpUpdateOne, withDKIMKey(_m))
+	return &DKIMKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *DKIMKeyClient) UpdateOneID(id string) *DKIMKeyUpdateOne {
+	mutation := newDKIMKeyMutation(c.config, OpUpdateOne, withDKIMKeyID(id))
+	return &DKIMKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for DKIMKey.
+func (c *DKIMKeyClient) Delete() *DKIMKeyDelete {
+	mutation := newDKIMKeyMutation(c.config, OpDelete)
+	return &DKIMKeyDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *DKIMKeyClient) DeleteOne(_m *DKIMKey) *DKIMKeyDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *DKIMKeyClient) DeleteOneID(id string) *DKIMKeyDeleteOne {
+	builder := c.Delete().Where(dkimkey.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &DKIMKeyDeleteOne{builder}
+}
+
+// Query returns a query builder for DKIMKey.
+func (c *DKIMKeyClient) Query() *DKIMKeyQuery {
+	return &DKIMKeyQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeDKIMKey},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a DKIMKey entity by its id.
+func (c *DKIMKeyClient) Get(ctx context.Context, id string) (*DKIMKey, error) {
+	return c.Query().Where(dkimkey.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *DKIMKeyClient) GetX(ctx context.Context, id string) *DKIMKey {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *DKIMKeyClient) Hooks() []Hook {
+	return c.hooks.DKIMKey
+}
+
+// Interceptors returns the client interceptors.
+func (c *DKIMKeyClient) Interceptors() []Interceptor {
+	return c.inters.DKIMKey
+}
+
+func (c *DKIMKeyClient) mutate(ctx context.Context, m *DKIMKeyMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&DKIMKeyCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&DKIMKeyUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&DKIMKeyUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&DKIMKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown DKIMKey mutation op: %q", m.Op())
 	}
 }
 
@@ -1342,6 +1493,139 @@ func (c *MessageClient) mutate(ctx context.Context, m *MessageMutation) (Value, 
 	}
 }
 
+// OutboundJobClient is a client for the OutboundJob schema.
+type OutboundJobClient struct {
+	config
+}
+
+// NewOutboundJobClient returns a client for the OutboundJob from the given config.
+func NewOutboundJobClient(c config) *OutboundJobClient {
+	return &OutboundJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `outboundjob.Hooks(f(g(h())))`.
+func (c *OutboundJobClient) Use(hooks ...Hook) {
+	c.hooks.OutboundJob = append(c.hooks.OutboundJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `outboundjob.Intercept(f(g(h())))`.
+func (c *OutboundJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OutboundJob = append(c.inters.OutboundJob, interceptors...)
+}
+
+// Create returns a builder for creating a OutboundJob entity.
+func (c *OutboundJobClient) Create() *OutboundJobCreate {
+	mutation := newOutboundJobMutation(c.config, OpCreate)
+	return &OutboundJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OutboundJob entities.
+func (c *OutboundJobClient) CreateBulk(builders ...*OutboundJobCreate) *OutboundJobCreateBulk {
+	return &OutboundJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OutboundJobClient) MapCreateBulk(slice any, setFunc func(*OutboundJobCreate, int)) *OutboundJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OutboundJobCreateBulk{err: fmt.Errorf("calling to OutboundJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OutboundJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OutboundJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OutboundJob.
+func (c *OutboundJobClient) Update() *OutboundJobUpdate {
+	mutation := newOutboundJobMutation(c.config, OpUpdate)
+	return &OutboundJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OutboundJobClient) UpdateOne(_m *OutboundJob) *OutboundJobUpdateOne {
+	mutation := newOutboundJobMutation(c.config, OpUpdateOne, withOutboundJob(_m))
+	return &OutboundJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OutboundJobClient) UpdateOneID(id string) *OutboundJobUpdateOne {
+	mutation := newOutboundJobMutation(c.config, OpUpdateOne, withOutboundJobID(id))
+	return &OutboundJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OutboundJob.
+func (c *OutboundJobClient) Delete() *OutboundJobDelete {
+	mutation := newOutboundJobMutation(c.config, OpDelete)
+	return &OutboundJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OutboundJobClient) DeleteOne(_m *OutboundJob) *OutboundJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OutboundJobClient) DeleteOneID(id string) *OutboundJobDeleteOne {
+	builder := c.Delete().Where(outboundjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OutboundJobDeleteOne{builder}
+}
+
+// Query returns a query builder for OutboundJob.
+func (c *OutboundJobClient) Query() *OutboundJobQuery {
+	return &OutboundJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOutboundJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OutboundJob entity by its id.
+func (c *OutboundJobClient) Get(ctx context.Context, id string) (*OutboundJob, error) {
+	return c.Query().Where(outboundjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OutboundJobClient) GetX(ctx context.Context, id string) *OutboundJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OutboundJobClient) Hooks() []Hook {
+	return c.hooks.OutboundJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *OutboundJobClient) Interceptors() []Interceptor {
+	return c.inters.OutboundJob
+}
+
+func (c *OutboundJobClient) mutate(ctx context.Context, m *OutboundJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OutboundJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OutboundJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OutboundJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OutboundJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OutboundJob mutation op: %q", m.Op())
+	}
+}
+
 // RouteClient is a client for the Route schema.
 type RouteClient struct {
 	config
@@ -1611,11 +1895,11 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage,
-		MailboxMessageLabel, Message, Route, RoutingRule []ent.Hook
+		AppPassword, AuditEvent, DKIMKey, Folder, Label, Mailbox, MailboxMessage,
+		MailboxMessageLabel, Message, OutboundJob, Route, RoutingRule []ent.Hook
 	}
 	inters struct {
-		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage,
-		MailboxMessageLabel, Message, Route, RoutingRule []ent.Interceptor
+		AppPassword, AuditEvent, DKIMKey, Folder, Label, Mailbox, MailboxMessage,
+		MailboxMessageLabel, Message, OutboundJob, Route, RoutingRule []ent.Interceptor
 	}
 )

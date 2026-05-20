@@ -11,6 +11,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/health"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
+	"github.com/zephyraoss/haitatsu/internal/outbound"
 )
 
 type Server struct {
@@ -22,7 +23,7 @@ type MessageStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 }
 
-func New(serverConfig config.ServerConfig, apiConfig config.APIConfig, entClient *ent.Client, store MessageStore, checker *health.Checker, m *metrics.Metrics) *Server {
+func New(serverConfig config.ServerConfig, apiConfig config.APIConfig, entClient *ent.Client, store MessageStore, submission *outbound.Submission, checker *health.Checker, m *metrics.Metrics) *Server {
 	app := fiber.New(fiber.Config{AppName: "Haitatsu"})
 	app.Use(m.Middleware)
 
@@ -41,7 +42,7 @@ func New(serverConfig config.ServerConfig, apiConfig config.APIConfig, entClient
 	})
 
 	app.Get("/metrics", adaptor.HTTPHandler(m.Handler()))
-	api.Register(app, entClient, store, apiConfig)
+	api.Register(app, entClient, store, submission, apiConfig)
 
 	return &Server{app: app, addr: serverConfig.APIAddr}
 }

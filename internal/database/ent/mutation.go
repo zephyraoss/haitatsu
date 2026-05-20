@@ -13,12 +13,14 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
@@ -35,12 +37,14 @@ const (
 	// Node types.
 	TypeAppPassword         = "AppPassword"
 	TypeAuditEvent          = "AuditEvent"
+	TypeDKIMKey             = "DKIMKey"
 	TypeFolder              = "Folder"
 	TypeLabel               = "Label"
 	TypeMailbox             = "Mailbox"
 	TypeMailboxMessage      = "MailboxMessage"
 	TypeMailboxMessageLabel = "MailboxMessageLabel"
 	TypeMessage             = "Message"
+	TypeOutboundJob         = "OutboundJob"
 	TypeRoute               = "Route"
 	TypeRoutingRule         = "RoutingRule"
 )
@@ -1726,6 +1730,608 @@ func (m *AuditEventMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *AuditEventMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuditEvent edge %s", name)
+}
+
+// DKIMKeyMutation represents an operation that mutates the DKIMKey nodes in the graph.
+type DKIMKeyMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *string
+	domain          *string
+	selector        *string
+	private_key_pem *string
+	public_key_pem  *string
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*DKIMKey, error)
+	predicates      []predicate.DKIMKey
+}
+
+var _ ent.Mutation = (*DKIMKeyMutation)(nil)
+
+// dkimkeyOption allows management of the mutation configuration using functional options.
+type dkimkeyOption func(*DKIMKeyMutation)
+
+// newDKIMKeyMutation creates new mutation for the DKIMKey entity.
+func newDKIMKeyMutation(c config, op Op, opts ...dkimkeyOption) *DKIMKeyMutation {
+	m := &DKIMKeyMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeDKIMKey,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withDKIMKeyID sets the ID field of the mutation.
+func withDKIMKeyID(id string) dkimkeyOption {
+	return func(m *DKIMKeyMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *DKIMKey
+		)
+		m.oldValue = func(ctx context.Context) (*DKIMKey, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().DKIMKey.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withDKIMKey sets the old DKIMKey of the mutation.
+func withDKIMKey(node *DKIMKey) dkimkeyOption {
+	return func(m *DKIMKeyMutation) {
+		m.oldValue = func(context.Context) (*DKIMKey, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m DKIMKeyMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m DKIMKeyMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of DKIMKey entities.
+func (m *DKIMKeyMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *DKIMKeyMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *DKIMKeyMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().DKIMKey.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDomain sets the "domain" field.
+func (m *DKIMKeyMutation) SetDomain(s string) {
+	m.domain = &s
+}
+
+// Domain returns the value of the "domain" field in the mutation.
+func (m *DKIMKeyMutation) Domain() (r string, exists bool) {
+	v := m.domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomain returns the old "domain" field's value of the DKIMKey entity.
+// If the DKIMKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DKIMKeyMutation) OldDomain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomain: %w", err)
+	}
+	return oldValue.Domain, nil
+}
+
+// ResetDomain resets all changes to the "domain" field.
+func (m *DKIMKeyMutation) ResetDomain() {
+	m.domain = nil
+}
+
+// SetSelector sets the "selector" field.
+func (m *DKIMKeyMutation) SetSelector(s string) {
+	m.selector = &s
+}
+
+// Selector returns the value of the "selector" field in the mutation.
+func (m *DKIMKeyMutation) Selector() (r string, exists bool) {
+	v := m.selector
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSelector returns the old "selector" field's value of the DKIMKey entity.
+// If the DKIMKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DKIMKeyMutation) OldSelector(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSelector is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSelector requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSelector: %w", err)
+	}
+	return oldValue.Selector, nil
+}
+
+// ResetSelector resets all changes to the "selector" field.
+func (m *DKIMKeyMutation) ResetSelector() {
+	m.selector = nil
+}
+
+// SetPrivateKeyPem sets the "private_key_pem" field.
+func (m *DKIMKeyMutation) SetPrivateKeyPem(s string) {
+	m.private_key_pem = &s
+}
+
+// PrivateKeyPem returns the value of the "private_key_pem" field in the mutation.
+func (m *DKIMKeyMutation) PrivateKeyPem() (r string, exists bool) {
+	v := m.private_key_pem
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrivateKeyPem returns the old "private_key_pem" field's value of the DKIMKey entity.
+// If the DKIMKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DKIMKeyMutation) OldPrivateKeyPem(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrivateKeyPem is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrivateKeyPem requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrivateKeyPem: %w", err)
+	}
+	return oldValue.PrivateKeyPem, nil
+}
+
+// ResetPrivateKeyPem resets all changes to the "private_key_pem" field.
+func (m *DKIMKeyMutation) ResetPrivateKeyPem() {
+	m.private_key_pem = nil
+}
+
+// SetPublicKeyPem sets the "public_key_pem" field.
+func (m *DKIMKeyMutation) SetPublicKeyPem(s string) {
+	m.public_key_pem = &s
+}
+
+// PublicKeyPem returns the value of the "public_key_pem" field in the mutation.
+func (m *DKIMKeyMutation) PublicKeyPem() (r string, exists bool) {
+	v := m.public_key_pem
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPublicKeyPem returns the old "public_key_pem" field's value of the DKIMKey entity.
+// If the DKIMKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DKIMKeyMutation) OldPublicKeyPem(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPublicKeyPem is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPublicKeyPem requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPublicKeyPem: %w", err)
+	}
+	return oldValue.PublicKeyPem, nil
+}
+
+// ResetPublicKeyPem resets all changes to the "public_key_pem" field.
+func (m *DKIMKeyMutation) ResetPublicKeyPem() {
+	m.public_key_pem = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *DKIMKeyMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *DKIMKeyMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the DKIMKey entity.
+// If the DKIMKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DKIMKeyMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *DKIMKeyMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *DKIMKeyMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *DKIMKeyMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the DKIMKey entity.
+// If the DKIMKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DKIMKeyMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *DKIMKeyMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the DKIMKeyMutation builder.
+func (m *DKIMKeyMutation) Where(ps ...predicate.DKIMKey) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the DKIMKeyMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *DKIMKeyMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.DKIMKey, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *DKIMKeyMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *DKIMKeyMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (DKIMKey).
+func (m *DKIMKeyMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *DKIMKeyMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.domain != nil {
+		fields = append(fields, dkimkey.FieldDomain)
+	}
+	if m.selector != nil {
+		fields = append(fields, dkimkey.FieldSelector)
+	}
+	if m.private_key_pem != nil {
+		fields = append(fields, dkimkey.FieldPrivateKeyPem)
+	}
+	if m.public_key_pem != nil {
+		fields = append(fields, dkimkey.FieldPublicKeyPem)
+	}
+	if m.created_at != nil {
+		fields = append(fields, dkimkey.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, dkimkey.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *DKIMKeyMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case dkimkey.FieldDomain:
+		return m.Domain()
+	case dkimkey.FieldSelector:
+		return m.Selector()
+	case dkimkey.FieldPrivateKeyPem:
+		return m.PrivateKeyPem()
+	case dkimkey.FieldPublicKeyPem:
+		return m.PublicKeyPem()
+	case dkimkey.FieldCreatedAt:
+		return m.CreatedAt()
+	case dkimkey.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *DKIMKeyMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case dkimkey.FieldDomain:
+		return m.OldDomain(ctx)
+	case dkimkey.FieldSelector:
+		return m.OldSelector(ctx)
+	case dkimkey.FieldPrivateKeyPem:
+		return m.OldPrivateKeyPem(ctx)
+	case dkimkey.FieldPublicKeyPem:
+		return m.OldPublicKeyPem(ctx)
+	case dkimkey.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case dkimkey.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown DKIMKey field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DKIMKeyMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case dkimkey.FieldDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomain(v)
+		return nil
+	case dkimkey.FieldSelector:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSelector(v)
+		return nil
+	case dkimkey.FieldPrivateKeyPem:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrivateKeyPem(v)
+		return nil
+	case dkimkey.FieldPublicKeyPem:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPublicKeyPem(v)
+		return nil
+	case dkimkey.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case dkimkey.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown DKIMKey field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *DKIMKeyMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *DKIMKeyMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *DKIMKeyMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown DKIMKey numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *DKIMKeyMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *DKIMKeyMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *DKIMKeyMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown DKIMKey nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *DKIMKeyMutation) ResetField(name string) error {
+	switch name {
+	case dkimkey.FieldDomain:
+		m.ResetDomain()
+		return nil
+	case dkimkey.FieldSelector:
+		m.ResetSelector()
+		return nil
+	case dkimkey.FieldPrivateKeyPem:
+		m.ResetPrivateKeyPem()
+		return nil
+	case dkimkey.FieldPublicKeyPem:
+		m.ResetPublicKeyPem()
+		return nil
+	case dkimkey.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case dkimkey.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown DKIMKey field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *DKIMKeyMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *DKIMKeyMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *DKIMKeyMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *DKIMKeyMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *DKIMKeyMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *DKIMKeyMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *DKIMKeyMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown DKIMKey unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *DKIMKeyMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown DKIMKey edge %s", name)
 }
 
 // FolderMutation represents an operation that mutates the Folder nodes in the graph.
@@ -6830,6 +7436,939 @@ func (m *MessageMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *MessageMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Message edge %s", name)
+}
+
+// OutboundJobMutation represents an operation that mutates the OutboundJob nodes in the graph.
+type OutboundJobMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *string
+	mailbox_id      *string
+	message_id      *string
+	status          *string
+	attempts        *int
+	addattempts     *int
+	locked_by       *string
+	locked_until    *time.Time
+	next_attempt_at *time.Time
+	last_error      *map[string]interface{}
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*OutboundJob, error)
+	predicates      []predicate.OutboundJob
+}
+
+var _ ent.Mutation = (*OutboundJobMutation)(nil)
+
+// outboundjobOption allows management of the mutation configuration using functional options.
+type outboundjobOption func(*OutboundJobMutation)
+
+// newOutboundJobMutation creates new mutation for the OutboundJob entity.
+func newOutboundJobMutation(c config, op Op, opts ...outboundjobOption) *OutboundJobMutation {
+	m := &OutboundJobMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeOutboundJob,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withOutboundJobID sets the ID field of the mutation.
+func withOutboundJobID(id string) outboundjobOption {
+	return func(m *OutboundJobMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *OutboundJob
+		)
+		m.oldValue = func(ctx context.Context) (*OutboundJob, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().OutboundJob.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withOutboundJob sets the old OutboundJob of the mutation.
+func withOutboundJob(node *OutboundJob) outboundjobOption {
+	return func(m *OutboundJobMutation) {
+		m.oldValue = func(context.Context) (*OutboundJob, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m OutboundJobMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m OutboundJobMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of OutboundJob entities.
+func (m *OutboundJobMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *OutboundJobMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *OutboundJobMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().OutboundJob.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (m *OutboundJobMutation) SetMailboxID(s string) {
+	m.mailbox_id = &s
+}
+
+// MailboxID returns the value of the "mailbox_id" field in the mutation.
+func (m *OutboundJobMutation) MailboxID() (r string, exists bool) {
+	v := m.mailbox_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMailboxID returns the old "mailbox_id" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldMailboxID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMailboxID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMailboxID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMailboxID: %w", err)
+	}
+	return oldValue.MailboxID, nil
+}
+
+// ResetMailboxID resets all changes to the "mailbox_id" field.
+func (m *OutboundJobMutation) ResetMailboxID() {
+	m.mailbox_id = nil
+}
+
+// SetMessageID sets the "message_id" field.
+func (m *OutboundJobMutation) SetMessageID(s string) {
+	m.message_id = &s
+}
+
+// MessageID returns the value of the "message_id" field in the mutation.
+func (m *OutboundJobMutation) MessageID() (r string, exists bool) {
+	v := m.message_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMessageID returns the old "message_id" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldMessageID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMessageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMessageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMessageID: %w", err)
+	}
+	return oldValue.MessageID, nil
+}
+
+// ResetMessageID resets all changes to the "message_id" field.
+func (m *OutboundJobMutation) ResetMessageID() {
+	m.message_id = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *OutboundJobMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *OutboundJobMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *OutboundJobMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetAttempts sets the "attempts" field.
+func (m *OutboundJobMutation) SetAttempts(i int) {
+	m.attempts = &i
+	m.addattempts = nil
+}
+
+// Attempts returns the value of the "attempts" field in the mutation.
+func (m *OutboundJobMutation) Attempts() (r int, exists bool) {
+	v := m.attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempts returns the old "attempts" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempts: %w", err)
+	}
+	return oldValue.Attempts, nil
+}
+
+// AddAttempts adds i to the "attempts" field.
+func (m *OutboundJobMutation) AddAttempts(i int) {
+	if m.addattempts != nil {
+		*m.addattempts += i
+	} else {
+		m.addattempts = &i
+	}
+}
+
+// AddedAttempts returns the value that was added to the "attempts" field in this mutation.
+func (m *OutboundJobMutation) AddedAttempts() (r int, exists bool) {
+	v := m.addattempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempts resets all changes to the "attempts" field.
+func (m *OutboundJobMutation) ResetAttempts() {
+	m.attempts = nil
+	m.addattempts = nil
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (m *OutboundJobMutation) SetLockedBy(s string) {
+	m.locked_by = &s
+}
+
+// LockedBy returns the value of the "locked_by" field in the mutation.
+func (m *OutboundJobMutation) LockedBy() (r string, exists bool) {
+	v := m.locked_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedBy returns the old "locked_by" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldLockedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedBy: %w", err)
+	}
+	return oldValue.LockedBy, nil
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (m *OutboundJobMutation) ClearLockedBy() {
+	m.locked_by = nil
+	m.clearedFields[outboundjob.FieldLockedBy] = struct{}{}
+}
+
+// LockedByCleared returns if the "locked_by" field was cleared in this mutation.
+func (m *OutboundJobMutation) LockedByCleared() bool {
+	_, ok := m.clearedFields[outboundjob.FieldLockedBy]
+	return ok
+}
+
+// ResetLockedBy resets all changes to the "locked_by" field.
+func (m *OutboundJobMutation) ResetLockedBy() {
+	m.locked_by = nil
+	delete(m.clearedFields, outboundjob.FieldLockedBy)
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (m *OutboundJobMutation) SetLockedUntil(t time.Time) {
+	m.locked_until = &t
+}
+
+// LockedUntil returns the value of the "locked_until" field in the mutation.
+func (m *OutboundJobMutation) LockedUntil() (r time.Time, exists bool) {
+	v := m.locked_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedUntil returns the old "locked_until" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldLockedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedUntil: %w", err)
+	}
+	return oldValue.LockedUntil, nil
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (m *OutboundJobMutation) ClearLockedUntil() {
+	m.locked_until = nil
+	m.clearedFields[outboundjob.FieldLockedUntil] = struct{}{}
+}
+
+// LockedUntilCleared returns if the "locked_until" field was cleared in this mutation.
+func (m *OutboundJobMutation) LockedUntilCleared() bool {
+	_, ok := m.clearedFields[outboundjob.FieldLockedUntil]
+	return ok
+}
+
+// ResetLockedUntil resets all changes to the "locked_until" field.
+func (m *OutboundJobMutation) ResetLockedUntil() {
+	m.locked_until = nil
+	delete(m.clearedFields, outboundjob.FieldLockedUntil)
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (m *OutboundJobMutation) SetNextAttemptAt(t time.Time) {
+	m.next_attempt_at = &t
+}
+
+// NextAttemptAt returns the value of the "next_attempt_at" field in the mutation.
+func (m *OutboundJobMutation) NextAttemptAt() (r time.Time, exists bool) {
+	v := m.next_attempt_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextAttemptAt returns the old "next_attempt_at" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldNextAttemptAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextAttemptAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextAttemptAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextAttemptAt: %w", err)
+	}
+	return oldValue.NextAttemptAt, nil
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (m *OutboundJobMutation) ClearNextAttemptAt() {
+	m.next_attempt_at = nil
+	m.clearedFields[outboundjob.FieldNextAttemptAt] = struct{}{}
+}
+
+// NextAttemptAtCleared returns if the "next_attempt_at" field was cleared in this mutation.
+func (m *OutboundJobMutation) NextAttemptAtCleared() bool {
+	_, ok := m.clearedFields[outboundjob.FieldNextAttemptAt]
+	return ok
+}
+
+// ResetNextAttemptAt resets all changes to the "next_attempt_at" field.
+func (m *OutboundJobMutation) ResetNextAttemptAt() {
+	m.next_attempt_at = nil
+	delete(m.clearedFields, outboundjob.FieldNextAttemptAt)
+}
+
+// SetLastError sets the "last_error" field.
+func (m *OutboundJobMutation) SetLastError(value map[string]interface{}) {
+	m.last_error = &value
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *OutboundJobMutation) LastError() (r map[string]interface{}, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldLastError(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (m *OutboundJobMutation) ClearLastError() {
+	m.last_error = nil
+	m.clearedFields[outboundjob.FieldLastError] = struct{}{}
+}
+
+// LastErrorCleared returns if the "last_error" field was cleared in this mutation.
+func (m *OutboundJobMutation) LastErrorCleared() bool {
+	_, ok := m.clearedFields[outboundjob.FieldLastError]
+	return ok
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *OutboundJobMutation) ResetLastError() {
+	m.last_error = nil
+	delete(m.clearedFields, outboundjob.FieldLastError)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *OutboundJobMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *OutboundJobMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *OutboundJobMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *OutboundJobMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *OutboundJobMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *OutboundJobMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the OutboundJobMutation builder.
+func (m *OutboundJobMutation) Where(ps ...predicate.OutboundJob) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the OutboundJobMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *OutboundJobMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.OutboundJob, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *OutboundJobMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *OutboundJobMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (OutboundJob).
+func (m *OutboundJobMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *OutboundJobMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.mailbox_id != nil {
+		fields = append(fields, outboundjob.FieldMailboxID)
+	}
+	if m.message_id != nil {
+		fields = append(fields, outboundjob.FieldMessageID)
+	}
+	if m.status != nil {
+		fields = append(fields, outboundjob.FieldStatus)
+	}
+	if m.attempts != nil {
+		fields = append(fields, outboundjob.FieldAttempts)
+	}
+	if m.locked_by != nil {
+		fields = append(fields, outboundjob.FieldLockedBy)
+	}
+	if m.locked_until != nil {
+		fields = append(fields, outboundjob.FieldLockedUntil)
+	}
+	if m.next_attempt_at != nil {
+		fields = append(fields, outboundjob.FieldNextAttemptAt)
+	}
+	if m.last_error != nil {
+		fields = append(fields, outboundjob.FieldLastError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, outboundjob.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, outboundjob.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *OutboundJobMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case outboundjob.FieldMailboxID:
+		return m.MailboxID()
+	case outboundjob.FieldMessageID:
+		return m.MessageID()
+	case outboundjob.FieldStatus:
+		return m.Status()
+	case outboundjob.FieldAttempts:
+		return m.Attempts()
+	case outboundjob.FieldLockedBy:
+		return m.LockedBy()
+	case outboundjob.FieldLockedUntil:
+		return m.LockedUntil()
+	case outboundjob.FieldNextAttemptAt:
+		return m.NextAttemptAt()
+	case outboundjob.FieldLastError:
+		return m.LastError()
+	case outboundjob.FieldCreatedAt:
+		return m.CreatedAt()
+	case outboundjob.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *OutboundJobMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case outboundjob.FieldMailboxID:
+		return m.OldMailboxID(ctx)
+	case outboundjob.FieldMessageID:
+		return m.OldMessageID(ctx)
+	case outboundjob.FieldStatus:
+		return m.OldStatus(ctx)
+	case outboundjob.FieldAttempts:
+		return m.OldAttempts(ctx)
+	case outboundjob.FieldLockedBy:
+		return m.OldLockedBy(ctx)
+	case outboundjob.FieldLockedUntil:
+		return m.OldLockedUntil(ctx)
+	case outboundjob.FieldNextAttemptAt:
+		return m.OldNextAttemptAt(ctx)
+	case outboundjob.FieldLastError:
+		return m.OldLastError(ctx)
+	case outboundjob.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case outboundjob.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown OutboundJob field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *OutboundJobMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case outboundjob.FieldMailboxID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMailboxID(v)
+		return nil
+	case outboundjob.FieldMessageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMessageID(v)
+		return nil
+	case outboundjob.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case outboundjob.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempts(v)
+		return nil
+	case outboundjob.FieldLockedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedBy(v)
+		return nil
+	case outboundjob.FieldLockedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedUntil(v)
+		return nil
+	case outboundjob.FieldNextAttemptAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextAttemptAt(v)
+		return nil
+	case outboundjob.FieldLastError:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case outboundjob.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case outboundjob.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown OutboundJob field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *OutboundJobMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempts != nil {
+		fields = append(fields, outboundjob.FieldAttempts)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *OutboundJobMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case outboundjob.FieldAttempts:
+		return m.AddedAttempts()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *OutboundJobMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case outboundjob.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown OutboundJob numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *OutboundJobMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(outboundjob.FieldLockedBy) {
+		fields = append(fields, outboundjob.FieldLockedBy)
+	}
+	if m.FieldCleared(outboundjob.FieldLockedUntil) {
+		fields = append(fields, outboundjob.FieldLockedUntil)
+	}
+	if m.FieldCleared(outboundjob.FieldNextAttemptAt) {
+		fields = append(fields, outboundjob.FieldNextAttemptAt)
+	}
+	if m.FieldCleared(outboundjob.FieldLastError) {
+		fields = append(fields, outboundjob.FieldLastError)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *OutboundJobMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *OutboundJobMutation) ClearField(name string) error {
+	switch name {
+	case outboundjob.FieldLockedBy:
+		m.ClearLockedBy()
+		return nil
+	case outboundjob.FieldLockedUntil:
+		m.ClearLockedUntil()
+		return nil
+	case outboundjob.FieldNextAttemptAt:
+		m.ClearNextAttemptAt()
+		return nil
+	case outboundjob.FieldLastError:
+		m.ClearLastError()
+		return nil
+	}
+	return fmt.Errorf("unknown OutboundJob nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *OutboundJobMutation) ResetField(name string) error {
+	switch name {
+	case outboundjob.FieldMailboxID:
+		m.ResetMailboxID()
+		return nil
+	case outboundjob.FieldMessageID:
+		m.ResetMessageID()
+		return nil
+	case outboundjob.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case outboundjob.FieldAttempts:
+		m.ResetAttempts()
+		return nil
+	case outboundjob.FieldLockedBy:
+		m.ResetLockedBy()
+		return nil
+	case outboundjob.FieldLockedUntil:
+		m.ResetLockedUntil()
+		return nil
+	case outboundjob.FieldNextAttemptAt:
+		m.ResetNextAttemptAt()
+		return nil
+	case outboundjob.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case outboundjob.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case outboundjob.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown OutboundJob field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *OutboundJobMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *OutboundJobMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *OutboundJobMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *OutboundJobMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *OutboundJobMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *OutboundJobMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *OutboundJobMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown OutboundJob unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *OutboundJobMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown OutboundJob edge %s", name)
 }
 
 // RouteMutation represents an operation that mutates the Route nodes in the graph.

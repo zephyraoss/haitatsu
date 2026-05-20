@@ -11,18 +11,19 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `pkl:"server"`
-	SMTP     SMTPConfig     `pkl:"smtp"`
-	IMAP     IMAPConfig     `pkl:"imap"`
-	Postgres PostgresConfig `pkl:"postgres"`
-	S3       S3Config       `pkl:"s3"`
-	Logging  LoggingConfig  `pkl:"logging"`
-	Metrics  MetricsConfig  `pkl:"metrics"`
-	API      APIConfig      `pkl:"api"`
-	Workers  WorkersConfig  `pkl:"workers"`
-	TLS      TLSConfig      `pkl:"tls"`
-	Webhooks WebhookConfig  `pkl:"webhooks"`
-	Limits   LimitsConfig   `pkl:"limits"`
+	Server     ServerConfig     `pkl:"server"`
+	SMTP       SMTPConfig       `pkl:"smtp"`
+	IMAP       IMAPConfig       `pkl:"imap"`
+	Submission SubmissionConfig `pkl:"submission"`
+	Postgres   PostgresConfig   `pkl:"postgres"`
+	S3         S3Config         `pkl:"s3"`
+	Logging    LoggingConfig    `pkl:"logging"`
+	Metrics    MetricsConfig    `pkl:"metrics"`
+	API        APIConfig        `pkl:"api"`
+	Workers    WorkersConfig    `pkl:"workers"`
+	TLS        TLSConfig        `pkl:"tls"`
+	Webhooks   WebhookConfig    `pkl:"webhooks"`
+	Limits     LimitsConfig     `pkl:"limits"`
 }
 
 type ServerConfig struct {
@@ -40,6 +41,11 @@ type SMTPConfig struct {
 
 type IMAPConfig struct {
 	Addr string `pkl:"addr"`
+}
+
+type SubmissionConfig struct {
+	StartTLSAddr string `pkl:"starttls_addr"`
+	TLSAddr      string `pkl:"tls_addr"`
 }
 
 func (c ServerConfig) ShutdownTimeout() time.Duration {
@@ -139,6 +145,12 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.IMAP.Addr) == "" {
 		problems = append(problems, "imap.addr is required")
 	}
+	if strings.TrimSpace(c.Submission.StartTLSAddr) == "" {
+		problems = append(problems, "submission.starttls_addr is required")
+	}
+	if strings.TrimSpace(c.Submission.TLSAddr) == "" {
+		problems = append(problems, "submission.tls_addr is required")
+	}
 	if c.SMTP.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "smtp.max_message_size_bytes must be >= 0")
 	}
@@ -195,6 +207,9 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	}
 	if c.IMAP.Addr != next.IMAP.Addr {
 		changes = append(changes, "imap listener")
+	}
+	if c.Submission != next.Submission {
+		changes = append(changes, "submission listeners")
 	}
 	if c.TLS != next.TLS {
 		changes = append(changes, "tls")

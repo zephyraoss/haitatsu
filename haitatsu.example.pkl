@@ -15,6 +15,11 @@ imap {
   addr = "0.0.0.0:143"
 }
 
+submission {
+  starttls_addr = "0.0.0.0:587"
+  tls_addr = "0.0.0.0:465"
+}
+
 postgres {
   dsn = "postgres://haitatsu:haitatsu@localhost:5432/haitatsu?sslmode=disable"
 }

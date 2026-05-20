@@ -14,12 +14,14 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 )
@@ -84,12 +86,14 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			apppassword.Table:         apppassword.ValidColumn,
 			auditevent.Table:          auditevent.ValidColumn,
+			dkimkey.Table:             dkimkey.ValidColumn,
 			folder.Table:              folder.ValidColumn,
 			label.Table:               label.ValidColumn,
 			mailbox.Table:             mailbox.ValidColumn,
 			mailboxmessage.Table:      mailboxmessage.ValidColumn,
 			mailboxmessagelabel.Table: mailboxmessagelabel.ValidColumn,
 			message.Table:             message.ValidColumn,
+			outboundjob.Table:         outboundjob.ValidColumn,
 			route.Table:               route.ValidColumn,
 			routingrule.Table:         routingrule.ValidColumn,
 		})

@@ -17,8 +17,10 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/logging"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
+	"github.com/zephyraoss/haitatsu/internal/outbound"
 	"github.com/zephyraoss/haitatsu/internal/routing"
 	inboundsmtp "github.com/zephyraoss/haitatsu/internal/smtp/inbound"
+	submissionsmtp "github.com/zephyraoss/haitatsu/internal/smtp/submission"
 	"github.com/zephyraoss/haitatsu/internal/storage"
 )
 
@@ -35,6 +37,7 @@ type App struct {
 	server     *httpapi.Server
 	smtp       *inboundsmtp.Server
 	imap       *imapserver.Server
+	submission *submissionsmtp.Server
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -71,7 +74,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
-	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), blobStore, checker, m)
+	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), blobStore, submissionService, checker, m)
 	resolver := routing.NewResolver(db.Ent())
 	messageService := messages.NewService(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	tlsConfig, err := listenerTLSConfig(cfg.TLS)
@@ -81,6 +85,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	}
 	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService)
 	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore)
+	submissionServer := submissionsmtp.New(cfg.Submission, cfg.Server.PublicHostname, tlsConfig, db.Ent(), submissionService)
 
 	return &App{
 		configPath: opts.ConfigPath,
@@ -91,11 +96,12 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		server:     server,
 		smtp:       smtpServer,
 		imap:       imapServer,
+		submission: submissionServer,
 	}, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 4)
 	go func() {
 		a.logger.Info("starting http api", "addr", a.config.Server.APIAddr)
 		errCh <- a.server.Listen()
@@ -107,6 +113,10 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		a.logger.Info("starting imap", "addr", a.config.IMAP.Addr)
 		errCh <- a.imap.Listen()
+	}()
+	go func() {
+		a.logger.Info("starting smtp submission", "starttls_addr", a.config.Submission.StartTLSAddr, "tls_addr", a.config.Submission.TLSAddr)
+		errCh <- a.submission.Listen()
 	}()
 
 	select {
@@ -132,6 +142,9 @@ func (a *App) shutdown() error {
 	}
 	if err := a.imap.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown imap server: %w", err)
+	}
+	if err := a.submission.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown submission server: %w", err)
 	}
 	return nil
 }
