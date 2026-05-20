@@ -1,0 +1,57 @@
+server {
+  api_addr = "127.0.0.1:8080"
+  public_hostname = "mail.zephyra.cloud"
+  instance_name = "dev-email-01"
+  shutdown_timeout_seconds = 10
+}
+
+postgres {
+  dsn = "postgres://haitatsu:haitatsu@localhost:5432/haitatsu?sslmode=disable"
+}
+
+s3 {
+  endpoint = "localhost:9000"
+  region = "us-east-1"
+  bucket = "haitatsu"
+  access_key_id = "minioadmin"
+  secret_access_key = "minioadmin"
+  use_ssl = false
+}
+
+logging {
+  level = "info"
+  axiom_enabled = false
+  axiom_dataset = ""
+}
+
+metrics {
+  enabled = true
+}
+
+api {
+  service_token = "change-me"
+}
+
+workers {
+  enabled = true
+  concurrency = 4
+}
+
+tls {
+  mode = "manual"
+  cert_file = ""
+  key_file = ""
+  acme_email = ""
+  acme_ca = "letsencrypt"
+  acme_cache_path = "./cache/certmagic"
+}
+
+webhooks {
+  default_timeout_seconds = 10
+  endpoints = new Mapping<String, String> {}
+}
+
+limits {
+  max_message_size_bytes = 52428800
+  max_inbound_recipients = 100
+}
