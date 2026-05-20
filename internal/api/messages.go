@@ -12,7 +12,6 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
-	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 )
 
 type mailboxMessageUpdateRequest struct {
@@ -279,17 +278,24 @@ func (h *Handler) mailboxMessageIDsForLabel(c fiber.Ctx, labelID string) ([]stri
 }
 
 func (h *Handler) searchMessageIDs(c fiber.Ctx, search string) ([]string, error) {
-	messages, err := h.client.Message.Query().Where(message.Or(
-		message.SubjectContainsFold(search),
-		message.TextBodyExtractContainsFold(search),
-		message.HTMLBodyExtractContainsFold(search),
-	)).All(c.Context())
+	rows, err := h.db.QueryContext(c.Context(), `
+SELECT id
+FROM messages, websearch_to_tsquery('english', $1) query
+WHERE to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)) @@ query
+ORDER BY ts_rank(to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)), query) DESC, created_at DESC
+`, search)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(messages))
-	for _, msg := range messages {
-		ids = append(ids, msg.ID)
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
 	}
-	return ids, nil
+	return ids, rows.Err()
 }

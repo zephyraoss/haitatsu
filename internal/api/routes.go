@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"strconv"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 
 type Handler struct {
 	client   *ent.Client
+	db       *sql.DB
 	store    MessageStore
 	outbound *outbound.Submission
 	config   config.Config
@@ -33,8 +35,8 @@ type MessageStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 }
 
-func Register(router fiber.Router, client *ent.Client, store MessageStore, outboundService *outbound.Submission, cfg config.Config, reloader Reloader) {
-	h := &Handler{client: client, store: store, outbound: outboundService, config: cfg, reloader: reloader}
+func Register(router fiber.Router, client *ent.Client, db *sql.DB, store MessageStore, outboundService *outbound.Submission, cfg config.Config, reloader Reloader) {
+	h := &Handler{client: client, db: db, store: store, outbound: outboundService, config: cfg, reloader: reloader}
 	v1 := router.Group("/api/v1", ServiceTokenMiddleware(cfg.API))
 
 	v1.Get("/mailboxes", h.listMailboxes)
@@ -45,9 +47,9 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, outbo
 	v1.Post("/mailboxes/:id/restore", h.restoreMailbox)
 	v1.Delete("/mailboxes/:id/hard", h.hardDeleteMailbox)
 
-	v1.Get("/mailboxes/:mailbox_id/app_passwords", h.listAppPasswords)
-	v1.Post("/mailboxes/:mailbox_id/app_passwords", h.createAppPassword)
-	v1.Delete("/app_passwords/:id", h.revokeAppPassword)
+	v1.Get("/mailboxes/:mailbox_id/passwords", h.listAppPasswords)
+	v1.Post("/mailboxes/:mailbox_id/passwords", h.createAppPassword)
+	v1.Delete("/mailboxes/:mailbox_id/passwords/:id", h.revokeAppPassword)
 
 	v1.Get("/routes", h.listRoutes)
 	v1.Post("/routes", h.createRoute)
@@ -55,10 +57,10 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, outbo
 	v1.Patch("/routes/:id", h.updateRoute)
 	v1.Delete("/routes/:id", h.deleteRoute)
 
-	v1.Get("/routing_rules", h.listRoutingRules)
-	v1.Post("/routing_rules", h.createRoutingRule)
-	v1.Patch("/routing_rules/:id", h.updateRoutingRule)
-	v1.Delete("/routing_rules/:id", h.deleteRoutingRule)
+	v1.Get("/routing/rules", h.listRoutingRules)
+	v1.Post("/routing/rules", h.createRoutingRule)
+	v1.Patch("/routing/rules/:id", h.updateRoutingRule)
+	v1.Delete("/routing/rules/:id", h.deleteRoutingRule)
 
 	v1.Get("/mailboxes/:mailbox_id/folders", h.listFolders)
 	v1.Post("/mailboxes/:mailbox_id/folders", h.createFolder)
@@ -81,14 +83,14 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, outbo
 	v1.Post("/messages/:id/labels", h.addMessageLabel)
 	v1.Delete("/messages/:id/labels/:label_id", h.removeMessageLabel)
 
-	v1.Get("/audit_events", h.listAuditEvents)
+	v1.Get("/audit", h.listAuditEvents)
 	v1.Get("/events", h.listEvents)
 	v1.Post("/admin/reload", h.reloadConfig)
 	v1.Get("/dns/check/:domain", h.checkDNS)
 
-	v1.Get("/dkim_keys", h.listDKIMKeys)
-	v1.Post("/dkim_keys", h.createDKIMKey)
-	v1.Get("/dkim_keys/:id", h.getDKIMKey)
+	v1.Get("/dkim", h.listDKIMKeys)
+	v1.Post("/dkim", h.createDKIMKey)
+	v1.Get("/dkim/:id", h.getDKIMKey)
 
 	v1.Get("/rules/sender", h.listSenderRules)
 	v1.Post("/rules/sender", h.createSenderRule)

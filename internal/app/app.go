@@ -87,7 +87,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
 	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName, cfg.Bounce.Domain)
-	server := httpapi.New(cfg, db.Ent(), blobStore, submissionService, checker, m, runtime)
+	server := httpapi.New(cfg, db.Ent(), db.SQL(), blobStore, submissionService, checker, m, runtime)
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, cfg.Server.InstanceName)
 	cleanupWorker := cleanup.New(db.Ent())
 	eventService := events.New(db.Ent())
