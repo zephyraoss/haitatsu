@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `pkl:"server"`
 	SMTP     SMTPConfig     `pkl:"smtp"`
+	IMAP     IMAPConfig     `pkl:"imap"`
 	Postgres PostgresConfig `pkl:"postgres"`
 	S3       S3Config       `pkl:"s3"`
 	Logging  LoggingConfig  `pkl:"logging"`
@@ -35,6 +36,10 @@ type SMTPConfig struct {
 	InboundAddr          string `pkl:"inbound_addr"`
 	MaxMessageSizeBytes  int64  `pkl:"max_message_size_bytes"`
 	MaxInboundRecipients int    `pkl:"max_inbound_recipients"`
+}
+
+type IMAPConfig struct {
+	Addr string `pkl:"addr"`
 }
 
 func (c ServerConfig) ShutdownTimeout() time.Duration {
@@ -131,6 +136,9 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.SMTP.InboundAddr) == "" {
 		problems = append(problems, "smtp.inbound_addr is required")
 	}
+	if strings.TrimSpace(c.IMAP.Addr) == "" {
+		problems = append(problems, "imap.addr is required")
+	}
 	if c.SMTP.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "smtp.max_message_size_bytes must be >= 0")
 	}
@@ -184,6 +192,9 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	}
 	if c.SMTP.InboundAddr != next.SMTP.InboundAddr {
 		changes = append(changes, "smtp listener")
+	}
+	if c.IMAP.Addr != next.IMAP.Addr {
+		changes = append(changes, "imap listener")
 	}
 	if c.TLS != next.TLS {
 		changes = append(changes, "tls")

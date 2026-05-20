@@ -106,6 +106,20 @@ func (_c *MailboxMessageCreate) SetNillableFlagged(v *bool) *MailboxMessageCreat
 	return _c
 }
 
+// SetImapDeleted sets the "imap_deleted" field.
+func (_c *MailboxMessageCreate) SetImapDeleted(v bool) *MailboxMessageCreate {
+	_c.mutation.SetImapDeleted(v)
+	return _c
+}
+
+// SetNillableImapDeleted sets the "imap_deleted" field if the given value is not nil.
+func (_c *MailboxMessageCreate) SetNillableImapDeleted(v *bool) *MailboxMessageCreate {
+	if v != nil {
+		_c.SetImapDeleted(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *MailboxMessageCreate) SetCreatedAt(v time.Time) *MailboxMessageCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -205,6 +219,10 @@ func (_c *MailboxMessageCreate) defaults() {
 		v := mailboxmessage.DefaultFlagged
 		_c.mutation.SetFlagged(v)
 	}
+	if _, ok := _c.mutation.ImapDeleted(); !ok {
+		v := mailboxmessage.DefaultImapDeleted
+		_c.mutation.SetImapDeleted(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := mailboxmessage.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -241,6 +259,9 @@ func (_c *MailboxMessageCreate) check() error {
 	}
 	if _, ok := _c.mutation.Flagged(); !ok {
 		return &ValidationError{Name: "flagged", err: errors.New(`ent: missing required field "MailboxMessage.flagged"`)}
+	}
+	if _, ok := _c.mutation.ImapDeleted(); !ok {
+		return &ValidationError{Name: "imap_deleted", err: errors.New(`ent: missing required field "MailboxMessage.imap_deleted"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "MailboxMessage.created_at"`)}
@@ -318,6 +339,10 @@ func (_c *MailboxMessageCreate) createSpec() (*MailboxMessage, *sqlgraph.CreateS
 	if value, ok := _c.mutation.Flagged(); ok {
 		_spec.SetField(mailboxmessage.FieldFlagged, field.TypeBool, value)
 		_node.Flagged = value
+	}
+	if value, ok := _c.mutation.ImapDeleted(); ok {
+		_spec.SetField(mailboxmessage.FieldImapDeleted, field.TypeBool, value)
+		_node.ImapDeleted = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(mailboxmessage.FieldCreatedAt, field.TypeTime, value)

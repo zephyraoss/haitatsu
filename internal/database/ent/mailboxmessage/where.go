@@ -109,6 +109,11 @@ func Flagged(v bool) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldEQ(FieldFlagged, v))
 }
 
+// ImapDeleted applies equality check predicate on the "imap_deleted" field. It's identical to ImapDeletedEQ.
+func ImapDeleted(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldImapDeleted, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldEQ(FieldCreatedAt, v))
@@ -617,6 +622,16 @@ func FlaggedEQ(v bool) predicate.MailboxMessage {
 // FlaggedNEQ applies the NEQ predicate on the "flagged" field.
 func FlaggedNEQ(v bool) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldNEQ(FieldFlagged, v))
+}
+
+// ImapDeletedEQ applies the EQ predicate on the "imap_deleted" field.
+func ImapDeletedEQ(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldImapDeleted, v))
+}
+
+// ImapDeletedNEQ applies the NEQ predicate on the "imap_deleted" field.
+func ImapDeletedNEQ(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldNEQ(FieldImapDeleted, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -122,12 +122,16 @@ func init() {
 	mailboxmessageDescFlagged := mailboxmessageFields[9].Descriptor()
 	// mailboxmessage.DefaultFlagged holds the default value on creation for the flagged field.
 	mailboxmessage.DefaultFlagged = mailboxmessageDescFlagged.Default.(bool)
+	// mailboxmessageDescImapDeleted is the schema descriptor for imap_deleted field.
+	mailboxmessageDescImapDeleted := mailboxmessageFields[10].Descriptor()
+	// mailboxmessage.DefaultImapDeleted holds the default value on creation for the imap_deleted field.
+	mailboxmessage.DefaultImapDeleted = mailboxmessageDescImapDeleted.Default.(bool)
 	// mailboxmessageDescCreatedAt is the schema descriptor for created_at field.
-	mailboxmessageDescCreatedAt := mailboxmessageFields[10].Descriptor()
+	mailboxmessageDescCreatedAt := mailboxmessageFields[11].Descriptor()
 	// mailboxmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
 	mailboxmessage.DefaultCreatedAt = mailboxmessageDescCreatedAt.Default.(func() time.Time)
 	// mailboxmessageDescUpdatedAt is the schema descriptor for updated_at field.
-	mailboxmessageDescUpdatedAt := mailboxmessageFields[11].Descriptor()
+	mailboxmessageDescUpdatedAt := mailboxmessageFields[12].Descriptor()
 	// mailboxmessage.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	mailboxmessage.DefaultUpdatedAt = mailboxmessageDescUpdatedAt.Default.(func() time.Time)
 	// mailboxmessage.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

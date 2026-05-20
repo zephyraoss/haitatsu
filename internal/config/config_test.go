@@ -41,6 +41,7 @@ func validConfig() Config {
 			InstanceName:   "dev-01",
 		},
 		SMTP:     SMTPConfig{InboundAddr: "127.0.0.1:2525"},
+		IMAP:     IMAPConfig{Addr: "127.0.0.1:1143"},
 		Postgres: PostgresConfig{DSN: "postgres://localhost/haitatsu"},
 		S3: S3Config{
 			Endpoint:        "localhost:9000",

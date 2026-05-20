@@ -166,6 +166,20 @@ func (_u *MailboxMessageUpdate) SetNillableFlagged(v *bool) *MailboxMessageUpdat
 	return _u
 }
 
+// SetImapDeleted sets the "imap_deleted" field.
+func (_u *MailboxMessageUpdate) SetImapDeleted(v bool) *MailboxMessageUpdate {
+	_u.mutation.SetImapDeleted(v)
+	return _u
+}
+
+// SetNillableImapDeleted sets the "imap_deleted" field if the given value is not nil.
+func (_u *MailboxMessageUpdate) SetNillableImapDeleted(v *bool) *MailboxMessageUpdate {
+	if v != nil {
+		_u.SetImapDeleted(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *MailboxMessageUpdate) SetUpdatedAt(v time.Time) *MailboxMessageUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -274,6 +288,9 @@ func (_u *MailboxMessageUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.Flagged(); ok {
 		_spec.SetField(mailboxmessage.FieldFlagged, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImapDeleted(); ok {
+		_spec.SetField(mailboxmessage.FieldImapDeleted, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mailboxmessage.FieldUpdatedAt, field.TypeTime, value)
@@ -442,6 +459,20 @@ func (_u *MailboxMessageUpdateOne) SetNillableFlagged(v *bool) *MailboxMessageUp
 	return _u
 }
 
+// SetImapDeleted sets the "imap_deleted" field.
+func (_u *MailboxMessageUpdateOne) SetImapDeleted(v bool) *MailboxMessageUpdateOne {
+	_u.mutation.SetImapDeleted(v)
+	return _u
+}
+
+// SetNillableImapDeleted sets the "imap_deleted" field if the given value is not nil.
+func (_u *MailboxMessageUpdateOne) SetNillableImapDeleted(v *bool) *MailboxMessageUpdateOne {
+	if v != nil {
+		_u.SetImapDeleted(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *MailboxMessageUpdateOne) SetUpdatedAt(v time.Time) *MailboxMessageUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -580,6 +611,9 @@ func (_u *MailboxMessageUpdateOne) sqlSave(ctx context.Context) (_node *MailboxM
 	}
 	if value, ok := _u.mutation.Flagged(); ok {
 		_spec.SetField(mailboxmessage.FieldFlagged, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImapDeleted(); ok {
+		_spec.SetField(mailboxmessage.FieldImapDeleted, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mailboxmessage.FieldUpdatedAt, field.TypeTime, value)

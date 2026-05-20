@@ -13,6 +13,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/health"
 	"github.com/zephyraoss/haitatsu/internal/httpapi"
+	"github.com/zephyraoss/haitatsu/internal/imapserver"
 	"github.com/zephyraoss/haitatsu/internal/logging"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
@@ -33,6 +34,7 @@ type App struct {
 	storage    *storage.Client
 	server     *httpapi.Server
 	smtp       *inboundsmtp.Server
+	imap       *imapserver.Server
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -72,12 +74,13 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), blobStore, checker, m)
 	resolver := routing.NewResolver(db.Ent())
 	messageService := messages.NewService(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
-	tlsConfig, err := smtpTLSConfig(cfg.TLS)
+	tlsConfig, err := listenerTLSConfig(cfg.TLS)
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("configure smtp tls: %w", err)
+		return nil, fmt.Errorf("configure listener tls: %w", err)
 	}
 	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService)
+	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore)
 
 	return &App{
 		configPath: opts.ConfigPath,
@@ -87,11 +90,12 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		storage:    blobStore,
 		server:     server,
 		smtp:       smtpServer,
+		imap:       imapServer,
 	}, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() {
 		a.logger.Info("starting http api", "addr", a.config.Server.APIAddr)
 		errCh <- a.server.Listen()
@@ -99,6 +103,10 @@ func (a *App) Run(ctx context.Context) error {
 	go func() {
 		a.logger.Info("starting smtp inbound", "addr", a.config.SMTP.InboundAddr)
 		errCh <- a.smtp.Listen()
+	}()
+	go func() {
+		a.logger.Info("starting imap", "addr", a.config.IMAP.Addr)
+		errCh <- a.imap.Listen()
 	}()
 
 	select {
@@ -121,6 +129,9 @@ func (a *App) shutdown() error {
 	}
 	if err := a.smtp.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown smtp server: %w", err)
+	}
+	if err := a.imap.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown imap server: %w", err)
 	}
 	return nil
 }
@@ -170,7 +181,7 @@ func (a *App) Close() {
 	}
 }
 
-func smtpTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
+func listenerTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 	if cfg.CertFile == "" && cfg.KeyFile == "" {
 		return nil, nil
 	}

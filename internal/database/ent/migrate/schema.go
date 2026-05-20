@@ -170,6 +170,7 @@ var (
 		{Name: "resolved_route_id", Type: field.TypeString, Nullable: true},
 		{Name: "read", Type: field.TypeBool, Default: false},
 		{Name: "flagged", Type: field.TypeBool, Default: false},
+		{Name: "imap_deleted", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
@@ -198,7 +199,7 @@ var (
 			{
 				Name:    "mailboxmessage_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{MailboxMessagesColumns[12]},
+				Columns: []*schema.Column{MailboxMessagesColumns[13]},
 			},
 		},
 	}

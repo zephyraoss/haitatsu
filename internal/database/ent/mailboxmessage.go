@@ -35,6 +35,8 @@ type MailboxMessage struct {
 	Read bool `json:"read,omitempty"`
 	// Flagged holds the value of the "flagged" field.
 	Flagged bool `json:"flagged,omitempty"`
+	// ImapDeleted holds the value of the "imap_deleted" field.
+	ImapDeleted bool `json:"imap_deleted,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -49,7 +51,7 @@ func (*MailboxMessage) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case mailboxmessage.FieldRead, mailboxmessage.FieldFlagged:
+		case mailboxmessage.FieldRead, mailboxmessage.FieldFlagged, mailboxmessage.FieldImapDeleted:
 			values[i] = new(sql.NullBool)
 		case mailboxmessage.FieldID, mailboxmessage.FieldMailboxID, mailboxmessage.FieldMessageID, mailboxmessage.FieldFolderID, mailboxmessage.FieldOriginalRcpt, mailboxmessage.FieldBaseRcpt, mailboxmessage.FieldPlusTag, mailboxmessage.FieldResolvedRouteID:
 			values[i] = new(sql.NullString)
@@ -129,6 +131,12 @@ func (_m *MailboxMessage) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field flagged", values[i])
 			} else if value.Valid {
 				_m.Flagged = value.Bool
+			}
+		case mailboxmessage.FieldImapDeleted:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field imap_deleted", values[i])
+			} else if value.Valid {
+				_m.ImapDeleted = value.Bool
 			}
 		case mailboxmessage.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -211,6 +219,9 @@ func (_m *MailboxMessage) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("flagged=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Flagged))
+	builder.WriteString(", ")
+	builder.WriteString("imap_deleted=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImapDeleted))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

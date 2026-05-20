@@ -22,6 +22,7 @@ func (MailboxMessage) Fields() []ent.Field {
 		field.String("resolved_route_id").Optional(),
 		field.Bool("read").Default(false),
 		field.Bool("flagged").Default(false),
+		field.Bool("imap_deleted").Default(false),
 		createdAtField(),
 		updatedAtField(),
 		deletedAtField(),

@@ -31,6 +31,8 @@ const (
 	FieldRead = "read"
 	// FieldFlagged holds the string denoting the flagged field in the database.
 	FieldFlagged = "flagged"
+	// FieldImapDeleted holds the string denoting the imap_deleted field in the database.
+	FieldImapDeleted = "imap_deleted"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -53,6 +55,7 @@ var Columns = []string{
 	FieldResolvedRouteID,
 	FieldRead,
 	FieldFlagged,
+	FieldImapDeleted,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldDeletedAt,
@@ -73,6 +76,8 @@ var (
 	DefaultRead bool
 	// DefaultFlagged holds the default value on creation for the "flagged" field.
 	DefaultFlagged bool
+	// DefaultImapDeleted holds the default value on creation for the "imap_deleted" field.
+	DefaultImapDeleted bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -134,6 +139,11 @@ func ByRead(opts ...sql.OrderTermOption) OrderOption {
 // ByFlagged orders the results by the flagged field.
 func ByFlagged(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFlagged, opts...).ToFunc()
+}
+
+// ByImapDeleted orders the results by the imap_deleted field.
+func ByImapDeleted(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImapDeleted, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

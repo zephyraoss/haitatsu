@@ -11,6 +11,10 @@ smtp {
   max_inbound_recipients = 100
 }
 
+imap {
+  addr = "0.0.0.0:143"
+}
+
 postgres {
   dsn = "postgres://haitatsu:haitatsu@localhost:5432/haitatsu?sslmode=disable"
 }

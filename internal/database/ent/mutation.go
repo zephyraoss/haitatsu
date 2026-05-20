@@ -3605,6 +3605,7 @@ type MailboxMessageMutation struct {
 	resolved_route_id *string
 	read              *bool
 	flagged           *bool
+	imap_deleted      *bool
 	created_at        *time.Time
 	updated_at        *time.Time
 	deleted_at        *time.Time
@@ -4068,6 +4069,42 @@ func (m *MailboxMessageMutation) ResetFlagged() {
 	m.flagged = nil
 }
 
+// SetImapDeleted sets the "imap_deleted" field.
+func (m *MailboxMessageMutation) SetImapDeleted(b bool) {
+	m.imap_deleted = &b
+}
+
+// ImapDeleted returns the value of the "imap_deleted" field in the mutation.
+func (m *MailboxMessageMutation) ImapDeleted() (r bool, exists bool) {
+	v := m.imap_deleted
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldImapDeleted returns the old "imap_deleted" field's value of the MailboxMessage entity.
+// If the MailboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageMutation) OldImapDeleted(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldImapDeleted is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldImapDeleted requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldImapDeleted: %w", err)
+	}
+	return oldValue.ImapDeleted, nil
+}
+
+// ResetImapDeleted resets all changes to the "imap_deleted" field.
+func (m *MailboxMessageMutation) ResetImapDeleted() {
+	m.imap_deleted = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *MailboxMessageMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -4223,7 +4260,7 @@ func (m *MailboxMessageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MailboxMessageMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.mailbox_id != nil {
 		fields = append(fields, mailboxmessage.FieldMailboxID)
 	}
@@ -4250,6 +4287,9 @@ func (m *MailboxMessageMutation) Fields() []string {
 	}
 	if m.flagged != nil {
 		fields = append(fields, mailboxmessage.FieldFlagged)
+	}
+	if m.imap_deleted != nil {
+		fields = append(fields, mailboxmessage.FieldImapDeleted)
 	}
 	if m.created_at != nil {
 		fields = append(fields, mailboxmessage.FieldCreatedAt)
@@ -4286,6 +4326,8 @@ func (m *MailboxMessageMutation) Field(name string) (ent.Value, bool) {
 		return m.Read()
 	case mailboxmessage.FieldFlagged:
 		return m.Flagged()
+	case mailboxmessage.FieldImapDeleted:
+		return m.ImapDeleted()
 	case mailboxmessage.FieldCreatedAt:
 		return m.CreatedAt()
 	case mailboxmessage.FieldUpdatedAt:
@@ -4319,6 +4361,8 @@ func (m *MailboxMessageMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldRead(ctx)
 	case mailboxmessage.FieldFlagged:
 		return m.OldFlagged(ctx)
+	case mailboxmessage.FieldImapDeleted:
+		return m.OldImapDeleted(ctx)
 	case mailboxmessage.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case mailboxmessage.FieldUpdatedAt:
@@ -4396,6 +4440,13 @@ func (m *MailboxMessageMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFlagged(v)
+		return nil
+	case mailboxmessage.FieldImapDeleted:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetImapDeleted(v)
 		return nil
 	case mailboxmessage.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -4514,6 +4565,9 @@ func (m *MailboxMessageMutation) ResetField(name string) error {
 		return nil
 	case mailboxmessage.FieldFlagged:
 		m.ResetFlagged()
+		return nil
+	case mailboxmessage.FieldImapDeleted:
+		m.ResetImapDeleted()
 		return nil
 	case mailboxmessage.FieldCreatedAt:
 		m.ResetCreatedAt()
