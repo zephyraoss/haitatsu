@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	Server   ServerConfig   `pkl:"server"`
+	SMTP     SMTPConfig     `pkl:"smtp"`
 	Postgres PostgresConfig `pkl:"postgres"`
 	S3       S3Config       `pkl:"s3"`
 	Logging  LoggingConfig  `pkl:"logging"`
@@ -28,6 +29,12 @@ type ServerConfig struct {
 	PublicHostname         string `pkl:"public_hostname"`
 	InstanceName           string `pkl:"instance_name"`
 	ShutdownTimeoutSeconds int    `pkl:"shutdown_timeout_seconds"`
+}
+
+type SMTPConfig struct {
+	InboundAddr          string `pkl:"inbound_addr"`
+	MaxMessageSizeBytes  int64  `pkl:"max_message_size_bytes"`
+	MaxInboundRecipients int    `pkl:"max_inbound_recipients"`
 }
 
 func (c ServerConfig) ShutdownTimeout() time.Duration {
@@ -121,6 +128,15 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.InstanceName) == "" {
 		problems = append(problems, "server.instance_name is required")
 	}
+	if strings.TrimSpace(c.SMTP.InboundAddr) == "" {
+		problems = append(problems, "smtp.inbound_addr is required")
+	}
+	if c.SMTP.MaxMessageSizeBytes < 0 {
+		problems = append(problems, "smtp.max_message_size_bytes must be >= 0")
+	}
+	if c.SMTP.MaxInboundRecipients < 0 {
+		problems = append(problems, "smtp.max_inbound_recipients must be >= 0")
+	}
 	if strings.TrimSpace(c.Postgres.DSN) == "" {
 		problems = append(problems, "postgres.dsn is required")
 	}
@@ -165,6 +181,9 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	}
 	if c.Server.APIAddr != next.Server.APIAddr || c.Server.PublicHostname != next.Server.PublicHostname || c.Server.InstanceName != next.Server.InstanceName {
 		changes = append(changes, "server identity/listener")
+	}
+	if c.SMTP.InboundAddr != next.SMTP.InboundAddr {
+		changes = append(changes, "smtp listener")
 	}
 	if c.TLS != next.TLS {
 		changes = append(changes, "tls")

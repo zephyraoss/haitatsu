@@ -17,6 +17,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 )
@@ -79,13 +81,15 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			apppassword.Table: apppassword.ValidColumn,
-			auditevent.Table:  auditevent.ValidColumn,
-			folder.Table:      folder.ValidColumn,
-			label.Table:       label.ValidColumn,
-			mailbox.Table:     mailbox.ValidColumn,
-			route.Table:       route.ValidColumn,
-			routingrule.Table: routingrule.ValidColumn,
+			apppassword.Table:    apppassword.ValidColumn,
+			auditevent.Table:     auditevent.ValidColumn,
+			folder.Table:         folder.ValidColumn,
+			label.Table:          label.ValidColumn,
+			mailbox.Table:        mailbox.ValidColumn,
+			mailboxmessage.Table: mailboxmessage.ValidColumn,
+			message.Table:        message.ValidColumn,
+			route.Table:          route.ValidColumn,
+			routingrule.Table:    routingrule.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

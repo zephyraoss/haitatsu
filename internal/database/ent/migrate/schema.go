@@ -158,6 +158,102 @@ var (
 			},
 		},
 	}
+	// MailboxMessagesColumns holds the columns for the "mailbox_messages" table.
+	MailboxMessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "mailbox_id", Type: field.TypeString},
+		{Name: "message_id", Type: field.TypeString},
+		{Name: "folder_id", Type: field.TypeString},
+		{Name: "original_rcpt", Type: field.TypeString},
+		{Name: "base_rcpt", Type: field.TypeString},
+		{Name: "plus_tag", Type: field.TypeString, Nullable: true},
+		{Name: "resolved_route_id", Type: field.TypeString, Nullable: true},
+		{Name: "read", Type: field.TypeBool, Default: false},
+		{Name: "flagged", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+	}
+	// MailboxMessagesTable holds the schema information for the "mailbox_messages" table.
+	MailboxMessagesTable = &schema.Table{
+		Name:       "mailbox_messages",
+		Columns:    MailboxMessagesColumns,
+		PrimaryKey: []*schema.Column{MailboxMessagesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mailboxmessage_mailbox_id_message_id",
+				Unique:  true,
+				Columns: []*schema.Column{MailboxMessagesColumns[1], MailboxMessagesColumns[2]},
+			},
+			{
+				Name:    "mailboxmessage_mailbox_id_folder_id",
+				Unique:  false,
+				Columns: []*schema.Column{MailboxMessagesColumns[1], MailboxMessagesColumns[3]},
+			},
+			{
+				Name:    "mailboxmessage_message_id",
+				Unique:  false,
+				Columns: []*schema.Column{MailboxMessagesColumns[2]},
+			},
+			{
+				Name:    "mailboxmessage_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{MailboxMessagesColumns[12]},
+			},
+		},
+	}
+	// MessagesColumns holds the columns for the "messages" table.
+	MessagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "trace_id", Type: field.TypeString},
+		{Name: "rfc_message_id", Type: field.TypeString, Nullable: true},
+		{Name: "blob_key", Type: field.TypeString},
+		{Name: "sha256", Type: field.TypeString},
+		{Name: "size_bytes", Type: field.TypeInt64},
+		{Name: "headers", Type: field.TypeJSON, Nullable: true},
+		{Name: "from_addresses", Type: field.TypeJSON, Nullable: true},
+		{Name: "to_addresses", Type: field.TypeJSON, Nullable: true},
+		{Name: "cc_addresses", Type: field.TypeJSON, Nullable: true},
+		{Name: "bcc_addresses", Type: field.TypeJSON, Nullable: true},
+		{Name: "subject", Type: field.TypeString, Nullable: true},
+		{Name: "date", Type: field.TypeTime, Nullable: true},
+		{Name: "text_body_extract", Type: field.TypeString, Nullable: true},
+		{Name: "html_body_extract", Type: field.TypeString, Nullable: true},
+		{Name: "attachments", Type: field.TypeJSON, Nullable: true},
+		{Name: "spam_score", Type: field.TypeFloat64, Default: 0},
+		{Name: "auth_results", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
+	}
+	// MessagesTable holds the schema information for the "messages" table.
+	MessagesTable = &schema.Table{
+		Name:       "messages",
+		Columns:    MessagesColumns,
+		PrimaryKey: []*schema.Column{MessagesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "message_trace_id",
+				Unique:  false,
+				Columns: []*schema.Column{MessagesColumns[1]},
+			},
+			{
+				Name:    "message_rfc_message_id",
+				Unique:  false,
+				Columns: []*schema.Column{MessagesColumns[2]},
+			},
+			{
+				Name:    "message_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{MessagesColumns[18]},
+			},
+			{
+				Name:    "message_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{MessagesColumns[20]},
+			},
+		},
+	}
 	// RoutesColumns holds the columns for the "routes" table.
 	RoutesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -230,6 +326,8 @@ var (
 		FoldersTable,
 		LabelsTable,
 		MailboxesTable,
+		MailboxMessagesTable,
+		MessagesTable,
 		RoutesTable,
 		RoutingRulesTable,
 	}

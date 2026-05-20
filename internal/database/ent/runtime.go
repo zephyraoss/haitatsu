@@ -10,6 +10,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/schema"
@@ -109,6 +111,50 @@ func init() {
 	mailboxDescID := mailboxFields[0].Descriptor()
 	// mailbox.DefaultID holds the default value on creation for the id field.
 	mailbox.DefaultID = mailboxDescID.Default.(func() string)
+	mailboxmessageFields := schema.MailboxMessage{}.Fields()
+	_ = mailboxmessageFields
+	// mailboxmessageDescRead is the schema descriptor for read field.
+	mailboxmessageDescRead := mailboxmessageFields[8].Descriptor()
+	// mailboxmessage.DefaultRead holds the default value on creation for the read field.
+	mailboxmessage.DefaultRead = mailboxmessageDescRead.Default.(bool)
+	// mailboxmessageDescFlagged is the schema descriptor for flagged field.
+	mailboxmessageDescFlagged := mailboxmessageFields[9].Descriptor()
+	// mailboxmessage.DefaultFlagged holds the default value on creation for the flagged field.
+	mailboxmessage.DefaultFlagged = mailboxmessageDescFlagged.Default.(bool)
+	// mailboxmessageDescCreatedAt is the schema descriptor for created_at field.
+	mailboxmessageDescCreatedAt := mailboxmessageFields[10].Descriptor()
+	// mailboxmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mailboxmessage.DefaultCreatedAt = mailboxmessageDescCreatedAt.Default.(func() time.Time)
+	// mailboxmessageDescUpdatedAt is the schema descriptor for updated_at field.
+	mailboxmessageDescUpdatedAt := mailboxmessageFields[11].Descriptor()
+	// mailboxmessage.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	mailboxmessage.DefaultUpdatedAt = mailboxmessageDescUpdatedAt.Default.(func() time.Time)
+	// mailboxmessage.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	mailboxmessage.UpdateDefaultUpdatedAt = mailboxmessageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// mailboxmessageDescID is the schema descriptor for id field.
+	mailboxmessageDescID := mailboxmessageFields[0].Descriptor()
+	// mailboxmessage.DefaultID holds the default value on creation for the id field.
+	mailboxmessage.DefaultID = mailboxmessageDescID.Default.(func() string)
+	messageFields := schema.Message{}.Fields()
+	_ = messageFields
+	// messageDescSpamScore is the schema descriptor for spam_score field.
+	messageDescSpamScore := messageFields[16].Descriptor()
+	// message.DefaultSpamScore holds the default value on creation for the spam_score field.
+	message.DefaultSpamScore = messageDescSpamScore.Default.(float64)
+	// messageDescCreatedAt is the schema descriptor for created_at field.
+	messageDescCreatedAt := messageFields[18].Descriptor()
+	// message.DefaultCreatedAt holds the default value on creation for the created_at field.
+	message.DefaultCreatedAt = messageDescCreatedAt.Default.(func() time.Time)
+	// messageDescUpdatedAt is the schema descriptor for updated_at field.
+	messageDescUpdatedAt := messageFields[19].Descriptor()
+	// message.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	message.DefaultUpdatedAt = messageDescUpdatedAt.Default.(func() time.Time)
+	// message.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	message.UpdateDefaultUpdatedAt = messageDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// messageDescID is the schema descriptor for id field.
+	messageDescID := messageFields[0].Descriptor()
+	// message.DefaultID holds the default value on creation for the id field.
+	message.DefaultID = messageDescID.Default.(func() string)
 	routeFields := schema.Route{}.Fields()
 	_ = routeFields
 	// routeDescStatus is the schema descriptor for status field.

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,7 +14,10 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/health"
 	"github.com/zephyraoss/haitatsu/internal/httpapi"
 	"github.com/zephyraoss/haitatsu/internal/logging"
+	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
+	"github.com/zephyraoss/haitatsu/internal/routing"
+	inboundsmtp "github.com/zephyraoss/haitatsu/internal/smtp/inbound"
 	"github.com/zephyraoss/haitatsu/internal/storage"
 )
 
@@ -28,6 +32,7 @@ type App struct {
 	database   *database.Client
 	storage    *storage.Client
 	server     *httpapi.Server
+	smtp       *inboundsmtp.Server
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -65,6 +70,14 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
 	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), checker, m)
+	resolver := routing.NewResolver(db.Ent())
+	messageService := messages.NewService(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	tlsConfig, err := smtpTLSConfig(cfg.TLS)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("configure smtp tls: %w", err)
+	}
+	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService)
 
 	return &App{
 		configPath: opts.ConfigPath,
@@ -73,27 +86,43 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		database:   db,
 		storage:    blobStore,
 		server:     server,
+		smtp:       smtpServer,
 	}, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
 		a.logger.Info("starting http api", "addr", a.config.Server.APIAddr)
 		errCh <- a.server.Listen()
 	}()
+	go func() {
+		a.logger.Info("starting smtp inbound", "addr", a.config.SMTP.InboundAddr)
+		errCh <- a.smtp.Listen()
+	}()
 
 	select {
 	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), a.config.Server.ShutdownTimeout())
-		defer cancel()
-		if err := a.server.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("shutdown server: %w", err)
+		if err := a.shutdown(); err != nil {
+			return err
 		}
 		return ctx.Err()
 	case err := <-errCh:
+		_ = a.shutdown()
 		return err
 	}
+}
+
+func (a *App) shutdown() error {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.config.Server.ShutdownTimeout())
+	defer cancel()
+	if err := a.server.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown http server: %w", err)
+	}
+	if err := a.smtp.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown smtp server: %w", err)
+	}
+	return nil
 }
 
 func (a *App) NotifyReload(signals ...os.Signal) {
@@ -139,4 +168,15 @@ func (a *App) Close() {
 	if a.database != nil {
 		a.database.Close()
 	}
+}
+
+func smtpTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
+	if cfg.CertFile == "" && cfg.KeyFile == "" {
+		return nil, nil
+	}
+	cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
 }

@@ -21,6 +21,12 @@ type Label func(*sql.Selector)
 // Mailbox is the predicate function for mailbox builders.
 type Mailbox func(*sql.Selector)
 
+// MailboxMessage is the predicate function for mailboxmessage builders.
+type MailboxMessage func(*sql.Selector)
+
+// Message is the predicate function for message builders.
+type Message func(*sql.Selector)
+
 // Route is the predicate function for route builders.
 type Route func(*sql.Selector)
 

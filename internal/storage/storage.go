@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -36,4 +37,9 @@ func (c *Client) Health(ctx context.Context) error {
 		return fmt.Errorf("bucket %q does not exist", c.bucket)
 	}
 	return nil
+}
+
+func (c *Client) PutMessage(ctx context.Context, key string, data []byte) error {
+	_, err := c.client.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "message/rfc822"})
+	return err
 }

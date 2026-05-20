@@ -19,6 +19,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 )
@@ -38,6 +40,10 @@ type Client struct {
 	Label *LabelClient
 	// Mailbox is the client for interacting with the Mailbox builders.
 	Mailbox *MailboxClient
+	// MailboxMessage is the client for interacting with the MailboxMessage builders.
+	MailboxMessage *MailboxMessageClient
+	// Message is the client for interacting with the Message builders.
+	Message *MessageClient
 	// Route is the client for interacting with the Route builders.
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
@@ -58,6 +64,8 @@ func (c *Client) init() {
 	c.Folder = NewFolderClient(c.config)
 	c.Label = NewLabelClient(c.config)
 	c.Mailbox = NewMailboxClient(c.config)
+	c.MailboxMessage = NewMailboxMessageClient(c.config)
+	c.Message = NewMessageClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
 }
@@ -150,15 +158,17 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		AppPassword: NewAppPasswordClient(cfg),
-		AuditEvent:  NewAuditEventClient(cfg),
-		Folder:      NewFolderClient(cfg),
-		Label:       NewLabelClient(cfg),
-		Mailbox:     NewMailboxClient(cfg),
-		Route:       NewRouteClient(cfg),
-		RoutingRule: NewRoutingRuleClient(cfg),
+		ctx:            ctx,
+		config:         cfg,
+		AppPassword:    NewAppPasswordClient(cfg),
+		AuditEvent:     NewAuditEventClient(cfg),
+		Folder:         NewFolderClient(cfg),
+		Label:          NewLabelClient(cfg),
+		Mailbox:        NewMailboxClient(cfg),
+		MailboxMessage: NewMailboxMessageClient(cfg),
+		Message:        NewMessageClient(cfg),
+		Route:          NewRouteClient(cfg),
+		RoutingRule:    NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -176,15 +186,17 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		AppPassword: NewAppPasswordClient(cfg),
-		AuditEvent:  NewAuditEventClient(cfg),
-		Folder:      NewFolderClient(cfg),
-		Label:       NewLabelClient(cfg),
-		Mailbox:     NewMailboxClient(cfg),
-		Route:       NewRouteClient(cfg),
-		RoutingRule: NewRoutingRuleClient(cfg),
+		ctx:            ctx,
+		config:         cfg,
+		AppPassword:    NewAppPasswordClient(cfg),
+		AuditEvent:     NewAuditEventClient(cfg),
+		Folder:         NewFolderClient(cfg),
+		Label:          NewLabelClient(cfg),
+		Mailbox:        NewMailboxClient(cfg),
+		MailboxMessage: NewMailboxMessageClient(cfg),
+		Message:        NewMessageClient(cfg),
+		Route:          NewRouteClient(cfg),
+		RoutingRule:    NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -214,8 +226,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.Route,
-		c.RoutingRule,
+		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.MailboxMessage,
+		c.Message, c.Route, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -225,8 +237,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.Route,
-		c.RoutingRule,
+		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.MailboxMessage,
+		c.Message, c.Route, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -245,6 +257,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Label.mutate(ctx, m)
 	case *MailboxMutation:
 		return c.Mailbox.mutate(ctx, m)
+	case *MailboxMessageMutation:
+		return c.MailboxMessage.mutate(ctx, m)
+	case *MessageMutation:
+		return c.Message.mutate(ctx, m)
 	case *RouteMutation:
 		return c.Route.mutate(ctx, m)
 	case *RoutingRuleMutation:
@@ -919,6 +935,272 @@ func (c *MailboxClient) mutate(ctx context.Context, m *MailboxMutation) (Value, 
 	}
 }
 
+// MailboxMessageClient is a client for the MailboxMessage schema.
+type MailboxMessageClient struct {
+	config
+}
+
+// NewMailboxMessageClient returns a client for the MailboxMessage from the given config.
+func NewMailboxMessageClient(c config) *MailboxMessageClient {
+	return &MailboxMessageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mailboxmessage.Hooks(f(g(h())))`.
+func (c *MailboxMessageClient) Use(hooks ...Hook) {
+	c.hooks.MailboxMessage = append(c.hooks.MailboxMessage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mailboxmessage.Intercept(f(g(h())))`.
+func (c *MailboxMessageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MailboxMessage = append(c.inters.MailboxMessage, interceptors...)
+}
+
+// Create returns a builder for creating a MailboxMessage entity.
+func (c *MailboxMessageClient) Create() *MailboxMessageCreate {
+	mutation := newMailboxMessageMutation(c.config, OpCreate)
+	return &MailboxMessageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MailboxMessage entities.
+func (c *MailboxMessageClient) CreateBulk(builders ...*MailboxMessageCreate) *MailboxMessageCreateBulk {
+	return &MailboxMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MailboxMessageClient) MapCreateBulk(slice any, setFunc func(*MailboxMessageCreate, int)) *MailboxMessageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MailboxMessageCreateBulk{err: fmt.Errorf("calling to MailboxMessageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MailboxMessageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MailboxMessageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MailboxMessage.
+func (c *MailboxMessageClient) Update() *MailboxMessageUpdate {
+	mutation := newMailboxMessageMutation(c.config, OpUpdate)
+	return &MailboxMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MailboxMessageClient) UpdateOne(_m *MailboxMessage) *MailboxMessageUpdateOne {
+	mutation := newMailboxMessageMutation(c.config, OpUpdateOne, withMailboxMessage(_m))
+	return &MailboxMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MailboxMessageClient) UpdateOneID(id string) *MailboxMessageUpdateOne {
+	mutation := newMailboxMessageMutation(c.config, OpUpdateOne, withMailboxMessageID(id))
+	return &MailboxMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MailboxMessage.
+func (c *MailboxMessageClient) Delete() *MailboxMessageDelete {
+	mutation := newMailboxMessageMutation(c.config, OpDelete)
+	return &MailboxMessageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MailboxMessageClient) DeleteOne(_m *MailboxMessage) *MailboxMessageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MailboxMessageClient) DeleteOneID(id string) *MailboxMessageDeleteOne {
+	builder := c.Delete().Where(mailboxmessage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MailboxMessageDeleteOne{builder}
+}
+
+// Query returns a query builder for MailboxMessage.
+func (c *MailboxMessageClient) Query() *MailboxMessageQuery {
+	return &MailboxMessageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMailboxMessage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MailboxMessage entity by its id.
+func (c *MailboxMessageClient) Get(ctx context.Context, id string) (*MailboxMessage, error) {
+	return c.Query().Where(mailboxmessage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MailboxMessageClient) GetX(ctx context.Context, id string) *MailboxMessage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MailboxMessageClient) Hooks() []Hook {
+	return c.hooks.MailboxMessage
+}
+
+// Interceptors returns the client interceptors.
+func (c *MailboxMessageClient) Interceptors() []Interceptor {
+	return c.inters.MailboxMessage
+}
+
+func (c *MailboxMessageClient) mutate(ctx context.Context, m *MailboxMessageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MailboxMessageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MailboxMessageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MailboxMessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MailboxMessageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MailboxMessage mutation op: %q", m.Op())
+	}
+}
+
+// MessageClient is a client for the Message schema.
+type MessageClient struct {
+	config
+}
+
+// NewMessageClient returns a client for the Message from the given config.
+func NewMessageClient(c config) *MessageClient {
+	return &MessageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `message.Hooks(f(g(h())))`.
+func (c *MessageClient) Use(hooks ...Hook) {
+	c.hooks.Message = append(c.hooks.Message, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `message.Intercept(f(g(h())))`.
+func (c *MessageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Message = append(c.inters.Message, interceptors...)
+}
+
+// Create returns a builder for creating a Message entity.
+func (c *MessageClient) Create() *MessageCreate {
+	mutation := newMessageMutation(c.config, OpCreate)
+	return &MessageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Message entities.
+func (c *MessageClient) CreateBulk(builders ...*MessageCreate) *MessageCreateBulk {
+	return &MessageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MessageClient) MapCreateBulk(slice any, setFunc func(*MessageCreate, int)) *MessageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MessageCreateBulk{err: fmt.Errorf("calling to MessageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MessageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MessageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Message.
+func (c *MessageClient) Update() *MessageUpdate {
+	mutation := newMessageMutation(c.config, OpUpdate)
+	return &MessageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MessageClient) UpdateOne(_m *Message) *MessageUpdateOne {
+	mutation := newMessageMutation(c.config, OpUpdateOne, withMessage(_m))
+	return &MessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MessageClient) UpdateOneID(id string) *MessageUpdateOne {
+	mutation := newMessageMutation(c.config, OpUpdateOne, withMessageID(id))
+	return &MessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Message.
+func (c *MessageClient) Delete() *MessageDelete {
+	mutation := newMessageMutation(c.config, OpDelete)
+	return &MessageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MessageClient) DeleteOne(_m *Message) *MessageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MessageClient) DeleteOneID(id string) *MessageDeleteOne {
+	builder := c.Delete().Where(message.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MessageDeleteOne{builder}
+}
+
+// Query returns a query builder for Message.
+func (c *MessageClient) Query() *MessageQuery {
+	return &MessageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMessage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Message entity by its id.
+func (c *MessageClient) Get(ctx context.Context, id string) (*Message, error) {
+	return c.Query().Where(message.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MessageClient) GetX(ctx context.Context, id string) *Message {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MessageClient) Hooks() []Hook {
+	return c.hooks.Message
+}
+
+// Interceptors returns the client interceptors.
+func (c *MessageClient) Interceptors() []Interceptor {
+	return c.inters.Message
+}
+
+func (c *MessageClient) mutate(ctx context.Context, m *MessageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MessageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MessageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MessageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MessageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Message mutation op: %q", m.Op())
+	}
+}
+
 // RouteClient is a client for the Route schema.
 type RouteClient struct {
 	config
@@ -1188,10 +1470,11 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AppPassword, AuditEvent, Folder, Label, Mailbox, Route, RoutingRule []ent.Hook
+		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage, Message, Route,
+		RoutingRule []ent.Hook
 	}
 	inters struct {
-		AppPassword, AuditEvent, Folder, Label, Mailbox, Route,
+		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage, Message, Route,
 		RoutingRule []ent.Interceptor
 	}
 )
