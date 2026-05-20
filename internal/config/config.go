@@ -211,6 +211,14 @@ func (c Config) Validate() error {
 			problems = append(problems, "logging.axiom_token is required when Axiom logging is enabled")
 		}
 	}
+	switch strings.ToLower(strings.TrimSpace(c.TLS.Mode)) {
+	case "", "manual", "acme", "off", "disabled":
+	default:
+		problems = append(problems, "tls.mode must be manual, acme, off, or disabled")
+	}
+	if strings.EqualFold(strings.TrimSpace(c.TLS.Mode), "acme") && strings.TrimSpace(c.TLS.ACMEEmail) == "" {
+		problems = append(problems, "tls.acme_email is required when ACME TLS is enabled")
+	}
 	if c.Limits.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "limits.max_message_size_bytes must be >= 0")
 	}

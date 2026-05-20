@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,6 +9,7 @@ import (
 	"os/signal"
 
 	"github.com/zephyraoss/haitatsu/internal/bounce"
+	"github.com/zephyraoss/haitatsu/internal/certs"
 	"github.com/zephyraoss/haitatsu/internal/cleanup"
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
@@ -93,7 +93,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	messageService := messages.NewService(db.Ent(), blobStore, eventService, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, cfg.Bounce.Domain)
 	spamChecker := spam.NewChecker(db.Ent(), cfg.Spam, cfg.Server.PublicHostname)
-	tlsConfig, err := listenerTLSConfig(cfg.TLS)
+	tlsConfig, err := certs.TLSConfig(ctx, cfg.TLS, cfg.Server.PublicHostname)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure listener tls: %w", err)
@@ -212,15 +212,4 @@ func (a *App) Close() {
 	if a.database != nil {
 		a.database.Close()
 	}
-}
-
-func listenerTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
-	if cfg.CertFile == "" && cfg.KeyFile == "" {
-		return nil, nil
-	}
-	cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
-	if err != nil {
-		return nil, err
-	}
-	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
 }
