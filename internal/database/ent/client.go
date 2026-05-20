@@ -18,6 +18,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
@@ -43,6 +44,8 @@ type Client struct {
 	BounceEvent *BounceEventClient
 	// DKIMKey is the client for interacting with the DKIMKey builders.
 	DKIMKey *DKIMKeyClient
+	// EventLog is the client for interacting with the EventLog builders.
+	EventLog *EventLogClient
 	// Folder is the client for interacting with the Folder builders.
 	Folder *FolderClient
 	// Label is the client for interacting with the Label builders.
@@ -78,6 +81,7 @@ func (c *Client) init() {
 	c.AuditEvent = NewAuditEventClient(c.config)
 	c.BounceEvent = NewBounceEventClient(c.config)
 	c.DKIMKey = NewDKIMKeyClient(c.config)
+	c.EventLog = NewEventLogClient(c.config)
 	c.Folder = NewFolderClient(c.config)
 	c.Label = NewLabelClient(c.config)
 	c.Mailbox = NewMailboxClient(c.config)
@@ -184,6 +188,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AuditEvent:          NewAuditEventClient(cfg),
 		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
+		EventLog:            NewEventLogClient(cfg),
 		Folder:              NewFolderClient(cfg),
 		Label:               NewLabelClient(cfg),
 		Mailbox:             NewMailboxClient(cfg),
@@ -217,6 +222,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AuditEvent:          NewAuditEventClient(cfg),
 		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
+		EventLog:            NewEventLogClient(cfg),
 		Folder:              NewFolderClient(cfg),
 		Label:               NewLabelClient(cfg),
 		Mailbox:             NewMailboxClient(cfg),
@@ -256,8 +262,8 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.Folder, c.Label,
-		c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
+		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.Folder,
+		c.Label, c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
 		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule,
 	} {
 		n.Use(hooks...)
@@ -268,8 +274,8 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.Folder, c.Label,
-		c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
+		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.Folder,
+		c.Label, c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
 		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
@@ -287,6 +293,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.BounceEvent.mutate(ctx, m)
 	case *DKIMKeyMutation:
 		return c.DKIMKey.mutate(ctx, m)
+	case *EventLogMutation:
+		return c.EventLog.mutate(ctx, m)
 	case *FolderMutation:
 		return c.Folder.mutate(ctx, m)
 	case *LabelMutation:
@@ -841,6 +849,139 @@ func (c *DKIMKeyClient) mutate(ctx context.Context, m *DKIMKeyMutation) (Value, 
 		return (&DKIMKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown DKIMKey mutation op: %q", m.Op())
+	}
+}
+
+// EventLogClient is a client for the EventLog schema.
+type EventLogClient struct {
+	config
+}
+
+// NewEventLogClient returns a client for the EventLog from the given config.
+func NewEventLogClient(c config) *EventLogClient {
+	return &EventLogClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `eventlog.Hooks(f(g(h())))`.
+func (c *EventLogClient) Use(hooks ...Hook) {
+	c.hooks.EventLog = append(c.hooks.EventLog, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `eventlog.Intercept(f(g(h())))`.
+func (c *EventLogClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EventLog = append(c.inters.EventLog, interceptors...)
+}
+
+// Create returns a builder for creating a EventLog entity.
+func (c *EventLogClient) Create() *EventLogCreate {
+	mutation := newEventLogMutation(c.config, OpCreate)
+	return &EventLogCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EventLog entities.
+func (c *EventLogClient) CreateBulk(builders ...*EventLogCreate) *EventLogCreateBulk {
+	return &EventLogCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EventLogClient) MapCreateBulk(slice any, setFunc func(*EventLogCreate, int)) *EventLogCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EventLogCreateBulk{err: fmt.Errorf("calling to EventLogClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EventLogCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EventLogCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EventLog.
+func (c *EventLogClient) Update() *EventLogUpdate {
+	mutation := newEventLogMutation(c.config, OpUpdate)
+	return &EventLogUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EventLogClient) UpdateOne(_m *EventLog) *EventLogUpdateOne {
+	mutation := newEventLogMutation(c.config, OpUpdateOne, withEventLog(_m))
+	return &EventLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EventLogClient) UpdateOneID(id string) *EventLogUpdateOne {
+	mutation := newEventLogMutation(c.config, OpUpdateOne, withEventLogID(id))
+	return &EventLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EventLog.
+func (c *EventLogClient) Delete() *EventLogDelete {
+	mutation := newEventLogMutation(c.config, OpDelete)
+	return &EventLogDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EventLogClient) DeleteOne(_m *EventLog) *EventLogDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EventLogClient) DeleteOneID(id string) *EventLogDeleteOne {
+	builder := c.Delete().Where(eventlog.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EventLogDeleteOne{builder}
+}
+
+// Query returns a query builder for EventLog.
+func (c *EventLogClient) Query() *EventLogQuery {
+	return &EventLogQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEventLog},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EventLog entity by its id.
+func (c *EventLogClient) Get(ctx context.Context, id string) (*EventLog, error) {
+	return c.Query().Where(eventlog.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EventLogClient) GetX(ctx context.Context, id string) *EventLog {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EventLogClient) Hooks() []Hook {
+	return c.hooks.EventLog
+}
+
+// Interceptors returns the client interceptors.
+func (c *EventLogClient) Interceptors() []Interceptor {
+	return c.inters.EventLog
+}
+
+func (c *EventLogClient) mutate(ctx context.Context, m *EventLogMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EventLogCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EventLogUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EventLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EventLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EventLog mutation op: %q", m.Op())
 	}
 }
 
@@ -2177,12 +2318,12 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AppPassword, AuditEvent, BounceEvent, DKIMKey, Folder, Label, Mailbox,
+		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, Folder, Label, Mailbox,
 		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
 		Route, RoutingRule []ent.Hook
 	}
 	inters struct {
-		AppPassword, AuditEvent, BounceEvent, DKIMKey, Folder, Label, Mailbox,
+		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, Folder, Label, Mailbox,
 		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
 		Route, RoutingRule []ent.Interceptor
 	}

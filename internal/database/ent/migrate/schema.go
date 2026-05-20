@@ -137,6 +137,66 @@ var (
 			},
 		},
 	}
+	// EventLogsColumns holds the columns for the "event_logs" table.
+	EventLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "event_type", Type: field.TypeString},
+		{Name: "trace_id", Type: field.TypeString, Nullable: true},
+		{Name: "message_id", Type: field.TypeString, Nullable: true},
+		{Name: "mailbox_id", Type: field.TypeString, Nullable: true},
+		{Name: "payload", Type: field.TypeJSON},
+		{Name: "status", Type: field.TypeString, Default: "queued"},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "locked_by", Type: field.TypeString, Nullable: true},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "next_attempt_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EventLogsTable holds the schema information for the "event_logs" table.
+	EventLogsTable = &schema.Table{
+		Name:       "event_logs",
+		Columns:    EventLogsColumns,
+		PrimaryKey: []*schema.Column{EventLogsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "eventlog_event_type",
+				Unique:  false,
+				Columns: []*schema.Column{EventLogsColumns[1]},
+			},
+			{
+				Name:    "eventlog_message_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventLogsColumns[3]},
+			},
+			{
+				Name:    "eventlog_mailbox_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventLogsColumns[4]},
+			},
+			{
+				Name:    "eventlog_trace_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventLogsColumns[2]},
+			},
+			{
+				Name:    "eventlog_status_next_attempt_at",
+				Unique:  false,
+				Columns: []*schema.Column{EventLogsColumns[6], EventLogsColumns[10]},
+			},
+			{
+				Name:    "eventlog_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{EventLogsColumns[9]},
+			},
+			{
+				Name:    "eventlog_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{EventLogsColumns[12]},
+			},
+		},
+	}
 	// FoldersColumns holds the columns for the "folders" table.
 	FoldersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -476,6 +536,7 @@ var (
 		AuditEventsTable,
 		BounceEventsTable,
 		DkimKeysTable,
+		EventLogsTable,
 		FoldersTable,
 		LabelsTable,
 		MailboxesTable,

@@ -18,6 +18,9 @@ type BounceEvent func(*sql.Selector)
 // DKIMKey is the predicate function for dkimkey builders.
 type DKIMKey func(*sql.Selector)
 
+// EventLog is the predicate function for eventlog builders.
+type EventLog func(*sql.Selector)
+
 // Folder is the predicate function for folder builders.
 type Folder func(*sql.Selector)
 

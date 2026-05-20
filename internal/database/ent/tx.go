@@ -20,6 +20,8 @@ type Tx struct {
 	BounceEvent *BounceEventClient
 	// DKIMKey is the client for interacting with the DKIMKey builders.
 	DKIMKey *DKIMKeyClient
+	// EventLog is the client for interacting with the EventLog builders.
+	EventLog *EventLogClient
 	// Folder is the client for interacting with the Folder builders.
 	Folder *FolderClient
 	// Label is the client for interacting with the Label builders.
@@ -175,6 +177,7 @@ func (tx *Tx) init() {
 	tx.AuditEvent = NewAuditEventClient(tx.config)
 	tx.BounceEvent = NewBounceEventClient(tx.config)
 	tx.DKIMKey = NewDKIMKeyClient(tx.config)
+	tx.EventLog = NewEventLogClient(tx.config)
 	tx.Folder = NewFolderClient(tx.config)
 	tx.Label = NewLabelClient(tx.config)
 	tx.Mailbox = NewMailboxClient(tx.config)

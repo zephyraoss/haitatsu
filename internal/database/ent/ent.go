@@ -16,6 +16,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
@@ -90,6 +91,7 @@ func checkColumn(t, c string) error {
 			auditevent.Table:          auditevent.ValidColumn,
 			bounceevent.Table:         bounceevent.ValidColumn,
 			dkimkey.Table:             dkimkey.ValidColumn,
+			eventlog.Table:            eventlog.ValidColumn,
 			folder.Table:              folder.ValidColumn,
 			label.Table:               label.ValidColumn,
 			mailbox.Table:             mailbox.ValidColumn,

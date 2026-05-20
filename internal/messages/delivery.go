@@ -18,15 +18,20 @@ type BlobStore interface {
 	PutMessage(ctx context.Context, key string, data []byte) error
 }
 
+type EventSink interface {
+	EmitMessageReceived(ctx context.Context, msg *ent.Message, recipients []routing.Result) error
+}
+
 type Service struct {
 	client         *ent.Client
 	store          BlobStore
+	events         EventSink
 	publicHostname string
 	instanceName   string
 }
 
-func NewService(client *ent.Client, store BlobStore, publicHostname string, instanceName string) *Service {
-	return &Service{client: client, store: store, publicHostname: publicHostname, instanceName: instanceName}
+func NewService(client *ent.Client, store BlobStore, events EventSink, publicHostname string, instanceName string) *Service {
+	return &Service{client: client, store: store, events: events, publicHostname: publicHostname, instanceName: instanceName}
 }
 
 func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result) (*ent.Message, error) {
@@ -69,6 +74,11 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	}
 	if err := s.createMailboxMessages(ctx, message.ID, stored, recipients); err != nil {
 		return nil, err
+	}
+	if s.events != nil {
+		if err := s.events.EmitMessageReceived(ctx, message, recipients); err != nil {
+			return nil, err
+		}
 	}
 	return message, nil
 }

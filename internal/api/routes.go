@@ -76,6 +76,7 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, outbo
 	v1.Delete("/messages/:id/labels/:label_id", h.removeMessageLabel)
 
 	v1.Get("/audit_events", h.listAuditEvents)
+	v1.Get("/events", h.listEvents)
 
 	v1.Get("/dkim_keys", h.listDKIMKeys)
 	v1.Post("/dkim_keys", h.createDKIMKey)

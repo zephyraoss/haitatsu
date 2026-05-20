@@ -57,6 +57,18 @@ func (f DKIMKeyFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DKIMKeyMutation", m)
 }
 
+// The EventLogFunc type is an adapter to allow the use of ordinary
+// function as EventLog mutator.
+type EventLogFunc func(context.Context, *ent.EventLogMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EventLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EventLogMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EventLogMutation", m)
+}
+
 // The FolderFunc type is an adapter to allow the use of ordinary
 // function as Folder mutator.
 type FolderFunc func(context.Context, *ent.FolderMutation) (ent.Value, error)

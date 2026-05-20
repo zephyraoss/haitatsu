@@ -12,6 +12,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/bounce"
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
+	"github.com/zephyraoss/haitatsu/internal/events"
 	"github.com/zephyraoss/haitatsu/internal/health"
 	"github.com/zephyraoss/haitatsu/internal/httpapi"
 	"github.com/zephyraoss/haitatsu/internal/imapserver"
@@ -23,6 +24,7 @@ import (
 	inboundsmtp "github.com/zephyraoss/haitatsu/internal/smtp/inbound"
 	submissionsmtp "github.com/zephyraoss/haitatsu/internal/smtp/submission"
 	"github.com/zephyraoss/haitatsu/internal/storage"
+	"github.com/zephyraoss/haitatsu/internal/webhooks"
 )
 
 type Options struct {
@@ -40,6 +42,7 @@ type App struct {
 	imap       *imapserver.Server
 	submission *submissionsmtp.Server
 	relay      *outbound.Worker
+	webhooks   *webhooks.Worker
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -79,8 +82,10 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName, cfg.Bounce.Domain)
 	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), blobStore, submissionService, checker, m)
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, cfg.Server.InstanceName)
+	eventService := events.New(db.Ent())
+	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), cfg.Webhooks, cfg.Server.InstanceName)
 	resolver := routing.NewResolver(db.Ent())
-	messageService := messages.NewService(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	messageService := messages.NewService(db.Ent(), blobStore, eventService, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, cfg.Bounce.Domain)
 	tlsConfig, err := listenerTLSConfig(cfg.TLS)
 	if err != nil {
@@ -102,6 +107,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		imap:       imapServer,
 		submission: submissionServer,
 		relay:      relayWorker,
+		webhooks:   webhookWorker,
 	}, nil
 }
 
@@ -126,6 +132,8 @@ func (a *App) Run(ctx context.Context) error {
 	if a.config.Workers.Enabled {
 		a.logger.Info("starting outbound relay workers", "concurrency", a.config.Workers.Concurrency)
 		a.relay.Run(ctx, a.config.Workers.Concurrency)
+		a.logger.Info("starting webhook workers", "concurrency", a.config.Workers.Concurrency)
+		a.webhooks.Run(ctx, a.config.Workers.Concurrency)
 	}
 
 	select {

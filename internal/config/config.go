@@ -111,6 +111,7 @@ type TLSConfig struct {
 
 type WebhookConfig struct {
 	DefaultTimeoutSeconds int               `pkl:"default_timeout_seconds"`
+	Secret                string            `pkl:"secret"`
 	Endpoints             map[string]string `pkl:"endpoints"`
 }
 
@@ -199,6 +200,9 @@ func (c Config) Validate() error {
 	}
 	if c.Limits.MaxInboundRecipients < 0 {
 		problems = append(problems, "limits.max_inbound_recipients must be >= 0")
+	}
+	if len(c.Webhooks.Endpoints) > 0 && strings.TrimSpace(c.Webhooks.Secret) == "" {
+		problems = append(problems, "webhooks.secret is required when webhook endpoints are configured")
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))

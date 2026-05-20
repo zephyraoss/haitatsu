@@ -9,6 +9,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
@@ -82,6 +83,30 @@ func init() {
 	dkimkeyDescID := dkimkeyFields[0].Descriptor()
 	// dkimkey.DefaultID holds the default value on creation for the id field.
 	dkimkey.DefaultID = dkimkeyDescID.Default.(func() string)
+	eventlogFields := schema.EventLog{}.Fields()
+	_ = eventlogFields
+	// eventlogDescStatus is the schema descriptor for status field.
+	eventlogDescStatus := eventlogFields[6].Descriptor()
+	// eventlog.DefaultStatus holds the default value on creation for the status field.
+	eventlog.DefaultStatus = eventlogDescStatus.Default.(string)
+	// eventlogDescAttempts is the schema descriptor for attempts field.
+	eventlogDescAttempts := eventlogFields[7].Descriptor()
+	// eventlog.DefaultAttempts holds the default value on creation for the attempts field.
+	eventlog.DefaultAttempts = eventlogDescAttempts.Default.(int)
+	// eventlogDescCreatedAt is the schema descriptor for created_at field.
+	eventlogDescCreatedAt := eventlogFields[12].Descriptor()
+	// eventlog.DefaultCreatedAt holds the default value on creation for the created_at field.
+	eventlog.DefaultCreatedAt = eventlogDescCreatedAt.Default.(func() time.Time)
+	// eventlogDescUpdatedAt is the schema descriptor for updated_at field.
+	eventlogDescUpdatedAt := eventlogFields[13].Descriptor()
+	// eventlog.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	eventlog.DefaultUpdatedAt = eventlogDescUpdatedAt.Default.(func() time.Time)
+	// eventlog.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	eventlog.UpdateDefaultUpdatedAt = eventlogDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// eventlogDescID is the schema descriptor for id field.
+	eventlogDescID := eventlogFields[0].Descriptor()
+	// eventlog.DefaultID holds the default value on creation for the id field.
+	eventlog.DefaultID = eventlogDescID.Default.(func() string)
 	folderFields := schema.Folder{}.Fields()
 	_ = folderFields
 	// folderDescSystem is the schema descriptor for system field.
