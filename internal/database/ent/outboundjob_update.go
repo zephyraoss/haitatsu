@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
@@ -53,6 +54,32 @@ func (_u *OutboundJobUpdate) SetNillableMessageID(v *string) *OutboundJobUpdate 
 	if v != nil {
 		_u.SetMessageID(*v)
 	}
+	return _u
+}
+
+// SetReturnPath sets the "return_path" field.
+func (_u *OutboundJobUpdate) SetReturnPath(v string) *OutboundJobUpdate {
+	_u.mutation.SetReturnPath(v)
+	return _u
+}
+
+// SetNillableReturnPath sets the "return_path" field if the given value is not nil.
+func (_u *OutboundJobUpdate) SetNillableReturnPath(v *string) *OutboundJobUpdate {
+	if v != nil {
+		_u.SetReturnPath(*v)
+	}
+	return _u
+}
+
+// SetRecipients sets the "recipients" field.
+func (_u *OutboundJobUpdate) SetRecipients(v []string) *OutboundJobUpdate {
+	_u.mutation.SetRecipients(v)
+	return _u
+}
+
+// AppendRecipients appends value to the "recipients" field.
+func (_u *OutboundJobUpdate) AppendRecipients(v []string) *OutboundJobUpdate {
+	_u.mutation.AppendRecipients(v)
 	return _u
 }
 
@@ -225,6 +252,17 @@ func (_u *OutboundJobUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.MessageID(); ok {
 		_spec.SetField(outboundjob.FieldMessageID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ReturnPath(); ok {
+		_spec.SetField(outboundjob.FieldReturnPath, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Recipients(); ok {
+		_spec.SetField(outboundjob.FieldRecipients, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRecipients(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, outboundjob.FieldRecipients, value)
+		})
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(outboundjob.FieldStatus, field.TypeString, value)
 	}
@@ -306,6 +344,32 @@ func (_u *OutboundJobUpdateOne) SetNillableMessageID(v *string) *OutboundJobUpda
 	if v != nil {
 		_u.SetMessageID(*v)
 	}
+	return _u
+}
+
+// SetReturnPath sets the "return_path" field.
+func (_u *OutboundJobUpdateOne) SetReturnPath(v string) *OutboundJobUpdateOne {
+	_u.mutation.SetReturnPath(v)
+	return _u
+}
+
+// SetNillableReturnPath sets the "return_path" field if the given value is not nil.
+func (_u *OutboundJobUpdateOne) SetNillableReturnPath(v *string) *OutboundJobUpdateOne {
+	if v != nil {
+		_u.SetReturnPath(*v)
+	}
+	return _u
+}
+
+// SetRecipients sets the "recipients" field.
+func (_u *OutboundJobUpdateOne) SetRecipients(v []string) *OutboundJobUpdateOne {
+	_u.mutation.SetRecipients(v)
+	return _u
+}
+
+// AppendRecipients appends value to the "recipients" field.
+func (_u *OutboundJobUpdateOne) AppendRecipients(v []string) *OutboundJobUpdateOne {
+	_u.mutation.AppendRecipients(v)
 	return _u
 }
 
@@ -507,6 +571,17 @@ func (_u *OutboundJobUpdateOne) sqlSave(ctx context.Context) (_node *OutboundJob
 	}
 	if value, ok := _u.mutation.MessageID(); ok {
 		_spec.SetField(outboundjob.FieldMessageID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ReturnPath(); ok {
+		_spec.SetField(outboundjob.FieldReturnPath, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Recipients(); ok {
+		_spec.SetField(outboundjob.FieldRecipients, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedRecipients(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, outboundjob.FieldRecipients, value)
+		})
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(outboundjob.FieldStatus, field.TypeString, value)

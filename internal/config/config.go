@@ -15,6 +15,8 @@ type Config struct {
 	SMTP       SMTPConfig       `pkl:"smtp"`
 	IMAP       IMAPConfig       `pkl:"imap"`
 	Submission SubmissionConfig `pkl:"submission"`
+	Relay      RelayConfig      `pkl:"relay"`
+	Bounce     BounceConfig     `pkl:"bounce"`
 	Postgres   PostgresConfig   `pkl:"postgres"`
 	S3         S3Config         `pkl:"s3"`
 	Logging    LoggingConfig    `pkl:"logging"`
@@ -46,6 +48,17 @@ type IMAPConfig struct {
 type SubmissionConfig struct {
 	StartTLSAddr string `pkl:"starttls_addr"`
 	TLSAddr      string `pkl:"tls_addr"`
+}
+
+type RelayConfig struct {
+	Addr     string `pkl:"addr"`
+	Username string `pkl:"username"`
+	Password string `pkl:"password"`
+	FromHost string `pkl:"from_host"`
+}
+
+type BounceConfig struct {
+	Domain string `pkl:"domain"`
 }
 
 func (c ServerConfig) ShutdownTimeout() time.Duration {
@@ -151,6 +164,12 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Submission.TLSAddr) == "" {
 		problems = append(problems, "submission.tls_addr is required")
 	}
+	if strings.TrimSpace(c.Relay.Addr) == "" {
+		problems = append(problems, "relay.addr is required")
+	}
+	if strings.TrimSpace(c.Bounce.Domain) == "" {
+		problems = append(problems, "bounce.domain is required")
+	}
 	if c.SMTP.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "smtp.max_message_size_bytes must be >= 0")
 	}
@@ -210,6 +229,12 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	}
 	if c.Submission != next.Submission {
 		changes = append(changes, "submission listeners")
+	}
+	if c.Relay != next.Relay {
+		changes = append(changes, "relay")
+	}
+	if c.Bounce != next.Bounce {
+		changes = append(changes, "bounce")
 	}
 	if c.TLS != next.TLS {
 		changes = append(changes, "tls")

@@ -20,6 +20,17 @@ submission {
   tls_addr = "0.0.0.0:465"
 }
 
+relay {
+  addr = "smtp.mailbaby.net:587"
+  username = ""
+  password = ""
+  from_host = "smtp.mailbaby.net"
+}
+
+bounce {
+  domain = "bounce.zephyra.cloud"
+}
+
 postgres {
   dsn = "postgres://haitatsu:haitatsu@localhost:5432/haitatsu?sslmode=disable"
 }

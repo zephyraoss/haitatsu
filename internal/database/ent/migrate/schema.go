@@ -85,6 +85,35 @@ var (
 			},
 		},
 	}
+	// BounceEventsColumns holds the columns for the "bounce_events" table.
+	BounceEventsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "message_id", Type: field.TypeString},
+		{Name: "recipient", Type: field.TypeString},
+		{Name: "blob_key", Type: field.TypeString},
+		{Name: "sha256", Type: field.TypeString},
+		{Name: "size_bytes", Type: field.TypeInt64},
+		{Name: "details", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// BounceEventsTable holds the schema information for the "bounce_events" table.
+	BounceEventsTable = &schema.Table{
+		Name:       "bounce_events",
+		Columns:    BounceEventsColumns,
+		PrimaryKey: []*schema.Column{BounceEventsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "bounceevent_message_id",
+				Unique:  false,
+				Columns: []*schema.Column{BounceEventsColumns[1]},
+			},
+			{
+				Name:    "bounceevent_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{BounceEventsColumns[7]},
+			},
+		},
+	}
 	// DkimKeysColumns holds the columns for the "dkim_keys" table.
 	DkimKeysColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -303,11 +332,47 @@ var (
 			},
 		},
 	}
+	// OutboundAttemptsColumns holds the columns for the "outbound_attempts" table.
+	OutboundAttemptsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "outbound_job_id", Type: field.TypeString},
+		{Name: "message_id", Type: field.TypeString},
+		{Name: "smtp_code", Type: field.TypeInt, Nullable: true},
+		{Name: "enhanced_status_code", Type: field.TypeString, Nullable: true},
+		{Name: "classification", Type: field.TypeString},
+		{Name: "response", Type: field.TypeString, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// OutboundAttemptsTable holds the schema information for the "outbound_attempts" table.
+	OutboundAttemptsTable = &schema.Table{
+		Name:       "outbound_attempts",
+		Columns:    OutboundAttemptsColumns,
+		PrimaryKey: []*schema.Column{OutboundAttemptsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "outboundattempt_outbound_job_id",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundAttemptsColumns[1]},
+			},
+			{
+				Name:    "outboundattempt_message_id",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundAttemptsColumns[2]},
+			},
+			{
+				Name:    "outboundattempt_classification",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundAttemptsColumns[5]},
+			},
+		},
+	}
 	// OutboundJobsColumns holds the columns for the "outbound_jobs" table.
 	OutboundJobsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "mailbox_id", Type: field.TypeString},
 		{Name: "message_id", Type: field.TypeString},
+		{Name: "return_path", Type: field.TypeString},
+		{Name: "recipients", Type: field.TypeJSON},
 		{Name: "status", Type: field.TypeString, Default: "queued"},
 		{Name: "attempts", Type: field.TypeInt, Default: 0},
 		{Name: "locked_by", Type: field.TypeString, Nullable: true},
@@ -326,12 +391,12 @@ var (
 			{
 				Name:    "outboundjob_status_next_attempt_at",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[3], OutboundJobsColumns[7]},
+				Columns: []*schema.Column{OutboundJobsColumns[5], OutboundJobsColumns[9]},
 			},
 			{
 				Name:    "outboundjob_locked_until",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[6]},
+				Columns: []*schema.Column{OutboundJobsColumns[8]},
 			},
 			{
 				Name:    "outboundjob_message_id",
@@ -409,6 +474,7 @@ var (
 	Tables = []*schema.Table{
 		AppPasswordsTable,
 		AuditEventsTable,
+		BounceEventsTable,
 		DkimKeysTable,
 		FoldersTable,
 		LabelsTable,
@@ -416,6 +482,7 @@ var (
 		MailboxMessagesTable,
 		MailboxMessageLabelsTable,
 		MessagesTable,
+		OutboundAttemptsTable,
 		OutboundJobsTable,
 		RoutesTable,
 		RoutingRulesTable,

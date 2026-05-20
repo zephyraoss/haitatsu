@@ -12,6 +12,9 @@ type AppPassword func(*sql.Selector)
 // AuditEvent is the predicate function for auditevent builders.
 type AuditEvent func(*sql.Selector)
 
+// BounceEvent is the predicate function for bounceevent builders.
+type BounceEvent func(*sql.Selector)
+
 // DKIMKey is the predicate function for dkimkey builders.
 type DKIMKey func(*sql.Selector)
 
@@ -32,6 +35,9 @@ type MailboxMessageLabel func(*sql.Selector)
 
 // Message is the predicate function for message builders.
 type Message func(*sql.Selector)
+
+// OutboundAttempt is the predicate function for outboundattempt builders.
+type OutboundAttempt func(*sql.Selector)
 
 // OutboundJob is the predicate function for outboundjob builders.
 type OutboundJob func(*sql.Selector)

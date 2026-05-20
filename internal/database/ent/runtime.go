@@ -7,6 +7,7 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
@@ -14,6 +15,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundattempt"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
@@ -50,6 +52,16 @@ func init() {
 	auditeventDescID := auditeventFields[0].Descriptor()
 	// auditevent.DefaultID holds the default value on creation for the id field.
 	auditevent.DefaultID = auditeventDescID.Default.(func() string)
+	bounceeventFields := schema.BounceEvent{}.Fields()
+	_ = bounceeventFields
+	// bounceeventDescCreatedAt is the schema descriptor for created_at field.
+	bounceeventDescCreatedAt := bounceeventFields[7].Descriptor()
+	// bounceevent.DefaultCreatedAt holds the default value on creation for the created_at field.
+	bounceevent.DefaultCreatedAt = bounceeventDescCreatedAt.Default.(func() time.Time)
+	// bounceeventDescID is the schema descriptor for id field.
+	bounceeventDescID := bounceeventFields[0].Descriptor()
+	// bounceevent.DefaultID holds the default value on creation for the id field.
+	bounceevent.DefaultID = bounceeventDescID.Default.(func() string)
 	dkimkeyFields := schema.DKIMKey{}.Fields()
 	_ = dkimkeyFields
 	// dkimkeyDescSelector is the schema descriptor for selector field.
@@ -192,22 +204,32 @@ func init() {
 	messageDescID := messageFields[0].Descriptor()
 	// message.DefaultID holds the default value on creation for the id field.
 	message.DefaultID = messageDescID.Default.(func() string)
+	outboundattemptFields := schema.OutboundAttempt{}.Fields()
+	_ = outboundattemptFields
+	// outboundattemptDescCreatedAt is the schema descriptor for created_at field.
+	outboundattemptDescCreatedAt := outboundattemptFields[7].Descriptor()
+	// outboundattempt.DefaultCreatedAt holds the default value on creation for the created_at field.
+	outboundattempt.DefaultCreatedAt = outboundattemptDescCreatedAt.Default.(func() time.Time)
+	// outboundattemptDescID is the schema descriptor for id field.
+	outboundattemptDescID := outboundattemptFields[0].Descriptor()
+	// outboundattempt.DefaultID holds the default value on creation for the id field.
+	outboundattempt.DefaultID = outboundattemptDescID.Default.(func() string)
 	outboundjobFields := schema.OutboundJob{}.Fields()
 	_ = outboundjobFields
 	// outboundjobDescStatus is the schema descriptor for status field.
-	outboundjobDescStatus := outboundjobFields[3].Descriptor()
+	outboundjobDescStatus := outboundjobFields[5].Descriptor()
 	// outboundjob.DefaultStatus holds the default value on creation for the status field.
 	outboundjob.DefaultStatus = outboundjobDescStatus.Default.(string)
 	// outboundjobDescAttempts is the schema descriptor for attempts field.
-	outboundjobDescAttempts := outboundjobFields[4].Descriptor()
+	outboundjobDescAttempts := outboundjobFields[6].Descriptor()
 	// outboundjob.DefaultAttempts holds the default value on creation for the attempts field.
 	outboundjob.DefaultAttempts = outboundjobDescAttempts.Default.(int)
 	// outboundjobDescCreatedAt is the schema descriptor for created_at field.
-	outboundjobDescCreatedAt := outboundjobFields[9].Descriptor()
+	outboundjobDescCreatedAt := outboundjobFields[11].Descriptor()
 	// outboundjob.DefaultCreatedAt holds the default value on creation for the created_at field.
 	outboundjob.DefaultCreatedAt = outboundjobDescCreatedAt.Default.(func() time.Time)
 	// outboundjobDescUpdatedAt is the schema descriptor for updated_at field.
-	outboundjobDescUpdatedAt := outboundjobFields[10].Descriptor()
+	outboundjobDescUpdatedAt := outboundjobFields[12].Descriptor()
 	// outboundjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	outboundjob.DefaultUpdatedAt = outboundjobDescUpdatedAt.Default.(func() time.Time)
 	// outboundjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

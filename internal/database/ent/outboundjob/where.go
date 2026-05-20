@@ -74,6 +74,11 @@ func MessageID(v string) predicate.OutboundJob {
 	return predicate.OutboundJob(sql.FieldEQ(FieldMessageID, v))
 }
 
+// ReturnPath applies equality check predicate on the "return_path" field. It's identical to ReturnPathEQ.
+func ReturnPath(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldEQ(FieldReturnPath, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.OutboundJob {
 	return predicate.OutboundJob(sql.FieldEQ(FieldStatus, v))
@@ -237,6 +242,71 @@ func MessageIDEqualFold(v string) predicate.OutboundJob {
 // MessageIDContainsFold applies the ContainsFold predicate on the "message_id" field.
 func MessageIDContainsFold(v string) predicate.OutboundJob {
 	return predicate.OutboundJob(sql.FieldContainsFold(FieldMessageID, v))
+}
+
+// ReturnPathEQ applies the EQ predicate on the "return_path" field.
+func ReturnPathEQ(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldEQ(FieldReturnPath, v))
+}
+
+// ReturnPathNEQ applies the NEQ predicate on the "return_path" field.
+func ReturnPathNEQ(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldNEQ(FieldReturnPath, v))
+}
+
+// ReturnPathIn applies the In predicate on the "return_path" field.
+func ReturnPathIn(vs ...string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldIn(FieldReturnPath, vs...))
+}
+
+// ReturnPathNotIn applies the NotIn predicate on the "return_path" field.
+func ReturnPathNotIn(vs ...string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldNotIn(FieldReturnPath, vs...))
+}
+
+// ReturnPathGT applies the GT predicate on the "return_path" field.
+func ReturnPathGT(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldGT(FieldReturnPath, v))
+}
+
+// ReturnPathGTE applies the GTE predicate on the "return_path" field.
+func ReturnPathGTE(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldGTE(FieldReturnPath, v))
+}
+
+// ReturnPathLT applies the LT predicate on the "return_path" field.
+func ReturnPathLT(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldLT(FieldReturnPath, v))
+}
+
+// ReturnPathLTE applies the LTE predicate on the "return_path" field.
+func ReturnPathLTE(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldLTE(FieldReturnPath, v))
+}
+
+// ReturnPathContains applies the Contains predicate on the "return_path" field.
+func ReturnPathContains(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldContains(FieldReturnPath, v))
+}
+
+// ReturnPathHasPrefix applies the HasPrefix predicate on the "return_path" field.
+func ReturnPathHasPrefix(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldHasPrefix(FieldReturnPath, v))
+}
+
+// ReturnPathHasSuffix applies the HasSuffix predicate on the "return_path" field.
+func ReturnPathHasSuffix(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldHasSuffix(FieldReturnPath, v))
+}
+
+// ReturnPathEqualFold applies the EqualFold predicate on the "return_path" field.
+func ReturnPathEqualFold(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldEqualFold(FieldReturnPath, v))
+}
+
+// ReturnPathContainsFold applies the ContainsFold predicate on the "return_path" field.
+func ReturnPathContainsFold(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldContainsFold(FieldReturnPath, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

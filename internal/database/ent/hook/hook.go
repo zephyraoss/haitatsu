@@ -33,6 +33,18 @@ func (f AuditEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditEventMutation", m)
 }
 
+// The BounceEventFunc type is an adapter to allow the use of ordinary
+// function as BounceEvent mutator.
+type BounceEventFunc func(context.Context, *ent.BounceEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f BounceEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.BounceEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.BounceEventMutation", m)
+}
+
 // The DKIMKeyFunc type is an adapter to allow the use of ordinary
 // function as DKIMKey mutator.
 type DKIMKeyFunc func(context.Context, *ent.DKIMKeyMutation) (ent.Value, error)
@@ -115,6 +127,18 @@ func (f MessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MessageMutation", m)
+}
+
+// The OutboundAttemptFunc type is an adapter to allow the use of ordinary
+// function as OutboundAttempt mutator.
+type OutboundAttemptFunc func(context.Context, *ent.OutboundAttemptMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OutboundAttemptFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OutboundAttemptMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OutboundAttemptMutation", m)
 }
 
 // The OutboundJobFunc type is an adapter to allow the use of ordinary

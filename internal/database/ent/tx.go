@@ -16,6 +16,8 @@ type Tx struct {
 	AppPassword *AppPasswordClient
 	// AuditEvent is the client for interacting with the AuditEvent builders.
 	AuditEvent *AuditEventClient
+	// BounceEvent is the client for interacting with the BounceEvent builders.
+	BounceEvent *BounceEventClient
 	// DKIMKey is the client for interacting with the DKIMKey builders.
 	DKIMKey *DKIMKeyClient
 	// Folder is the client for interacting with the Folder builders.
@@ -30,6 +32,8 @@ type Tx struct {
 	MailboxMessageLabel *MailboxMessageLabelClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
+	// OutboundAttempt is the client for interacting with the OutboundAttempt builders.
+	OutboundAttempt *OutboundAttemptClient
 	// OutboundJob is the client for interacting with the OutboundJob builders.
 	OutboundJob *OutboundJobClient
 	// Route is the client for interacting with the Route builders.
@@ -169,6 +173,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.AppPassword = NewAppPasswordClient(tx.config)
 	tx.AuditEvent = NewAuditEventClient(tx.config)
+	tx.BounceEvent = NewBounceEventClient(tx.config)
 	tx.DKIMKey = NewDKIMKeyClient(tx.config)
 	tx.Folder = NewFolderClient(tx.config)
 	tx.Label = NewLabelClient(tx.config)
@@ -176,6 +181,7 @@ func (tx *Tx) init() {
 	tx.MailboxMessage = NewMailboxMessageClient(tx.config)
 	tx.MailboxMessageLabel = NewMailboxMessageLabelClient(tx.config)
 	tx.Message = NewMessageClient(tx.config)
+	tx.OutboundAttempt = NewOutboundAttemptClient(tx.config)
 	tx.OutboundJob = NewOutboundJobClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RoutingRule = NewRoutingRuleClient(tx.config)

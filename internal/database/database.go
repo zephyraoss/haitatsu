@@ -66,3 +66,7 @@ func (c *Client) Close() {
 func (c *Client) Ent() *ent.Client {
 	return c.ent
 }
+
+func (c *Client) SQL() *sql.DB {
+	return c.db
+}

@@ -32,6 +32,18 @@ func (_c *OutboundJobCreate) SetMessageID(v string) *OutboundJobCreate {
 	return _c
 }
 
+// SetReturnPath sets the "return_path" field.
+func (_c *OutboundJobCreate) SetReturnPath(v string) *OutboundJobCreate {
+	_c.mutation.SetReturnPath(v)
+	return _c
+}
+
+// SetRecipients sets the "recipients" field.
+func (_c *OutboundJobCreate) SetRecipients(v []string) *OutboundJobCreate {
+	_c.mutation.SetRecipients(v)
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *OutboundJobCreate) SetStatus(v string) *OutboundJobCreate {
 	_c.mutation.SetStatus(v)
@@ -215,6 +227,12 @@ func (_c *OutboundJobCreate) check() error {
 	if _, ok := _c.mutation.MessageID(); !ok {
 		return &ValidationError{Name: "message_id", err: errors.New(`ent: missing required field "OutboundJob.message_id"`)}
 	}
+	if _, ok := _c.mutation.ReturnPath(); !ok {
+		return &ValidationError{Name: "return_path", err: errors.New(`ent: missing required field "OutboundJob.return_path"`)}
+	}
+	if _, ok := _c.mutation.Recipients(); !ok {
+		return &ValidationError{Name: "recipients", err: errors.New(`ent: missing required field "OutboundJob.recipients"`)}
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "OutboundJob.status"`)}
 	}
@@ -269,6 +287,14 @@ func (_c *OutboundJobCreate) createSpec() (*OutboundJob, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MessageID(); ok {
 		_spec.SetField(outboundjob.FieldMessageID, field.TypeString, value)
 		_node.MessageID = value
+	}
+	if value, ok := _c.mutation.ReturnPath(); ok {
+		_spec.SetField(outboundjob.FieldReturnPath, field.TypeString, value)
+		_node.ReturnPath = value
+	}
+	if value, ok := _c.mutation.Recipients(); ok {
+		_spec.SetField(outboundjob.FieldRecipients, field.TypeJSON, value)
+		_node.Recipients = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(outboundjob.FieldStatus, field.TypeString, value)

@@ -17,6 +17,10 @@ const (
 	FieldMailboxID = "mailbox_id"
 	// FieldMessageID holds the string denoting the message_id field in the database.
 	FieldMessageID = "message_id"
+	// FieldReturnPath holds the string denoting the return_path field in the database.
+	FieldReturnPath = "return_path"
+	// FieldRecipients holds the string denoting the recipients field in the database.
+	FieldRecipients = "recipients"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldAttempts holds the string denoting the attempts field in the database.
@@ -42,6 +46,8 @@ var Columns = []string{
 	FieldID,
 	FieldMailboxID,
 	FieldMessageID,
+	FieldReturnPath,
+	FieldRecipients,
 	FieldStatus,
 	FieldAttempts,
 	FieldLockedBy,
@@ -93,6 +99,11 @@ func ByMailboxID(opts ...sql.OrderTermOption) OrderOption {
 // ByMessageID orders the results by the message_id field.
 func ByMessageID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMessageID, opts...).ToFunc()
+}
+
+// ByReturnPath orders the results by the return_path field.
+func ByReturnPath(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReturnPath, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

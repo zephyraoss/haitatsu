@@ -22,6 +22,10 @@ type OutboundJob struct {
 	MailboxID string `json:"mailbox_id,omitempty"`
 	// MessageID holds the value of the "message_id" field.
 	MessageID string `json:"message_id,omitempty"`
+	// ReturnPath holds the value of the "return_path" field.
+	ReturnPath string `json:"return_path,omitempty"`
+	// Recipients holds the value of the "recipients" field.
+	Recipients []string `json:"recipients,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Attempts holds the value of the "attempts" field.
@@ -46,11 +50,11 @@ func (*OutboundJob) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case outboundjob.FieldLastError:
+		case outboundjob.FieldRecipients, outboundjob.FieldLastError:
 			values[i] = new([]byte)
 		case outboundjob.FieldAttempts:
 			values[i] = new(sql.NullInt64)
-		case outboundjob.FieldID, outboundjob.FieldMailboxID, outboundjob.FieldMessageID, outboundjob.FieldStatus, outboundjob.FieldLockedBy:
+		case outboundjob.FieldID, outboundjob.FieldMailboxID, outboundjob.FieldMessageID, outboundjob.FieldReturnPath, outboundjob.FieldStatus, outboundjob.FieldLockedBy:
 			values[i] = new(sql.NullString)
 		case outboundjob.FieldLockedUntil, outboundjob.FieldNextAttemptAt, outboundjob.FieldCreatedAt, outboundjob.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -86,6 +90,20 @@ func (_m *OutboundJob) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field message_id", values[i])
 			} else if value.Valid {
 				_m.MessageID = value.String
+			}
+		case outboundjob.FieldReturnPath:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field return_path", values[i])
+			} else if value.Valid {
+				_m.ReturnPath = value.String
+			}
+		case outboundjob.FieldRecipients:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field recipients", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Recipients); err != nil {
+					return fmt.Errorf("unmarshal field recipients: %w", err)
+				}
 			}
 		case outboundjob.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -180,6 +198,12 @@ func (_m *OutboundJob) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("message_id=")
 	builder.WriteString(_m.MessageID)
+	builder.WriteString(", ")
+	builder.WriteString("return_path=")
+	builder.WriteString(_m.ReturnPath)
+	builder.WriteString(", ")
+	builder.WriteString("recipients=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Recipients))
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

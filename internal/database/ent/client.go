@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
@@ -23,6 +24,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundattempt"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
@@ -37,6 +39,8 @@ type Client struct {
 	AppPassword *AppPasswordClient
 	// AuditEvent is the client for interacting with the AuditEvent builders.
 	AuditEvent *AuditEventClient
+	// BounceEvent is the client for interacting with the BounceEvent builders.
+	BounceEvent *BounceEventClient
 	// DKIMKey is the client for interacting with the DKIMKey builders.
 	DKIMKey *DKIMKeyClient
 	// Folder is the client for interacting with the Folder builders.
@@ -51,6 +55,8 @@ type Client struct {
 	MailboxMessageLabel *MailboxMessageLabelClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
+	// OutboundAttempt is the client for interacting with the OutboundAttempt builders.
+	OutboundAttempt *OutboundAttemptClient
 	// OutboundJob is the client for interacting with the OutboundJob builders.
 	OutboundJob *OutboundJobClient
 	// Route is the client for interacting with the Route builders.
@@ -70,6 +76,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AppPassword = NewAppPasswordClient(c.config)
 	c.AuditEvent = NewAuditEventClient(c.config)
+	c.BounceEvent = NewBounceEventClient(c.config)
 	c.DKIMKey = NewDKIMKeyClient(c.config)
 	c.Folder = NewFolderClient(c.config)
 	c.Label = NewLabelClient(c.config)
@@ -77,6 +84,7 @@ func (c *Client) init() {
 	c.MailboxMessage = NewMailboxMessageClient(c.config)
 	c.MailboxMessageLabel = NewMailboxMessageLabelClient(c.config)
 	c.Message = NewMessageClient(c.config)
+	c.OutboundAttempt = NewOutboundAttemptClient(c.config)
 	c.OutboundJob = NewOutboundJobClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
@@ -174,6 +182,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:              cfg,
 		AppPassword:         NewAppPasswordClient(cfg),
 		AuditEvent:          NewAuditEventClient(cfg),
+		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
 		Folder:              NewFolderClient(cfg),
 		Label:               NewLabelClient(cfg),
@@ -181,6 +190,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		MailboxMessage:      NewMailboxMessageClient(cfg),
 		MailboxMessageLabel: NewMailboxMessageLabelClient(cfg),
 		Message:             NewMessageClient(cfg),
+		OutboundAttempt:     NewOutboundAttemptClient(cfg),
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
@@ -205,6 +215,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:              cfg,
 		AppPassword:         NewAppPasswordClient(cfg),
 		AuditEvent:          NewAuditEventClient(cfg),
+		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
 		Folder:              NewFolderClient(cfg),
 		Label:               NewLabelClient(cfg),
@@ -212,6 +223,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		MailboxMessage:      NewMailboxMessageClient(cfg),
 		MailboxMessageLabel: NewMailboxMessageLabelClient(cfg),
 		Message:             NewMessageClient(cfg),
+		OutboundAttempt:     NewOutboundAttemptClient(cfg),
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
@@ -244,9 +256,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AppPassword, c.AuditEvent, c.DKIMKey, c.Folder, c.Label, c.Mailbox,
-		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundJob, c.Route,
-		c.RoutingRule,
+		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.Folder, c.Label,
+		c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
+		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -256,9 +268,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AppPassword, c.AuditEvent, c.DKIMKey, c.Folder, c.Label, c.Mailbox,
-		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundJob, c.Route,
-		c.RoutingRule,
+		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.Folder, c.Label,
+		c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
+		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -271,6 +283,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AppPassword.mutate(ctx, m)
 	case *AuditEventMutation:
 		return c.AuditEvent.mutate(ctx, m)
+	case *BounceEventMutation:
+		return c.BounceEvent.mutate(ctx, m)
 	case *DKIMKeyMutation:
 		return c.DKIMKey.mutate(ctx, m)
 	case *FolderMutation:
@@ -285,6 +299,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.MailboxMessageLabel.mutate(ctx, m)
 	case *MessageMutation:
 		return c.Message.mutate(ctx, m)
+	case *OutboundAttemptMutation:
+		return c.OutboundAttempt.mutate(ctx, m)
 	case *OutboundJobMutation:
 		return c.OutboundJob.mutate(ctx, m)
 	case *RouteMutation:
@@ -559,6 +575,139 @@ func (c *AuditEventClient) mutate(ctx context.Context, m *AuditEventMutation) (V
 		return (&AuditEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditEvent mutation op: %q", m.Op())
+	}
+}
+
+// BounceEventClient is a client for the BounceEvent schema.
+type BounceEventClient struct {
+	config
+}
+
+// NewBounceEventClient returns a client for the BounceEvent from the given config.
+func NewBounceEventClient(c config) *BounceEventClient {
+	return &BounceEventClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `bounceevent.Hooks(f(g(h())))`.
+func (c *BounceEventClient) Use(hooks ...Hook) {
+	c.hooks.BounceEvent = append(c.hooks.BounceEvent, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `bounceevent.Intercept(f(g(h())))`.
+func (c *BounceEventClient) Intercept(interceptors ...Interceptor) {
+	c.inters.BounceEvent = append(c.inters.BounceEvent, interceptors...)
+}
+
+// Create returns a builder for creating a BounceEvent entity.
+func (c *BounceEventClient) Create() *BounceEventCreate {
+	mutation := newBounceEventMutation(c.config, OpCreate)
+	return &BounceEventCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of BounceEvent entities.
+func (c *BounceEventClient) CreateBulk(builders ...*BounceEventCreate) *BounceEventCreateBulk {
+	return &BounceEventCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *BounceEventClient) MapCreateBulk(slice any, setFunc func(*BounceEventCreate, int)) *BounceEventCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &BounceEventCreateBulk{err: fmt.Errorf("calling to BounceEventClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*BounceEventCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &BounceEventCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for BounceEvent.
+func (c *BounceEventClient) Update() *BounceEventUpdate {
+	mutation := newBounceEventMutation(c.config, OpUpdate)
+	return &BounceEventUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *BounceEventClient) UpdateOne(_m *BounceEvent) *BounceEventUpdateOne {
+	mutation := newBounceEventMutation(c.config, OpUpdateOne, withBounceEvent(_m))
+	return &BounceEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *BounceEventClient) UpdateOneID(id string) *BounceEventUpdateOne {
+	mutation := newBounceEventMutation(c.config, OpUpdateOne, withBounceEventID(id))
+	return &BounceEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for BounceEvent.
+func (c *BounceEventClient) Delete() *BounceEventDelete {
+	mutation := newBounceEventMutation(c.config, OpDelete)
+	return &BounceEventDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *BounceEventClient) DeleteOne(_m *BounceEvent) *BounceEventDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *BounceEventClient) DeleteOneID(id string) *BounceEventDeleteOne {
+	builder := c.Delete().Where(bounceevent.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &BounceEventDeleteOne{builder}
+}
+
+// Query returns a query builder for BounceEvent.
+func (c *BounceEventClient) Query() *BounceEventQuery {
+	return &BounceEventQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeBounceEvent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a BounceEvent entity by its id.
+func (c *BounceEventClient) Get(ctx context.Context, id string) (*BounceEvent, error) {
+	return c.Query().Where(bounceevent.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *BounceEventClient) GetX(ctx context.Context, id string) *BounceEvent {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *BounceEventClient) Hooks() []Hook {
+	return c.hooks.BounceEvent
+}
+
+// Interceptors returns the client interceptors.
+func (c *BounceEventClient) Interceptors() []Interceptor {
+	return c.inters.BounceEvent
+}
+
+func (c *BounceEventClient) mutate(ctx context.Context, m *BounceEventMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&BounceEventCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&BounceEventUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&BounceEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&BounceEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown BounceEvent mutation op: %q", m.Op())
 	}
 }
 
@@ -1493,6 +1642,139 @@ func (c *MessageClient) mutate(ctx context.Context, m *MessageMutation) (Value, 
 	}
 }
 
+// OutboundAttemptClient is a client for the OutboundAttempt schema.
+type OutboundAttemptClient struct {
+	config
+}
+
+// NewOutboundAttemptClient returns a client for the OutboundAttempt from the given config.
+func NewOutboundAttemptClient(c config) *OutboundAttemptClient {
+	return &OutboundAttemptClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `outboundattempt.Hooks(f(g(h())))`.
+func (c *OutboundAttemptClient) Use(hooks ...Hook) {
+	c.hooks.OutboundAttempt = append(c.hooks.OutboundAttempt, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `outboundattempt.Intercept(f(g(h())))`.
+func (c *OutboundAttemptClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OutboundAttempt = append(c.inters.OutboundAttempt, interceptors...)
+}
+
+// Create returns a builder for creating a OutboundAttempt entity.
+func (c *OutboundAttemptClient) Create() *OutboundAttemptCreate {
+	mutation := newOutboundAttemptMutation(c.config, OpCreate)
+	return &OutboundAttemptCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OutboundAttempt entities.
+func (c *OutboundAttemptClient) CreateBulk(builders ...*OutboundAttemptCreate) *OutboundAttemptCreateBulk {
+	return &OutboundAttemptCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OutboundAttemptClient) MapCreateBulk(slice any, setFunc func(*OutboundAttemptCreate, int)) *OutboundAttemptCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OutboundAttemptCreateBulk{err: fmt.Errorf("calling to OutboundAttemptClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OutboundAttemptCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OutboundAttemptCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OutboundAttempt.
+func (c *OutboundAttemptClient) Update() *OutboundAttemptUpdate {
+	mutation := newOutboundAttemptMutation(c.config, OpUpdate)
+	return &OutboundAttemptUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OutboundAttemptClient) UpdateOne(_m *OutboundAttempt) *OutboundAttemptUpdateOne {
+	mutation := newOutboundAttemptMutation(c.config, OpUpdateOne, withOutboundAttempt(_m))
+	return &OutboundAttemptUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OutboundAttemptClient) UpdateOneID(id string) *OutboundAttemptUpdateOne {
+	mutation := newOutboundAttemptMutation(c.config, OpUpdateOne, withOutboundAttemptID(id))
+	return &OutboundAttemptUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OutboundAttempt.
+func (c *OutboundAttemptClient) Delete() *OutboundAttemptDelete {
+	mutation := newOutboundAttemptMutation(c.config, OpDelete)
+	return &OutboundAttemptDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OutboundAttemptClient) DeleteOne(_m *OutboundAttempt) *OutboundAttemptDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OutboundAttemptClient) DeleteOneID(id string) *OutboundAttemptDeleteOne {
+	builder := c.Delete().Where(outboundattempt.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OutboundAttemptDeleteOne{builder}
+}
+
+// Query returns a query builder for OutboundAttempt.
+func (c *OutboundAttemptClient) Query() *OutboundAttemptQuery {
+	return &OutboundAttemptQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOutboundAttempt},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OutboundAttempt entity by its id.
+func (c *OutboundAttemptClient) Get(ctx context.Context, id string) (*OutboundAttempt, error) {
+	return c.Query().Where(outboundattempt.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OutboundAttemptClient) GetX(ctx context.Context, id string) *OutboundAttempt {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OutboundAttemptClient) Hooks() []Hook {
+	return c.hooks.OutboundAttempt
+}
+
+// Interceptors returns the client interceptors.
+func (c *OutboundAttemptClient) Interceptors() []Interceptor {
+	return c.inters.OutboundAttempt
+}
+
+func (c *OutboundAttemptClient) mutate(ctx context.Context, m *OutboundAttemptMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OutboundAttemptCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OutboundAttemptUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OutboundAttemptUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OutboundAttemptDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OutboundAttempt mutation op: %q", m.Op())
+	}
+}
+
 // OutboundJobClient is a client for the OutboundJob schema.
 type OutboundJobClient struct {
 	config
@@ -1895,11 +2177,13 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AppPassword, AuditEvent, DKIMKey, Folder, Label, Mailbox, MailboxMessage,
-		MailboxMessageLabel, Message, OutboundJob, Route, RoutingRule []ent.Hook
+		AppPassword, AuditEvent, BounceEvent, DKIMKey, Folder, Label, Mailbox,
+		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
+		Route, RoutingRule []ent.Hook
 	}
 	inters struct {
-		AppPassword, AuditEvent, DKIMKey, Folder, Label, Mailbox, MailboxMessage,
-		MailboxMessageLabel, Message, OutboundJob, Route, RoutingRule []ent.Interceptor
+		AppPassword, AuditEvent, BounceEvent, DKIMKey, Folder, Label, Mailbox,
+		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
+		Route, RoutingRule []ent.Interceptor
 	}
 )

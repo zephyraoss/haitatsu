@@ -161,7 +161,7 @@ func (s *session) Data(r io.Reader) error {
 	if err != nil {
 		return temporaryError()
 	}
-	if _, err := s.submission.Submit(context.Background(), s.mailbox.ID, s.mailFrom, raw); err != nil {
+	if _, err := s.submission.Submit(context.Background(), s.mailbox.ID, s.mailFrom, raw, s.recipients); err != nil {
 		return submissionError(err)
 	}
 	return nil

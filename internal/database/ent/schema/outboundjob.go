@@ -15,6 +15,8 @@ func (OutboundJob) Fields() []ent.Field {
 		ulidField(),
 		field.String("mailbox_id"),
 		field.String("message_id"),
+		field.String("return_path"),
+		field.JSON("recipients", []string{}),
 		field.String("status").Default("queued"),
 		field.Int("attempts").Default(0),
 		field.String("locked_by").Optional(),

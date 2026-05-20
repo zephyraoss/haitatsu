@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/zephyraoss/haitatsu/internal/bounce"
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/health"
@@ -38,6 +39,7 @@ type App struct {
 	smtp       *inboundsmtp.Server
 	imap       *imapserver.Server
 	submission *submissionsmtp.Server
+	relay      *outbound.Worker
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -74,16 +76,18 @@ func New(ctx context.Context, opts Options) (*App, error) {
 
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
-	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName, cfg.Bounce.Domain)
 	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), blobStore, submissionService, checker, m)
+	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, cfg.Server.InstanceName)
 	resolver := routing.NewResolver(db.Ent())
 	messageService := messages.NewService(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, cfg.Bounce.Domain)
 	tlsConfig, err := listenerTLSConfig(cfg.TLS)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure listener tls: %w", err)
 	}
-	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService)
+	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler)
 	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore)
 	submissionServer := submissionsmtp.New(cfg.Submission, cfg.Server.PublicHostname, tlsConfig, db.Ent(), submissionService)
 
@@ -97,6 +101,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		smtp:       smtpServer,
 		imap:       imapServer,
 		submission: submissionServer,
+		relay:      relayWorker,
 	}, nil
 }
 
@@ -118,6 +123,10 @@ func (a *App) Run(ctx context.Context) error {
 		a.logger.Info("starting smtp submission", "starttls_addr", a.config.Submission.StartTLSAddr, "tls_addr", a.config.Submission.TLSAddr)
 		errCh <- a.submission.Listen()
 	}()
+	if a.config.Workers.Enabled {
+		a.logger.Info("starting outbound relay workers", "concurrency", a.config.Workers.Concurrency)
+		a.relay.Run(ctx, a.config.Workers.Concurrency)
+	}
 
 	select {
 	case <-ctx.Done():

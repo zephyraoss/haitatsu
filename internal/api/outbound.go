@@ -32,11 +32,19 @@ func (h *Handler) createOutboundMessage(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_outbound_message", err.Error())
 	}
-	msg, err := h.outbound.Submit(c.Context(), c.Params("mailbox_id"), req.From, raw)
+	msg, err := h.outbound.Submit(c.Context(), c.Params("mailbox_id"), req.From, raw, req.recipients())
 	if err != nil {
 		return outboundProblem(c, err)
 	}
 	return created(c, msg)
+}
+
+func (r outboundMessageRequest) recipients() []string {
+	values := make([]string, 0, len(r.To)+len(r.CC)+len(r.BCC))
+	values = append(values, r.To...)
+	values = append(values, r.CC...)
+	values = append(values, r.BCC...)
+	return values
 }
 
 func (r outboundMessageRequest) messageBytes() ([]byte, error) {
