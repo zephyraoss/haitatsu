@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -42,4 +43,13 @@ func (c *Client) Health(ctx context.Context) error {
 func (c *Client) PutMessage(ctx context.Context, key string, data []byte) error {
 	_, err := c.client.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "message/rfc822"})
 	return err
+}
+
+func (c *Client) GetMessage(ctx context.Context, key string) ([]byte, error) {
+	object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer object.Close()
+	return io.ReadAll(object)
 }

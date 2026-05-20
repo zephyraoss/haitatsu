@@ -11,6 +11,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
@@ -135,6 +136,16 @@ func init() {
 	mailboxmessageDescID := mailboxmessageFields[0].Descriptor()
 	// mailboxmessage.DefaultID holds the default value on creation for the id field.
 	mailboxmessage.DefaultID = mailboxmessageDescID.Default.(func() string)
+	mailboxmessagelabelFields := schema.MailboxMessageLabel{}.Fields()
+	_ = mailboxmessagelabelFields
+	// mailboxmessagelabelDescCreatedAt is the schema descriptor for created_at field.
+	mailboxmessagelabelDescCreatedAt := mailboxmessagelabelFields[3].Descriptor()
+	// mailboxmessagelabel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	mailboxmessagelabel.DefaultCreatedAt = mailboxmessagelabelDescCreatedAt.Default.(func() time.Time)
+	// mailboxmessagelabelDescID is the schema descriptor for id field.
+	mailboxmessagelabelDescID := mailboxmessagelabelFields[0].Descriptor()
+	// mailboxmessagelabel.DefaultID holds the default value on creation for the id field.
+	mailboxmessagelabel.DefaultID = mailboxmessagelabelDescID.Default.(func() string)
 	messageFields := schema.Message{}.Fields()
 	_ = messageFields
 	// messageDescSpamScore is the schema descriptor for spam_score field.

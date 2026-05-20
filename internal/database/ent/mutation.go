@@ -17,6 +17,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
@@ -32,15 +33,16 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAppPassword    = "AppPassword"
-	TypeAuditEvent     = "AuditEvent"
-	TypeFolder         = "Folder"
-	TypeLabel          = "Label"
-	TypeMailbox        = "Mailbox"
-	TypeMailboxMessage = "MailboxMessage"
-	TypeMessage        = "Message"
-	TypeRoute          = "Route"
-	TypeRoutingRule    = "RoutingRule"
+	TypeAppPassword         = "AppPassword"
+	TypeAuditEvent          = "AuditEvent"
+	TypeFolder              = "Folder"
+	TypeLabel               = "Label"
+	TypeMailbox             = "Mailbox"
+	TypeMailboxMessage      = "MailboxMessage"
+	TypeMailboxMessageLabel = "MailboxMessageLabel"
+	TypeMessage             = "Message"
+	TypeRoute               = "Route"
+	TypeRoutingRule         = "RoutingRule"
 )
 
 // AppPasswordMutation represents an operation that mutates the AppPassword nodes in the graph.
@@ -4572,6 +4574,446 @@ func (m *MailboxMessageMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *MailboxMessageMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown MailboxMessage edge %s", name)
+}
+
+// MailboxMessageLabelMutation represents an operation that mutates the MailboxMessageLabel nodes in the graph.
+type MailboxMessageLabelMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *string
+	mailbox_message_id *string
+	label_id           *string
+	created_at         *time.Time
+	clearedFields      map[string]struct{}
+	done               bool
+	oldValue           func(context.Context) (*MailboxMessageLabel, error)
+	predicates         []predicate.MailboxMessageLabel
+}
+
+var _ ent.Mutation = (*MailboxMessageLabelMutation)(nil)
+
+// mailboxmessagelabelOption allows management of the mutation configuration using functional options.
+type mailboxmessagelabelOption func(*MailboxMessageLabelMutation)
+
+// newMailboxMessageLabelMutation creates new mutation for the MailboxMessageLabel entity.
+func newMailboxMessageLabelMutation(c config, op Op, opts ...mailboxmessagelabelOption) *MailboxMessageLabelMutation {
+	m := &MailboxMessageLabelMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeMailboxMessageLabel,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withMailboxMessageLabelID sets the ID field of the mutation.
+func withMailboxMessageLabelID(id string) mailboxmessagelabelOption {
+	return func(m *MailboxMessageLabelMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *MailboxMessageLabel
+		)
+		m.oldValue = func(ctx context.Context) (*MailboxMessageLabel, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().MailboxMessageLabel.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withMailboxMessageLabel sets the old MailboxMessageLabel of the mutation.
+func withMailboxMessageLabel(node *MailboxMessageLabel) mailboxmessagelabelOption {
+	return func(m *MailboxMessageLabelMutation) {
+		m.oldValue = func(context.Context) (*MailboxMessageLabel, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m MailboxMessageLabelMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m MailboxMessageLabelMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of MailboxMessageLabel entities.
+func (m *MailboxMessageLabelMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *MailboxMessageLabelMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *MailboxMessageLabelMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().MailboxMessageLabel.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetMailboxMessageID sets the "mailbox_message_id" field.
+func (m *MailboxMessageLabelMutation) SetMailboxMessageID(s string) {
+	m.mailbox_message_id = &s
+}
+
+// MailboxMessageID returns the value of the "mailbox_message_id" field in the mutation.
+func (m *MailboxMessageLabelMutation) MailboxMessageID() (r string, exists bool) {
+	v := m.mailbox_message_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMailboxMessageID returns the old "mailbox_message_id" field's value of the MailboxMessageLabel entity.
+// If the MailboxMessageLabel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageLabelMutation) OldMailboxMessageID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMailboxMessageID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMailboxMessageID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMailboxMessageID: %w", err)
+	}
+	return oldValue.MailboxMessageID, nil
+}
+
+// ResetMailboxMessageID resets all changes to the "mailbox_message_id" field.
+func (m *MailboxMessageLabelMutation) ResetMailboxMessageID() {
+	m.mailbox_message_id = nil
+}
+
+// SetLabelID sets the "label_id" field.
+func (m *MailboxMessageLabelMutation) SetLabelID(s string) {
+	m.label_id = &s
+}
+
+// LabelID returns the value of the "label_id" field in the mutation.
+func (m *MailboxMessageLabelMutation) LabelID() (r string, exists bool) {
+	v := m.label_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLabelID returns the old "label_id" field's value of the MailboxMessageLabel entity.
+// If the MailboxMessageLabel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageLabelMutation) OldLabelID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLabelID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLabelID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLabelID: %w", err)
+	}
+	return oldValue.LabelID, nil
+}
+
+// ResetLabelID resets all changes to the "label_id" field.
+func (m *MailboxMessageLabelMutation) ResetLabelID() {
+	m.label_id = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *MailboxMessageLabelMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *MailboxMessageLabelMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the MailboxMessageLabel entity.
+// If the MailboxMessageLabel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageLabelMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *MailboxMessageLabelMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the MailboxMessageLabelMutation builder.
+func (m *MailboxMessageLabelMutation) Where(ps ...predicate.MailboxMessageLabel) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the MailboxMessageLabelMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *MailboxMessageLabelMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.MailboxMessageLabel, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *MailboxMessageLabelMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *MailboxMessageLabelMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (MailboxMessageLabel).
+func (m *MailboxMessageLabelMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *MailboxMessageLabelMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.mailbox_message_id != nil {
+		fields = append(fields, mailboxmessagelabel.FieldMailboxMessageID)
+	}
+	if m.label_id != nil {
+		fields = append(fields, mailboxmessagelabel.FieldLabelID)
+	}
+	if m.created_at != nil {
+		fields = append(fields, mailboxmessagelabel.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *MailboxMessageLabelMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case mailboxmessagelabel.FieldMailboxMessageID:
+		return m.MailboxMessageID()
+	case mailboxmessagelabel.FieldLabelID:
+		return m.LabelID()
+	case mailboxmessagelabel.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *MailboxMessageLabelMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case mailboxmessagelabel.FieldMailboxMessageID:
+		return m.OldMailboxMessageID(ctx)
+	case mailboxmessagelabel.FieldLabelID:
+		return m.OldLabelID(ctx)
+	case mailboxmessagelabel.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown MailboxMessageLabel field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MailboxMessageLabelMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case mailboxmessagelabel.FieldMailboxMessageID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMailboxMessageID(v)
+		return nil
+	case mailboxmessagelabel.FieldLabelID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLabelID(v)
+		return nil
+	case mailboxmessagelabel.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MailboxMessageLabel field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *MailboxMessageLabelMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *MailboxMessageLabelMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MailboxMessageLabelMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown MailboxMessageLabel numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *MailboxMessageLabelMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *MailboxMessageLabelMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *MailboxMessageLabelMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown MailboxMessageLabel nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *MailboxMessageLabelMutation) ResetField(name string) error {
+	switch name {
+	case mailboxmessagelabel.FieldMailboxMessageID:
+		m.ResetMailboxMessageID()
+		return nil
+	case mailboxmessagelabel.FieldLabelID:
+		m.ResetLabelID()
+		return nil
+	case mailboxmessagelabel.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown MailboxMessageLabel field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *MailboxMessageLabelMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *MailboxMessageLabelMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *MailboxMessageLabelMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *MailboxMessageLabelMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *MailboxMessageLabelMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *MailboxMessageLabelMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *MailboxMessageLabelMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown MailboxMessageLabel unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *MailboxMessageLabelMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown MailboxMessageLabel edge %s", name)
 }
 
 // MessageMutation represents an operation that mutates the Message nodes in the graph.

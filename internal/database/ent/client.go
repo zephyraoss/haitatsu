@@ -20,6 +20,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
@@ -42,6 +43,8 @@ type Client struct {
 	Mailbox *MailboxClient
 	// MailboxMessage is the client for interacting with the MailboxMessage builders.
 	MailboxMessage *MailboxMessageClient
+	// MailboxMessageLabel is the client for interacting with the MailboxMessageLabel builders.
+	MailboxMessageLabel *MailboxMessageLabelClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
 	// Route is the client for interacting with the Route builders.
@@ -65,6 +68,7 @@ func (c *Client) init() {
 	c.Label = NewLabelClient(c.config)
 	c.Mailbox = NewMailboxClient(c.config)
 	c.MailboxMessage = NewMailboxMessageClient(c.config)
+	c.MailboxMessageLabel = NewMailboxMessageLabelClient(c.config)
 	c.Message = NewMessageClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
@@ -158,17 +162,18 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:            ctx,
-		config:         cfg,
-		AppPassword:    NewAppPasswordClient(cfg),
-		AuditEvent:     NewAuditEventClient(cfg),
-		Folder:         NewFolderClient(cfg),
-		Label:          NewLabelClient(cfg),
-		Mailbox:        NewMailboxClient(cfg),
-		MailboxMessage: NewMailboxMessageClient(cfg),
-		Message:        NewMessageClient(cfg),
-		Route:          NewRouteClient(cfg),
-		RoutingRule:    NewRoutingRuleClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		AppPassword:         NewAppPasswordClient(cfg),
+		AuditEvent:          NewAuditEventClient(cfg),
+		Folder:              NewFolderClient(cfg),
+		Label:               NewLabelClient(cfg),
+		Mailbox:             NewMailboxClient(cfg),
+		MailboxMessage:      NewMailboxMessageClient(cfg),
+		MailboxMessageLabel: NewMailboxMessageLabelClient(cfg),
+		Message:             NewMessageClient(cfg),
+		Route:               NewRouteClient(cfg),
+		RoutingRule:         NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -186,17 +191,18 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:            ctx,
-		config:         cfg,
-		AppPassword:    NewAppPasswordClient(cfg),
-		AuditEvent:     NewAuditEventClient(cfg),
-		Folder:         NewFolderClient(cfg),
-		Label:          NewLabelClient(cfg),
-		Mailbox:        NewMailboxClient(cfg),
-		MailboxMessage: NewMailboxMessageClient(cfg),
-		Message:        NewMessageClient(cfg),
-		Route:          NewRouteClient(cfg),
-		RoutingRule:    NewRoutingRuleClient(cfg),
+		ctx:                 ctx,
+		config:              cfg,
+		AppPassword:         NewAppPasswordClient(cfg),
+		AuditEvent:          NewAuditEventClient(cfg),
+		Folder:              NewFolderClient(cfg),
+		Label:               NewLabelClient(cfg),
+		Mailbox:             NewMailboxClient(cfg),
+		MailboxMessage:      NewMailboxMessageClient(cfg),
+		MailboxMessageLabel: NewMailboxMessageLabelClient(cfg),
+		Message:             NewMessageClient(cfg),
+		Route:               NewRouteClient(cfg),
+		RoutingRule:         NewRoutingRuleClient(cfg),
 	}, nil
 }
 
@@ -227,7 +233,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.MailboxMessage,
-		c.Message, c.Route, c.RoutingRule,
+		c.MailboxMessageLabel, c.Message, c.Route, c.RoutingRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -238,7 +244,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AppPassword, c.AuditEvent, c.Folder, c.Label, c.Mailbox, c.MailboxMessage,
-		c.Message, c.Route, c.RoutingRule,
+		c.MailboxMessageLabel, c.Message, c.Route, c.RoutingRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -259,6 +265,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Mailbox.mutate(ctx, m)
 	case *MailboxMessageMutation:
 		return c.MailboxMessage.mutate(ctx, m)
+	case *MailboxMessageLabelMutation:
+		return c.MailboxMessageLabel.mutate(ctx, m)
 	case *MessageMutation:
 		return c.Message.mutate(ctx, m)
 	case *RouteMutation:
@@ -1068,6 +1076,139 @@ func (c *MailboxMessageClient) mutate(ctx context.Context, m *MailboxMessageMuta
 	}
 }
 
+// MailboxMessageLabelClient is a client for the MailboxMessageLabel schema.
+type MailboxMessageLabelClient struct {
+	config
+}
+
+// NewMailboxMessageLabelClient returns a client for the MailboxMessageLabel from the given config.
+func NewMailboxMessageLabelClient(c config) *MailboxMessageLabelClient {
+	return &MailboxMessageLabelClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `mailboxmessagelabel.Hooks(f(g(h())))`.
+func (c *MailboxMessageLabelClient) Use(hooks ...Hook) {
+	c.hooks.MailboxMessageLabel = append(c.hooks.MailboxMessageLabel, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `mailboxmessagelabel.Intercept(f(g(h())))`.
+func (c *MailboxMessageLabelClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MailboxMessageLabel = append(c.inters.MailboxMessageLabel, interceptors...)
+}
+
+// Create returns a builder for creating a MailboxMessageLabel entity.
+func (c *MailboxMessageLabelClient) Create() *MailboxMessageLabelCreate {
+	mutation := newMailboxMessageLabelMutation(c.config, OpCreate)
+	return &MailboxMessageLabelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MailboxMessageLabel entities.
+func (c *MailboxMessageLabelClient) CreateBulk(builders ...*MailboxMessageLabelCreate) *MailboxMessageLabelCreateBulk {
+	return &MailboxMessageLabelCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MailboxMessageLabelClient) MapCreateBulk(slice any, setFunc func(*MailboxMessageLabelCreate, int)) *MailboxMessageLabelCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MailboxMessageLabelCreateBulk{err: fmt.Errorf("calling to MailboxMessageLabelClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MailboxMessageLabelCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MailboxMessageLabelCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MailboxMessageLabel.
+func (c *MailboxMessageLabelClient) Update() *MailboxMessageLabelUpdate {
+	mutation := newMailboxMessageLabelMutation(c.config, OpUpdate)
+	return &MailboxMessageLabelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MailboxMessageLabelClient) UpdateOne(_m *MailboxMessageLabel) *MailboxMessageLabelUpdateOne {
+	mutation := newMailboxMessageLabelMutation(c.config, OpUpdateOne, withMailboxMessageLabel(_m))
+	return &MailboxMessageLabelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MailboxMessageLabelClient) UpdateOneID(id string) *MailboxMessageLabelUpdateOne {
+	mutation := newMailboxMessageLabelMutation(c.config, OpUpdateOne, withMailboxMessageLabelID(id))
+	return &MailboxMessageLabelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MailboxMessageLabel.
+func (c *MailboxMessageLabelClient) Delete() *MailboxMessageLabelDelete {
+	mutation := newMailboxMessageLabelMutation(c.config, OpDelete)
+	return &MailboxMessageLabelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MailboxMessageLabelClient) DeleteOne(_m *MailboxMessageLabel) *MailboxMessageLabelDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MailboxMessageLabelClient) DeleteOneID(id string) *MailboxMessageLabelDeleteOne {
+	builder := c.Delete().Where(mailboxmessagelabel.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MailboxMessageLabelDeleteOne{builder}
+}
+
+// Query returns a query builder for MailboxMessageLabel.
+func (c *MailboxMessageLabelClient) Query() *MailboxMessageLabelQuery {
+	return &MailboxMessageLabelQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMailboxMessageLabel},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MailboxMessageLabel entity by its id.
+func (c *MailboxMessageLabelClient) Get(ctx context.Context, id string) (*MailboxMessageLabel, error) {
+	return c.Query().Where(mailboxmessagelabel.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MailboxMessageLabelClient) GetX(ctx context.Context, id string) *MailboxMessageLabel {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MailboxMessageLabelClient) Hooks() []Hook {
+	return c.hooks.MailboxMessageLabel
+}
+
+// Interceptors returns the client interceptors.
+func (c *MailboxMessageLabelClient) Interceptors() []Interceptor {
+	return c.inters.MailboxMessageLabel
+}
+
+func (c *MailboxMessageLabelClient) mutate(ctx context.Context, m *MailboxMessageLabelMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MailboxMessageLabelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MailboxMessageLabelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MailboxMessageLabelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MailboxMessageLabelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MailboxMessageLabel mutation op: %q", m.Op())
+	}
+}
+
 // MessageClient is a client for the Message schema.
 type MessageClient struct {
 	config
@@ -1470,11 +1611,11 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage, Message, Route,
-		RoutingRule []ent.Hook
+		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage,
+		MailboxMessageLabel, Message, Route, RoutingRule []ent.Hook
 	}
 	inters struct {
-		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage, Message, Route,
-		RoutingRule []ent.Interceptor
+		AppPassword, AuditEvent, Folder, Label, Mailbox, MailboxMessage,
+		MailboxMessageLabel, Message, Route, RoutingRule []ent.Interceptor
 	}
 )

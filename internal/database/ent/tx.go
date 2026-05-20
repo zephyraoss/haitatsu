@@ -24,6 +24,8 @@ type Tx struct {
 	Mailbox *MailboxClient
 	// MailboxMessage is the client for interacting with the MailboxMessage builders.
 	MailboxMessage *MailboxMessageClient
+	// MailboxMessageLabel is the client for interacting with the MailboxMessageLabel builders.
+	MailboxMessageLabel *MailboxMessageLabelClient
 	// Message is the client for interacting with the Message builders.
 	Message *MessageClient
 	// Route is the client for interacting with the Route builders.
@@ -167,6 +169,7 @@ func (tx *Tx) init() {
 	tx.Label = NewLabelClient(tx.config)
 	tx.Mailbox = NewMailboxClient(tx.config)
 	tx.MailboxMessage = NewMailboxMessageClient(tx.config)
+	tx.MailboxMessageLabel = NewMailboxMessageLabelClient(tx.config)
 	tx.Message = NewMessageClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RoutingRule = NewRoutingRuleClient(tx.config)

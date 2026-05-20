@@ -81,6 +81,18 @@ func (f MailboxMessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MailboxMessageMutation", m)
 }
 
+// The MailboxMessageLabelFunc type is an adapter to allow the use of ordinary
+// function as MailboxMessageLabel mutator.
+type MailboxMessageLabelFunc func(context.Context, *ent.MailboxMessageLabelMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MailboxMessageLabelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MailboxMessageLabelMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MailboxMessageLabelMutation", m)
+}
+
 // The MessageFunc type is an adapter to allow the use of ordinary
 // function as Message mutator.
 type MessageFunc func(context.Context, *ent.MessageMutation) (ent.Value, error)

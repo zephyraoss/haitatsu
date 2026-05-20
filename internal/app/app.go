@@ -69,7 +69,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
-	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), checker, m)
+	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), blobStore, checker, m)
 	resolver := routing.NewResolver(db.Ent())
 	messageService := messages.NewService(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	tlsConfig, err := smtpTLSConfig(cfg.TLS)

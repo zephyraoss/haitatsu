@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -17,10 +18,15 @@ import (
 
 type Handler struct {
 	client *ent.Client
+	store  MessageStore
 }
 
-func Register(router fiber.Router, client *ent.Client, cfg config.APIConfig) {
-	h := &Handler{client: client}
+type MessageStore interface {
+	GetMessage(ctx context.Context, key string) ([]byte, error)
+}
+
+func Register(router fiber.Router, client *ent.Client, store MessageStore, cfg config.APIConfig) {
+	h := &Handler{client: client, store: store}
 	v1 := router.Group("/api/v1", ServiceTokenMiddleware(cfg))
 
 	v1.Get("/mailboxes", h.listMailboxes)
@@ -55,6 +61,16 @@ func Register(router fiber.Router, client *ent.Client, cfg config.APIConfig) {
 	v1.Post("/mailboxes/:mailbox_id/labels", h.createLabel)
 	v1.Patch("/labels/:id", h.updateLabel)
 	v1.Delete("/labels/:id", h.deleteLabel)
+
+	v1.Get("/mailboxes/:mailbox_id/messages", h.listMessages)
+	v1.Get("/messages/:id", h.getMessage)
+	v1.Get("/messages/:id/raw", h.downloadRawMessage)
+	v1.Patch("/messages/:id", h.updateMailboxMessage)
+	v1.Post("/messages/:id/move", h.moveMessage)
+	v1.Delete("/messages/:id", h.deleteMessage)
+	v1.Post("/messages/:id/restore", h.restoreMessage)
+	v1.Post("/messages/:id/labels", h.addMessageLabel)
+	v1.Delete("/messages/:id/labels/:label_id", h.removeMessageLabel)
 
 	v1.Get("/audit_events", h.listAuditEvents)
 }

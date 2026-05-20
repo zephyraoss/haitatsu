@@ -202,6 +202,31 @@ var (
 			},
 		},
 	}
+	// MailboxMessageLabelsColumns holds the columns for the "mailbox_message_labels" table.
+	MailboxMessageLabelsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "mailbox_message_id", Type: field.TypeString},
+		{Name: "label_id", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// MailboxMessageLabelsTable holds the schema information for the "mailbox_message_labels" table.
+	MailboxMessageLabelsTable = &schema.Table{
+		Name:       "mailbox_message_labels",
+		Columns:    MailboxMessageLabelsColumns,
+		PrimaryKey: []*schema.Column{MailboxMessageLabelsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "mailboxmessagelabel_mailbox_message_id_label_id",
+				Unique:  true,
+				Columns: []*schema.Column{MailboxMessageLabelsColumns[1], MailboxMessageLabelsColumns[2]},
+			},
+			{
+				Name:    "mailboxmessagelabel_label_id",
+				Unique:  false,
+				Columns: []*schema.Column{MailboxMessageLabelsColumns[2]},
+			},
+		},
+	}
 	// MessagesColumns holds the columns for the "messages" table.
 	MessagesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -327,6 +352,7 @@ var (
 		LabelsTable,
 		MailboxesTable,
 		MailboxMessagesTable,
+		MailboxMessageLabelsTable,
 		MessagesTable,
 		RoutesTable,
 		RoutingRulesTable,
