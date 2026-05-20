@@ -86,6 +86,8 @@ type LoggingConfig struct {
 	Level        string `pkl:"level"`
 	AxiomEnabled bool   `pkl:"axiom_enabled"`
 	AxiomDataset string `pkl:"axiom_dataset"`
+	AxiomToken   string `pkl:"axiom_token"`
+	AxiomURL     string `pkl:"axiom_url"`
 }
 
 type MetricsConfig struct {
@@ -200,6 +202,14 @@ func (c Config) Validate() error {
 	}
 	if c.Workers.Concurrency < 0 {
 		problems = append(problems, "workers.concurrency must be >= 0")
+	}
+	if c.Logging.AxiomEnabled {
+		if strings.TrimSpace(c.Logging.AxiomDataset) == "" {
+			problems = append(problems, "logging.axiom_dataset is required when Axiom logging is enabled")
+		}
+		if strings.TrimSpace(c.Logging.AxiomToken) == "" {
+			problems = append(problems, "logging.axiom_token is required when Axiom logging is enabled")
+		}
 	}
 	if c.Limits.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "limits.max_message_size_bytes must be >= 0")

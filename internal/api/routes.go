@@ -21,15 +21,21 @@ type Handler struct {
 	client   *ent.Client
 	store    MessageStore
 	outbound *outbound.Submission
+	config   config.Config
+	reloader Reloader
+}
+
+type Reloader interface {
+	Reload(ctx context.Context) error
 }
 
 type MessageStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 }
 
-func Register(router fiber.Router, client *ent.Client, store MessageStore, outboundService *outbound.Submission, cfg config.APIConfig) {
-	h := &Handler{client: client, store: store, outbound: outboundService}
-	v1 := router.Group("/api/v1", ServiceTokenMiddleware(cfg))
+func Register(router fiber.Router, client *ent.Client, store MessageStore, outboundService *outbound.Submission, cfg config.Config, reloader Reloader) {
+	h := &Handler{client: client, store: store, outbound: outboundService, config: cfg, reloader: reloader}
+	v1 := router.Group("/api/v1", ServiceTokenMiddleware(cfg.API))
 
 	v1.Get("/mailboxes", h.listMailboxes)
 	v1.Post("/mailboxes", h.createMailbox)
@@ -77,6 +83,8 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, outbo
 
 	v1.Get("/audit_events", h.listAuditEvents)
 	v1.Get("/events", h.listEvents)
+	v1.Post("/admin/reload", h.reloadConfig)
+	v1.Get("/dns/check/:domain", h.checkDNS)
 
 	v1.Get("/dkim_keys", h.listDKIMKeys)
 	v1.Post("/dkim_keys", h.createDKIMKey)

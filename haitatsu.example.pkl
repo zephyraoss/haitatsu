@@ -48,6 +48,8 @@ logging {
   level = "info"
   axiom_enabled = false
   axiom_dataset = ""
+  axiom_token = ""
+  axiom_url = "https://api.axiom.co"
 }
 
 metrics {

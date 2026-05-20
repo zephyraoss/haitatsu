@@ -10,6 +10,7 @@ import (
 	"os/signal"
 
 	"github.com/zephyraoss/haitatsu/internal/bounce"
+	"github.com/zephyraoss/haitatsu/internal/cleanup"
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/events"
@@ -44,6 +45,7 @@ type App struct {
 	submission *submissionsmtp.Server
 	relay      *outbound.Worker
 	webhooks   *webhooks.Worker
+	cleanup    *cleanup.Worker
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -78,11 +80,13 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		return nil, fmt.Errorf("configure storage: %w", err)
 	}
 
+	runtime := &App{configPath: opts.ConfigPath, config: cfg, logger: logger, database: db, storage: blobStore}
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
 	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName, cfg.Bounce.Domain)
-	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), blobStore, submissionService, checker, m)
+	server := httpapi.New(cfg, db.Ent(), blobStore, submissionService, checker, m, runtime)
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, cfg.Server.InstanceName)
+	cleanupWorker := cleanup.New(db.Ent())
 	eventService := events.New(db.Ent())
 	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), cfg.Webhooks, cfg.Server.InstanceName)
 	resolver := routing.NewResolver(db.Ent())
@@ -98,19 +102,14 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore)
 	submissionServer := submissionsmtp.New(cfg.Submission, cfg.Server.PublicHostname, tlsConfig, db.Ent(), submissionService)
 
-	return &App{
-		configPath: opts.ConfigPath,
-		config:     cfg,
-		logger:     logger,
-		database:   db,
-		storage:    blobStore,
-		server:     server,
-		smtp:       smtpServer,
-		imap:       imapServer,
-		submission: submissionServer,
-		relay:      relayWorker,
-		webhooks:   webhookWorker,
-	}, nil
+	runtime.server = server
+	runtime.smtp = smtpServer
+	runtime.imap = imapServer
+	runtime.submission = submissionServer
+	runtime.relay = relayWorker
+	runtime.webhooks = webhookWorker
+	runtime.cleanup = cleanupWorker
+	return runtime, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -136,6 +135,8 @@ func (a *App) Run(ctx context.Context) error {
 		a.relay.Run(ctx, a.config.Workers.Concurrency)
 		a.logger.Info("starting webhook workers", "concurrency", a.config.Workers.Concurrency)
 		a.webhooks.Run(ctx, a.config.Workers.Concurrency)
+		a.logger.Info("starting cleanup worker")
+		a.cleanup.Run(ctx)
 	}
 
 	select {
