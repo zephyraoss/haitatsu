@@ -11,6 +11,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
+	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/routing"
 	"github.com/zephyraoss/haitatsu/internal/rules"
 	"github.com/zephyraoss/haitatsu/internal/spam"
@@ -29,12 +30,13 @@ type Service struct {
 	store          BlobStore
 	events         EventSink
 	rules          *rules.Engine
+	metrics        *metrics.Metrics
 	publicHostname string
 	instanceName   string
 }
 
-func NewService(client *ent.Client, store BlobStore, events EventSink, rules *rules.Engine, publicHostname string, instanceName string) *Service {
-	return &Service{client: client, store: store, events: events, rules: rules, publicHostname: publicHostname, instanceName: instanceName}
+func NewService(client *ent.Client, store BlobStore, events EventSink, rules *rules.Engine, metrics *metrics.Metrics, publicHostname string, instanceName string) *Service {
+	return &Service{client: client, store: store, events: events, rules: rules, metrics: metrics, publicHostname: publicHostname, instanceName: instanceName}
 }
 
 func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
@@ -80,6 +82,8 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	if err != nil {
 		return nil, err
 	}
+	s.metrics.MessageReceived()
+	s.metrics.MessageDelivered(len(deliveries))
 	if s.rules != nil {
 		if err := s.rules.Apply(ctx, message, deliveries); err != nil {
 			return nil, err

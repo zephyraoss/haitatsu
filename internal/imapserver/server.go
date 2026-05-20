@@ -23,6 +23,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
+	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
 const labelPrefix = "Labels/"
@@ -36,10 +37,11 @@ type Server struct {
 	server *goimapserver.Server
 }
 
-func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, store MessageStore) *Server {
+func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, store MessageStore, metrics *metrics.Metrics) *Server {
 	server := goimapserver.New(&goimapserver.Options{
 		NewSession: func(*goimapserver.Conn) (goimapserver.Session, *goimapserver.GreetingData, error) {
-			return &session{client: client, store: store}, &goimapserver.GreetingData{}, nil
+			metrics.IMAPSessionStart()
+			return &session{client: client, store: store, metrics: metrics}, &goimapserver.GreetingData{}, nil
 		},
 		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIdle: {}},
 		TLSConfig:    tlsConfig,
@@ -63,11 +65,15 @@ func (s *Server) Shutdown(context.Context) error {
 type session struct {
 	client       *ent.Client
 	store        MessageStore
+	metrics      *metrics.Metrics
 	mailboxID    string
 	selectedName string
 }
 
-func (s *session) Close() error { return nil }
+func (s *session) Close() error {
+	s.metrics.IMAPSessionEnd()
+	return nil
+}
 
 func (s *session) Login(username, password string) error {
 	mbox, err := s.client.Mailbox.Query().Where(mailbox.PrimaryAddressEqualFold(username), mailbox.StatusEQ("active"), mailbox.DeletedAtIsNil()).Only(context.Background())

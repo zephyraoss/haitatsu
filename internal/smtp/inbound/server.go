@@ -14,6 +14,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/bounce"
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/messages"
+	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/routing"
 	"github.com/zephyraoss/haitatsu/internal/spam"
 )
@@ -22,8 +23,8 @@ type Server struct {
 	server *smtp.Server
 }
 
-func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *routing.Resolver, messages *messages.Service, bounces *bounce.Handler, spamChecker *spam.Checker) *Server {
-	server := smtp.NewServer(&backend{resolver: resolver, messages: messages, bounces: bounces, spam: spamChecker})
+func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *routing.Resolver, messages *messages.Service, bounces *bounce.Handler, spamChecker *spam.Checker, metrics *metrics.Metrics) *Server {
+	server := smtp.NewServer(&backend{resolver: resolver, messages: messages, bounces: bounces, spam: spamChecker, metrics: metrics})
 	server.Addr = cfg.InboundAddr
 	server.Domain = domain
 	server.TLSConfig = tlsConfig
@@ -52,10 +53,12 @@ type backend struct {
 	messages *messages.Service
 	bounces  *bounce.Handler
 	spam     *spam.Checker
+	metrics  *metrics.Metrics
 }
 
 func (b *backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
-	return &session{resolver: b.resolver, messages: b.messages, bounces: b.bounces, spam: b.spam, smtp: smtpContext(conn)}, nil
+	b.metrics.SMTPConnection()
+	return &session{resolver: b.resolver, messages: b.messages, bounces: b.bounces, spam: b.spam, metrics: b.metrics, smtp: smtpContext(conn)}, nil
 }
 
 type session struct {
@@ -63,6 +66,7 @@ type session struct {
 	messages   *messages.Service
 	bounces    *bounce.Handler
 	spam       *spam.Checker
+	metrics    *metrics.Metrics
 	smtp       spam.SMTPContext
 	mailFrom   string
 	recipients []routing.Result
@@ -94,6 +98,7 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 	}
 	for _, mbox := range result.Mailboxes {
 		if routing.OverQuota(mbox) {
+			s.metrics.MailboxOverQuota()
 			return &smtp.SMTPError{Code: 552, Message: "mailbox over quota"}
 		}
 	}

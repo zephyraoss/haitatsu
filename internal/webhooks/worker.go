@@ -15,6 +15,7 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
 const maxAttempts = 3
@@ -23,6 +24,7 @@ type Worker struct {
 	db       *sql.DB
 	client   *ent.Client
 	cfg      config.WebhookConfig
+	metrics  *metrics.Metrics
 	workerID string
 	http     *http.Client
 }
@@ -35,12 +37,12 @@ type eventJob struct {
 	Attempts  int
 }
 
-func NewWorker(db *sql.DB, client *ent.Client, cfg config.WebhookConfig, workerID string) *Worker {
+func NewWorker(db *sql.DB, client *ent.Client, cfg config.WebhookConfig, metrics *metrics.Metrics, workerID string) *Worker {
 	timeout := time.Duration(cfg.DefaultTimeoutSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}
-	return &Worker{db: db, client: client, cfg: cfg, workerID: workerID, http: &http.Client{Timeout: timeout}}
+	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, http: &http.Client{Timeout: timeout}}
 }
 
 func (w *Worker) Run(ctx context.Context, concurrency int) {
@@ -80,8 +82,10 @@ func (w *Worker) processOne(ctx context.Context) error {
 		return w.fail(ctx, job, err)
 	}
 	if err := w.post(ctx, endpoint, job, body); err != nil {
+		w.metrics.WebhookFailure()
 		return w.fail(ctx, job, err)
 	}
+	w.metrics.WorkerJob("webhook", "delivered")
 	_, err = w.client.EventLog.UpdateOneID(job.ID).SetStatus("delivered").ClearLockedBy().ClearLockedUntil().ClearNextAttemptAt().Save(ctx)
 	return err
 }

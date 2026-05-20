@@ -15,6 +15,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
 const maxRelayAttempts = 5
@@ -28,6 +29,7 @@ type Worker struct {
 	client   *ent.Client
 	store    RelayStore
 	cfg      config.RelayConfig
+	metrics  *metrics.Metrics
 	workerID string
 }
 
@@ -46,8 +48,8 @@ type deliveryResult struct {
 	Response           string
 }
 
-func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg config.RelayConfig, workerID string) *Worker {
-	return &Worker{db: db, client: client, store: store, cfg: cfg, workerID: workerID}
+func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg config.RelayConfig, metrics *metrics.Metrics, workerID string) *Worker {
+	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, workerID: workerID}
 }
 
 func (w *Worker) Run(ctx context.Context, concurrency int) {
@@ -78,6 +80,10 @@ func (w *Worker) processOne(ctx context.Context) error {
 		return err
 	}
 	result := w.deliver(ctx, job)
+	w.metrics.WorkerJob("outbound", result.Classification)
+	if result.Classification == "success" {
+		w.metrics.MessageSent()
+	}
 	if _, err := w.client.OutboundAttempt.Create().
 		SetOutboundJobID(job.ID).
 		SetMessageID(job.MessageID).

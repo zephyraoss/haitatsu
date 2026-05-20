@@ -12,6 +12,7 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/ids"
+	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
 type Store interface {
@@ -19,9 +20,10 @@ type Store interface {
 }
 
 type Handler struct {
-	client *ent.Client
-	store  Store
-	domain string
+	client  *ent.Client
+	store   Store
+	metrics *metrics.Metrics
+	domain  string
 }
 
 type Recipient struct {
@@ -29,8 +31,8 @@ type Recipient struct {
 	MessageID string
 }
 
-func NewHandler(client *ent.Client, store Store, domain string) *Handler {
-	return &Handler{client: client, store: store, domain: strings.ToLower(domain)}
+func NewHandler(client *ent.Client, store Store, metrics *metrics.Metrics, domain string) *Handler {
+	return &Handler{client: client, store: store, metrics: metrics, domain: strings.ToLower(domain)}
 }
 
 func (h *Handler) ParseRecipient(address string) (Recipient, bool, bool) {
@@ -61,6 +63,9 @@ func (h *Handler) Record(ctx context.Context, recipient Recipient, raw []byte) e
 		SetSizeBytes(int64(len(raw))).
 		SetDetails(map[string]any{"received_at": time.Now().UTC().Format(time.RFC3339)}).
 		Save(ctx)
+	if err == nil {
+		h.metrics.MessageBounced()
+	}
 	return err
 }
 
