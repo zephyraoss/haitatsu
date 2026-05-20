@@ -53,3 +53,8 @@ func (c *Client) GetMessage(ctx context.Context, key string) ([]byte, error) {
 	defer object.Close()
 	return io.ReadAll(object)
 }
+
+func (c *Client) PutExport(ctx context.Context, key string, data []byte) error {
+	_, err := c.client.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "application/zip"})
+	return err
+}

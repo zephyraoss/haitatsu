@@ -22,8 +22,12 @@ type Tx struct {
 	DKIMKey *DKIMKeyClient
 	// EventLog is the client for interacting with the EventLog builders.
 	EventLog *EventLogClient
+	// ExportJob is the client for interacting with the ExportJob builders.
+	ExportJob *ExportJobClient
 	// Folder is the client for interacting with the Folder builders.
 	Folder *FolderClient
+	// ImportJob is the client for interacting with the ImportJob builders.
+	ImportJob *ImportJobClient
 	// Label is the client for interacting with the Label builders.
 	Label *LabelClient
 	// Mailbox is the client for interacting with the Mailbox builders.
@@ -180,7 +184,9 @@ func (tx *Tx) init() {
 	tx.BounceEvent = NewBounceEventClient(tx.config)
 	tx.DKIMKey = NewDKIMKeyClient(tx.config)
 	tx.EventLog = NewEventLogClient(tx.config)
+	tx.ExportJob = NewExportJobClient(tx.config)
 	tx.Folder = NewFolderClient(tx.config)
+	tx.ImportJob = NewImportJobClient(tx.config)
 	tx.Label = NewLabelClient(tx.config)
 	tx.Mailbox = NewMailboxClient(tx.config)
 	tx.MailboxMessage = NewMailboxMessageClient(tx.config)

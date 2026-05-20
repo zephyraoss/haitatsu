@@ -10,7 +10,9 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
@@ -108,6 +110,30 @@ func init() {
 	eventlogDescID := eventlogFields[0].Descriptor()
 	// eventlog.DefaultID holds the default value on creation for the id field.
 	eventlog.DefaultID = eventlogDescID.Default.(func() string)
+	exportjobFields := schema.ExportJob{}.Fields()
+	_ = exportjobFields
+	// exportjobDescStatus is the schema descriptor for status field.
+	exportjobDescStatus := exportjobFields[2].Descriptor()
+	// exportjob.DefaultStatus holds the default value on creation for the status field.
+	exportjob.DefaultStatus = exportjobDescStatus.Default.(string)
+	// exportjobDescSizeBytes is the schema descriptor for size_bytes field.
+	exportjobDescSizeBytes := exportjobFields[4].Descriptor()
+	// exportjob.DefaultSizeBytes holds the default value on creation for the size_bytes field.
+	exportjob.DefaultSizeBytes = exportjobDescSizeBytes.Default.(int64)
+	// exportjobDescCreatedAt is the schema descriptor for created_at field.
+	exportjobDescCreatedAt := exportjobFields[9].Descriptor()
+	// exportjob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	exportjob.DefaultCreatedAt = exportjobDescCreatedAt.Default.(func() time.Time)
+	// exportjobDescUpdatedAt is the schema descriptor for updated_at field.
+	exportjobDescUpdatedAt := exportjobFields[10].Descriptor()
+	// exportjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	exportjob.DefaultUpdatedAt = exportjobDescUpdatedAt.Default.(func() time.Time)
+	// exportjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	exportjob.UpdateDefaultUpdatedAt = exportjobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// exportjobDescID is the schema descriptor for id field.
+	exportjobDescID := exportjobFields[0].Descriptor()
+	// exportjob.DefaultID holds the default value on creation for the id field.
+	exportjob.DefaultID = exportjobDescID.Default.(func() string)
 	folderFields := schema.Folder{}.Fields()
 	_ = folderFields
 	// folderDescSystem is the schema descriptor for system field.
@@ -128,6 +154,30 @@ func init() {
 	folderDescID := folderFields[0].Descriptor()
 	// folder.DefaultID holds the default value on creation for the id field.
 	folder.DefaultID = folderDescID.Default.(func() string)
+	importjobFields := schema.ImportJob{}.Fields()
+	_ = importjobFields
+	// importjobDescStatus is the schema descriptor for status field.
+	importjobDescStatus := importjobFields[4].Descriptor()
+	// importjob.DefaultStatus holds the default value on creation for the status field.
+	importjob.DefaultStatus = importjobDescStatus.Default.(string)
+	// importjobDescImportedCount is the schema descriptor for imported_count field.
+	importjobDescImportedCount := importjobFields[5].Descriptor()
+	// importjob.DefaultImportedCount holds the default value on creation for the imported_count field.
+	importjob.DefaultImportedCount = importjobDescImportedCount.Default.(int)
+	// importjobDescCreatedAt is the schema descriptor for created_at field.
+	importjobDescCreatedAt := importjobFields[9].Descriptor()
+	// importjob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	importjob.DefaultCreatedAt = importjobDescCreatedAt.Default.(func() time.Time)
+	// importjobDescUpdatedAt is the schema descriptor for updated_at field.
+	importjobDescUpdatedAt := importjobFields[10].Descriptor()
+	// importjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	importjob.DefaultUpdatedAt = importjobDescUpdatedAt.Default.(func() time.Time)
+	// importjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	importjob.UpdateDefaultUpdatedAt = importjobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// importjobDescID is the schema descriptor for id field.
+	importjobDescID := importjobFields[0].Descriptor()
+	// importjob.DefaultID holds the default value on creation for the id field.
+	importjob.DefaultID = importjobDescID.Default.(func() string)
 	labelFields := schema.Label{}.Fields()
 	_ = labelFields
 	// labelDescCreatedAt is the schema descriptor for created_at field.

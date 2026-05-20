@@ -69,6 +69,18 @@ func (f EventLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EventLogMutation", m)
 }
 
+// The ExportJobFunc type is an adapter to allow the use of ordinary
+// function as ExportJob mutator.
+type ExportJobFunc func(context.Context, *ent.ExportJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ExportJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ExportJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExportJobMutation", m)
+}
+
 // The FolderFunc type is an adapter to allow the use of ordinary
 // function as Folder mutator.
 type FolderFunc func(context.Context, *ent.FolderMutation) (ent.Value, error)
@@ -79,6 +91,18 @@ func (f FolderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, erro
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FolderMutation", m)
+}
+
+// The ImportJobFunc type is an adapter to allow the use of ordinary
+// function as ImportJob mutator.
+type ImportJobFunc func(context.Context, *ent.ImportJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ImportJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ImportJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ImportJobMutation", m)
 }
 
 // The LabelFunc type is an adapter to allow the use of ordinary

@@ -8,6 +8,10 @@ import (
 )
 
 const MessageReceived = "message.received"
+const MailboxExportCompleted = "mailbox.export_completed"
+const MailboxExportFailed = "mailbox.export_failed"
+const MailboxImportCompleted = "mailbox.import_completed"
+const MailboxImportFailed = "mailbox.import_failed"
 
 type Service struct {
 	client *ent.Client
@@ -39,6 +43,21 @@ func (s *Service) EmitMessageReceived(ctx context.Context, msg *ent.Message, rec
 		}
 	}
 	return nil
+}
+
+func (s *Service) Emit(ctx context.Context, eventType string, mailboxID string, payload map[string]any) error {
+	create := s.client.EventLog.Create().SetEventType(eventType).SetPayload(payload)
+	if mailboxID != "" {
+		create.SetMailboxID(mailboxID)
+	}
+	if messageID, _ := payload["message_id"].(string); messageID != "" {
+		create.SetMessageID(messageID)
+	}
+	if traceID, _ := payload["trace_id"].(string); traceID != "" {
+		create.SetTraceID(traceID)
+	}
+	_, err := create.Save(ctx)
+	return err
 }
 
 func deliveredMailboxIDs(mailboxes []*ent.Mailbox) []string {

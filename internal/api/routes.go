@@ -93,6 +93,13 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, outbo
 	v1.Get("/rules/sender", h.listSenderRules)
 	v1.Post("/rules/sender", h.createSenderRule)
 	v1.Delete("/rules/sender/:id", h.deleteSenderRule)
+
+	v1.Post("/mailboxes/:mailbox_id/export", h.createExport)
+	v1.Get("/exports", h.listExports)
+	v1.Get("/exports/:id", h.getExport)
+	v1.Post("/mailboxes/:mailbox_id/import", h.createImport)
+	v1.Get("/imports", h.listImports)
+	v1.Get("/imports/:id", h.getImport)
 }
 
 type mailboxRequest struct {

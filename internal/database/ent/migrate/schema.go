@@ -197,6 +197,48 @@ var (
 			},
 		},
 	}
+	// ExportJobsColumns holds the columns for the "export_jobs" table.
+	ExportJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "mailbox_id", Type: field.TypeString},
+		{Name: "status", Type: field.TypeString, Default: "queued"},
+		{Name: "object_key", Type: field.TypeString, Nullable: true},
+		{Name: "size_bytes", Type: field.TypeInt64, Default: 0},
+		{Name: "locked_by", Type: field.TypeString, Nullable: true},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeJSON, Nullable: true},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ExportJobsTable holds the schema information for the "export_jobs" table.
+	ExportJobsTable = &schema.Table{
+		Name:       "export_jobs",
+		Columns:    ExportJobsColumns,
+		PrimaryKey: []*schema.Column{ExportJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "exportjob_mailbox_id",
+				Unique:  false,
+				Columns: []*schema.Column{ExportJobsColumns[1]},
+			},
+			{
+				Name:    "exportjob_status",
+				Unique:  false,
+				Columns: []*schema.Column{ExportJobsColumns[2]},
+			},
+			{
+				Name:    "exportjob_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{ExportJobsColumns[6]},
+			},
+			{
+				Name:    "exportjob_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{ExportJobsColumns[8]},
+			},
+		},
+	}
 	// FoldersColumns holds the columns for the "folders" table.
 	FoldersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -216,6 +258,48 @@ var (
 				Name:    "folder_mailbox_id_name",
 				Unique:  true,
 				Columns: []*schema.Column{FoldersColumns[1], FoldersColumns[2]},
+			},
+		},
+	}
+	// ImportJobsColumns holds the columns for the "import_jobs" table.
+	ImportJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "mailbox_id", Type: field.TypeString},
+		{Name: "source_type", Type: field.TypeString},
+		{Name: "source", Type: field.TypeJSON},
+		{Name: "status", Type: field.TypeString, Default: "queued"},
+		{Name: "imported_count", Type: field.TypeInt, Default: 0},
+		{Name: "locked_by", Type: field.TypeString, Nullable: true},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ImportJobsTable holds the schema information for the "import_jobs" table.
+	ImportJobsTable = &schema.Table{
+		Name:       "import_jobs",
+		Columns:    ImportJobsColumns,
+		PrimaryKey: []*schema.Column{ImportJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "importjob_mailbox_id",
+				Unique:  false,
+				Columns: []*schema.Column{ImportJobsColumns[1]},
+			},
+			{
+				Name:    "importjob_source_type",
+				Unique:  false,
+				Columns: []*schema.Column{ImportJobsColumns[2]},
+			},
+			{
+				Name:    "importjob_status",
+				Unique:  false,
+				Columns: []*schema.Column{ImportJobsColumns[4]},
+			},
+			{
+				Name:    "importjob_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{ImportJobsColumns[7]},
 			},
 		},
 	}
@@ -567,7 +651,9 @@ var (
 		BounceEventsTable,
 		DkimKeysTable,
 		EventLogsTable,
+		ExportJobsTable,
 		FoldersTable,
+		ImportJobsTable,
 		LabelsTable,
 		MailboxesTable,
 		MailboxMessagesTable,

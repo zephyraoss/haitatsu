@@ -17,7 +17,9 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
@@ -93,7 +95,9 @@ func checkColumn(t, c string) error {
 			bounceevent.Table:         bounceevent.ValidColumn,
 			dkimkey.Table:             dkimkey.ValidColumn,
 			eventlog.Table:            eventlog.ValidColumn,
+			exportjob.Table:           exportjob.ValidColumn,
 			folder.Table:              folder.ValidColumn,
+			importjob.Table:           importjob.ValidColumn,
 			label.Table:               label.ValidColumn,
 			mailbox.Table:             mailbox.ValidColumn,
 			mailboxmessage.Table:      mailboxmessage.ValidColumn,

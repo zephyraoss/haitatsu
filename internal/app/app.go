@@ -17,6 +17,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/health"
 	"github.com/zephyraoss/haitatsu/internal/httpapi"
 	"github.com/zephyraoss/haitatsu/internal/imapserver"
+	"github.com/zephyraoss/haitatsu/internal/importexport"
 	"github.com/zephyraoss/haitatsu/internal/logging"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
@@ -46,6 +47,8 @@ type App struct {
 	relay      *outbound.Worker
 	webhooks   *webhooks.Worker
 	cleanup    *cleanup.Worker
+	exports    *importexport.ExportWorker
+	imports    *importexport.ImportWorker
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -88,6 +91,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, cfg.Server.InstanceName)
 	cleanupWorker := cleanup.New(db.Ent())
 	eventService := events.New(db.Ent())
+	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
+	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), eventService, cfg.Server.InstanceName)
 	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), cfg.Webhooks, cfg.Server.InstanceName)
 	resolver := routing.NewResolver(db.Ent())
 	messageService := messages.NewService(db.Ent(), blobStore, eventService, cfg.Server.PublicHostname, cfg.Server.InstanceName)
@@ -109,6 +114,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	runtime.relay = relayWorker
 	runtime.webhooks = webhookWorker
 	runtime.cleanup = cleanupWorker
+	runtime.exports = exportWorker
+	runtime.imports = importWorker
 	return runtime, nil
 }
 
@@ -137,6 +144,9 @@ func (a *App) Run(ctx context.Context) error {
 		a.webhooks.Run(ctx, a.config.Workers.Concurrency)
 		a.logger.Info("starting cleanup worker")
 		a.cleanup.Run(ctx)
+		a.logger.Info("starting import export workers", "concurrency", a.config.Workers.Concurrency)
+		a.exports.Run(ctx, a.config.Workers.Concurrency)
+		a.imports.Run(ctx, a.config.Workers.Concurrency)
 	}
 
 	select {

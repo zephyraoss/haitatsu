@@ -19,7 +19,9 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
@@ -47,8 +49,12 @@ type Client struct {
 	DKIMKey *DKIMKeyClient
 	// EventLog is the client for interacting with the EventLog builders.
 	EventLog *EventLogClient
+	// ExportJob is the client for interacting with the ExportJob builders.
+	ExportJob *ExportJobClient
 	// Folder is the client for interacting with the Folder builders.
 	Folder *FolderClient
+	// ImportJob is the client for interacting with the ImportJob builders.
+	ImportJob *ImportJobClient
 	// Label is the client for interacting with the Label builders.
 	Label *LabelClient
 	// Mailbox is the client for interacting with the Mailbox builders.
@@ -85,7 +91,9 @@ func (c *Client) init() {
 	c.BounceEvent = NewBounceEventClient(c.config)
 	c.DKIMKey = NewDKIMKeyClient(c.config)
 	c.EventLog = NewEventLogClient(c.config)
+	c.ExportJob = NewExportJobClient(c.config)
 	c.Folder = NewFolderClient(c.config)
+	c.ImportJob = NewImportJobClient(c.config)
 	c.Label = NewLabelClient(c.config)
 	c.Mailbox = NewMailboxClient(c.config)
 	c.MailboxMessage = NewMailboxMessageClient(c.config)
@@ -193,7 +201,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
 		EventLog:            NewEventLogClient(cfg),
+		ExportJob:           NewExportJobClient(cfg),
 		Folder:              NewFolderClient(cfg),
+		ImportJob:           NewImportJobClient(cfg),
 		Label:               NewLabelClient(cfg),
 		Mailbox:             NewMailboxClient(cfg),
 		MailboxMessage:      NewMailboxMessageClient(cfg),
@@ -228,7 +238,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
 		EventLog:            NewEventLogClient(cfg),
+		ExportJob:           NewExportJobClient(cfg),
 		Folder:              NewFolderClient(cfg),
+		ImportJob:           NewImportJobClient(cfg),
 		Label:               NewLabelClient(cfg),
 		Mailbox:             NewMailboxClient(cfg),
 		MailboxMessage:      NewMailboxMessageClient(cfg),
@@ -268,9 +280,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.Folder,
-		c.Label, c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
-		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule, c.SenderRule,
+		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.ExportJob,
+		c.Folder, c.ImportJob, c.Label, c.Mailbox, c.MailboxMessage,
+		c.MailboxMessageLabel, c.Message, c.OutboundAttempt, c.OutboundJob, c.Route,
+		c.RoutingRule, c.SenderRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -280,9 +293,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.Folder,
-		c.Label, c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
-		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule, c.SenderRule,
+		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.ExportJob,
+		c.Folder, c.ImportJob, c.Label, c.Mailbox, c.MailboxMessage,
+		c.MailboxMessageLabel, c.Message, c.OutboundAttempt, c.OutboundJob, c.Route,
+		c.RoutingRule, c.SenderRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -301,8 +315,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.DKIMKey.mutate(ctx, m)
 	case *EventLogMutation:
 		return c.EventLog.mutate(ctx, m)
+	case *ExportJobMutation:
+		return c.ExportJob.mutate(ctx, m)
 	case *FolderMutation:
 		return c.Folder.mutate(ctx, m)
+	case *ImportJobMutation:
+		return c.ImportJob.mutate(ctx, m)
 	case *LabelMutation:
 		return c.Label.mutate(ctx, m)
 	case *MailboxMutation:
@@ -993,6 +1011,139 @@ func (c *EventLogClient) mutate(ctx context.Context, m *EventLogMutation) (Value
 	}
 }
 
+// ExportJobClient is a client for the ExportJob schema.
+type ExportJobClient struct {
+	config
+}
+
+// NewExportJobClient returns a client for the ExportJob from the given config.
+func NewExportJobClient(c config) *ExportJobClient {
+	return &ExportJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `exportjob.Hooks(f(g(h())))`.
+func (c *ExportJobClient) Use(hooks ...Hook) {
+	c.hooks.ExportJob = append(c.hooks.ExportJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `exportjob.Intercept(f(g(h())))`.
+func (c *ExportJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ExportJob = append(c.inters.ExportJob, interceptors...)
+}
+
+// Create returns a builder for creating a ExportJob entity.
+func (c *ExportJobClient) Create() *ExportJobCreate {
+	mutation := newExportJobMutation(c.config, OpCreate)
+	return &ExportJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ExportJob entities.
+func (c *ExportJobClient) CreateBulk(builders ...*ExportJobCreate) *ExportJobCreateBulk {
+	return &ExportJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ExportJobClient) MapCreateBulk(slice any, setFunc func(*ExportJobCreate, int)) *ExportJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ExportJobCreateBulk{err: fmt.Errorf("calling to ExportJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ExportJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ExportJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ExportJob.
+func (c *ExportJobClient) Update() *ExportJobUpdate {
+	mutation := newExportJobMutation(c.config, OpUpdate)
+	return &ExportJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ExportJobClient) UpdateOne(_m *ExportJob) *ExportJobUpdateOne {
+	mutation := newExportJobMutation(c.config, OpUpdateOne, withExportJob(_m))
+	return &ExportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ExportJobClient) UpdateOneID(id string) *ExportJobUpdateOne {
+	mutation := newExportJobMutation(c.config, OpUpdateOne, withExportJobID(id))
+	return &ExportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ExportJob.
+func (c *ExportJobClient) Delete() *ExportJobDelete {
+	mutation := newExportJobMutation(c.config, OpDelete)
+	return &ExportJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ExportJobClient) DeleteOne(_m *ExportJob) *ExportJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ExportJobClient) DeleteOneID(id string) *ExportJobDeleteOne {
+	builder := c.Delete().Where(exportjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ExportJobDeleteOne{builder}
+}
+
+// Query returns a query builder for ExportJob.
+func (c *ExportJobClient) Query() *ExportJobQuery {
+	return &ExportJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeExportJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ExportJob entity by its id.
+func (c *ExportJobClient) Get(ctx context.Context, id string) (*ExportJob, error) {
+	return c.Query().Where(exportjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ExportJobClient) GetX(ctx context.Context, id string) *ExportJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ExportJobClient) Hooks() []Hook {
+	return c.hooks.ExportJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *ExportJobClient) Interceptors() []Interceptor {
+	return c.inters.ExportJob
+}
+
+func (c *ExportJobClient) mutate(ctx context.Context, m *ExportJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ExportJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ExportJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ExportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ExportJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ExportJob mutation op: %q", m.Op())
+	}
+}
+
 // FolderClient is a client for the Folder schema.
 type FolderClient struct {
 	config
@@ -1123,6 +1274,139 @@ func (c *FolderClient) mutate(ctx context.Context, m *FolderMutation) (Value, er
 		return (&FolderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Folder mutation op: %q", m.Op())
+	}
+}
+
+// ImportJobClient is a client for the ImportJob schema.
+type ImportJobClient struct {
+	config
+}
+
+// NewImportJobClient returns a client for the ImportJob from the given config.
+func NewImportJobClient(c config) *ImportJobClient {
+	return &ImportJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `importjob.Hooks(f(g(h())))`.
+func (c *ImportJobClient) Use(hooks ...Hook) {
+	c.hooks.ImportJob = append(c.hooks.ImportJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `importjob.Intercept(f(g(h())))`.
+func (c *ImportJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ImportJob = append(c.inters.ImportJob, interceptors...)
+}
+
+// Create returns a builder for creating a ImportJob entity.
+func (c *ImportJobClient) Create() *ImportJobCreate {
+	mutation := newImportJobMutation(c.config, OpCreate)
+	return &ImportJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ImportJob entities.
+func (c *ImportJobClient) CreateBulk(builders ...*ImportJobCreate) *ImportJobCreateBulk {
+	return &ImportJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ImportJobClient) MapCreateBulk(slice any, setFunc func(*ImportJobCreate, int)) *ImportJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ImportJobCreateBulk{err: fmt.Errorf("calling to ImportJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ImportJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ImportJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ImportJob.
+func (c *ImportJobClient) Update() *ImportJobUpdate {
+	mutation := newImportJobMutation(c.config, OpUpdate)
+	return &ImportJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ImportJobClient) UpdateOne(_m *ImportJob) *ImportJobUpdateOne {
+	mutation := newImportJobMutation(c.config, OpUpdateOne, withImportJob(_m))
+	return &ImportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ImportJobClient) UpdateOneID(id string) *ImportJobUpdateOne {
+	mutation := newImportJobMutation(c.config, OpUpdateOne, withImportJobID(id))
+	return &ImportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ImportJob.
+func (c *ImportJobClient) Delete() *ImportJobDelete {
+	mutation := newImportJobMutation(c.config, OpDelete)
+	return &ImportJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ImportJobClient) DeleteOne(_m *ImportJob) *ImportJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ImportJobClient) DeleteOneID(id string) *ImportJobDeleteOne {
+	builder := c.Delete().Where(importjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ImportJobDeleteOne{builder}
+}
+
+// Query returns a query builder for ImportJob.
+func (c *ImportJobClient) Query() *ImportJobQuery {
+	return &ImportJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeImportJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ImportJob entity by its id.
+func (c *ImportJobClient) Get(ctx context.Context, id string) (*ImportJob, error) {
+	return c.Query().Where(importjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ImportJobClient) GetX(ctx context.Context, id string) *ImportJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ImportJobClient) Hooks() []Hook {
+	return c.hooks.ImportJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *ImportJobClient) Interceptors() []Interceptor {
+	return c.inters.ImportJob
+}
+
+func (c *ImportJobClient) mutate(ctx context.Context, m *ImportJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ImportJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ImportJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ImportJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ImportJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ImportJob mutation op: %q", m.Op())
 	}
 }
 
@@ -2459,13 +2743,13 @@ func (c *SenderRuleClient) mutate(ctx context.Context, m *SenderRuleMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, Folder, Label, Mailbox,
-		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
-		Route, RoutingRule, SenderRule []ent.Hook
+		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, ExportJob, Folder,
+		ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel, Message,
+		OutboundAttempt, OutboundJob, Route, RoutingRule, SenderRule []ent.Hook
 	}
 	inters struct {
-		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, Folder, Label, Mailbox,
-		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
-		Route, RoutingRule, SenderRule []ent.Interceptor
+		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, ExportJob, Folder,
+		ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel, Message,
+		OutboundAttempt, OutboundJob, Route, RoutingRule, SenderRule []ent.Interceptor
 	}
 )

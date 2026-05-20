@@ -1,0 +1,81 @@
+package api
+
+import (
+	"github.com/gofiber/fiber/v3"
+
+	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
+)
+
+type importRequest struct {
+	SourceType string         `json:"source_type"`
+	Source     map[string]any `json:"source"`
+}
+
+func (h *Handler) createExport(c fiber.Ctx) error {
+	job, err := h.client.ExportJob.Create().SetMailboxID(c.Params("mailbox_id")).Save(c.Context())
+	if err != nil {
+		return entProblem(c, err, "export_create_failed", "Failed to create export")
+	}
+	return created(c, job)
+}
+
+func (h *Handler) listExports(c fiber.Ctx) error {
+	limit := requestLimit(c)
+	query := h.client.ExportJob.Query().Limit(limit)
+	if mailboxID := c.Query("mailbox_id"); mailboxID != "" {
+		query.Where(exportjob.MailboxIDEQ(mailboxID))
+	}
+	items, err := query.All(c.Context())
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "export_list_failed", "Failed to list exports")
+	}
+	return list(c, items, limit, "")
+}
+
+func (h *Handler) getExport(c fiber.Ctx) error {
+	job, err := h.client.ExportJob.Get(c.Context(), c.Params("id"))
+	if err != nil {
+		return entProblem(c, err, "export_not_found", "Export not found")
+	}
+	return data(c, job)
+}
+
+func (h *Handler) createImport(c fiber.Ctx) error {
+	var req importRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
+	}
+	if req.SourceType == "" {
+		return problem(c, fiber.StatusBadRequest, "source_type_required", "Source type is required")
+	}
+	if req.Source == nil {
+		req.Source = map[string]any{}
+	}
+	job, err := h.client.ImportJob.Create().SetMailboxID(c.Params("mailbox_id")).SetSourceType(req.SourceType).SetSource(req.Source).Save(c.Context())
+	if err != nil {
+		return entProblem(c, err, "import_create_failed", "Failed to create import")
+	}
+	return created(c, job)
+}
+
+func (h *Handler) listImports(c fiber.Ctx) error {
+	limit := requestLimit(c)
+	query := h.client.ImportJob.Query().Limit(limit)
+	if mailboxID := c.Query("mailbox_id"); mailboxID != "" {
+		query.Where(importjob.MailboxIDEQ(mailboxID))
+	}
+	items, err := query.All(c.Context())
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "import_list_failed", "Failed to list imports")
+	}
+	return list(c, items, limit, "")
+}
+
+func (h *Handler) getImport(c fiber.Ctx) error {
+	job, err := h.client.ImportJob.Get(c.Context(), c.Params("id"))
+	if err != nil {
+		return entProblem(c, err, "import_not_found", "Import not found")
+	}
+	return data(c, job)
+}

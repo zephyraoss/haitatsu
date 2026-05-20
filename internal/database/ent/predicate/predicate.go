@@ -21,8 +21,14 @@ type DKIMKey func(*sql.Selector)
 // EventLog is the predicate function for eventlog builders.
 type EventLog func(*sql.Selector)
 
+// ExportJob is the predicate function for exportjob builders.
+type ExportJob func(*sql.Selector)
+
 // Folder is the predicate function for folder builders.
 type Folder func(*sql.Selector)
+
+// ImportJob is the predicate function for importjob builders.
+type ImportJob func(*sql.Selector)
 
 // Label is the predicate function for label builders.
 type Label func(*sql.Selector)
