@@ -23,6 +23,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 	"github.com/zephyraoss/haitatsu/internal/routing"
+	"github.com/zephyraoss/haitatsu/internal/rules"
 	inboundsmtp "github.com/zephyraoss/haitatsu/internal/smtp/inbound"
 	submissionsmtp "github.com/zephyraoss/haitatsu/internal/smtp/submission"
 	"github.com/zephyraoss/haitatsu/internal/spam"
@@ -95,7 +96,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), eventService, cfg.Server.InstanceName)
 	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), cfg.Webhooks, cfg.Server.InstanceName)
 	resolver := routing.NewResolver(db.Ent())
-	messageService := messages.NewService(db.Ent(), blobStore, eventService, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	ruleEngine := rules.New(db.Ent())
+	messageService := messages.NewService(db.Ent(), blobStore, eventService, ruleEngine, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, cfg.Bounce.Domain)
 	spamChecker := spam.NewChecker(db.Ent(), cfg.Spam, cfg.Server.PublicHostname)
 	tlsConfig, err := certs.TLSConfig(ctx, cfg.TLS, cfg.Server.PublicHostname)

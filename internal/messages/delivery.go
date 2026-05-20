@@ -12,6 +12,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/routing"
+	"github.com/zephyraoss/haitatsu/internal/rules"
 	"github.com/zephyraoss/haitatsu/internal/spam"
 )
 
@@ -27,12 +28,13 @@ type Service struct {
 	client         *ent.Client
 	store          BlobStore
 	events         EventSink
+	rules          *rules.Engine
 	publicHostname string
 	instanceName   string
 }
 
-func NewService(client *ent.Client, store BlobStore, events EventSink, publicHostname string, instanceName string) *Service {
-	return &Service{client: client, store: store, events: events, publicHostname: publicHostname, instanceName: instanceName}
+func NewService(client *ent.Client, store BlobStore, events EventSink, rules *rules.Engine, publicHostname string, instanceName string) *Service {
+	return &Service{client: client, store: store, events: events, rules: rules, publicHostname: publicHostname, instanceName: instanceName}
 }
 
 func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
@@ -74,8 +76,14 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	if err != nil {
 		return nil, err
 	}
-	if err := s.createMailboxMessages(ctx, message.ID, stored, recipients, assessment); err != nil {
+	deliveries, err := s.createMailboxMessages(ctx, message.ID, stored, recipients, assessment)
+	if err != nil {
 		return nil, err
+	}
+	if s.rules != nil {
+		if err := s.rules.Apply(ctx, message, deliveries); err != nil {
+			return nil, err
+		}
 	}
 	if s.events != nil {
 		if err := s.events.EmitMessageReceived(ctx, message, recipients); err != nil {
@@ -85,8 +93,9 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	return message, nil
 }
 
-func (s *Service) createMailboxMessages(ctx context.Context, messageID string, raw []byte, recipients []routing.Result, assessment spam.Assessment) error {
+func (s *Service) createMailboxMessages(ctx context.Context, messageID string, raw []byte, recipients []routing.Result, assessment spam.Assessment) ([]rules.Delivery, error) {
 	seen := map[string]struct{}{}
+	var deliveries []rules.Delivery
 	for _, recipient := range recipients {
 		for _, mbox := range recipient.Mailboxes {
 			if _, ok := seen[mbox.ID]; ok {
@@ -100,7 +109,7 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, r
 			}
 			deliveryFolder, err := s.client.Folder.Query().Where(folder.MailboxIDEQ(mbox.ID), folder.NameEQ(folderName)).Only(ctx)
 			if err != nil {
-				return err
+				return nil, err
 			}
 
 			create := s.client.MailboxMessage.Create().
@@ -115,15 +124,17 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, r
 			if recipient.RouteID != "" {
 				create.SetResolvedRouteID(recipient.RouteID)
 			}
-			if _, err := create.Save(ctx); err != nil {
-				return err
+			item, err := create.Save(ctx)
+			if err != nil {
+				return nil, err
 			}
+			deliveries = append(deliveries, rules.Delivery{Message: item, Route: recipient})
 			if _, err := s.client.Mailbox.UpdateOneID(mbox.ID).AddUsedBytes(int64(len(raw))).Save(ctx); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+	return deliveries, nil
 }
 
 func messageObjectKey(t time.Time, messageID string) string {
