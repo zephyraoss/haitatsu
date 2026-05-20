@@ -6,7 +6,9 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
 
+	"github.com/zephyraoss/haitatsu/internal/api"
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/health"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
@@ -16,7 +18,7 @@ type Server struct {
 	addr string
 }
 
-func New(cfg config.ServerConfig, checker *health.Checker, m *metrics.Metrics) *Server {
+func New(serverConfig config.ServerConfig, apiConfig config.APIConfig, entClient *ent.Client, checker *health.Checker, m *metrics.Metrics) *Server {
 	app := fiber.New(fiber.Config{AppName: "Haitatsu"})
 	app.Use(m.Middleware)
 
@@ -35,8 +37,9 @@ func New(cfg config.ServerConfig, checker *health.Checker, m *metrics.Metrics) *
 	})
 
 	app.Get("/metrics", adaptor.HTTPHandler(m.Handler()))
+	api.Register(app, entClient, apiConfig)
 
-	return &Server{app: app, addr: cfg.APIAddr}
+	return &Server{app: app, addr: serverConfig.APIAddr}
 }
 
 func (s *Server) Listen() error {

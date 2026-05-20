@@ -64,7 +64,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
-	server := httpapi.New(cfg.Server, checker, m)
+	server := httpapi.New(cfg.Server, cfg.API, db.Ent(), checker, m)
 
 	return &App{
 		configPath: opts.ConfigPath,

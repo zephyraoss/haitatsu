@@ -2,40 +2,49 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"sync/atomic"
 
 	"entgo.io/ent/dialect"
-	"github.com/jackc/pgx/v5/pgxpool"
+	entsql "entgo.io/ent/dialect/sql"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/database/ent"
 )
 
 const EntDialect = dialect.Postgres
 
 type Client struct {
-	pool           *pgxpool.Pool
+	db             *sql.DB
+	ent            *ent.Client
 	migrationsDone atomic.Bool
 }
 
 func Open(ctx context.Context, cfg config.PostgresConfig) (*Client, error) {
-	pool, err := pgxpool.New(ctx, cfg.DSN)
+	db, err := sql.Open("pgx", cfg.DSN)
 	if err != nil {
 		return nil, err
 	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
 		return nil, err
 	}
-	return &Client{pool: pool}, nil
+
+	driver := entsql.OpenDB(dialect.Postgres, db)
+	return &Client{db: db, ent: ent.NewClient(ent.Driver(driver))}, nil
 }
 
-func (c *Client) RunMigrations(context.Context) error {
+func (c *Client) RunMigrations(ctx context.Context) error {
+	if err := c.ent.Schema.Create(ctx); err != nil {
+		return err
+	}
 	c.migrationsDone.Store(true)
 	return nil
 }
 
 func (c *Client) Health(ctx context.Context) error {
-	return c.pool.Ping(ctx)
+	return c.db.PingContext(ctx)
 }
 
 func (c *Client) MigrationsDone() bool {
@@ -43,7 +52,17 @@ func (c *Client) MigrationsDone() bool {
 }
 
 func (c *Client) Close() {
-	if c != nil && c.pool != nil {
-		c.pool.Close()
+	if c == nil {
+		return
 	}
+	if c.ent != nil {
+		c.ent.Close()
+	}
+	if c.db != nil {
+		c.db.Close()
+	}
+}
+
+func (c *Client) Ent() *ent.Client {
+	return c.ent
 }
