@@ -78,6 +78,11 @@ webhooks {
   endpoints = new Mapping<String, String> {}
 }
 
+spam {
+  junk_threshold = 5.0
+  reject_threshold = 10.0
+}
+
 limits {
   max_message_size_bytes = 52428800
   max_inbound_recipients = 100

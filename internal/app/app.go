@@ -23,6 +23,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/routing"
 	inboundsmtp "github.com/zephyraoss/haitatsu/internal/smtp/inbound"
 	submissionsmtp "github.com/zephyraoss/haitatsu/internal/smtp/submission"
+	"github.com/zephyraoss/haitatsu/internal/spam"
 	"github.com/zephyraoss/haitatsu/internal/storage"
 	"github.com/zephyraoss/haitatsu/internal/webhooks"
 )
@@ -87,12 +88,13 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	resolver := routing.NewResolver(db.Ent())
 	messageService := messages.NewService(db.Ent(), blobStore, eventService, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, cfg.Bounce.Domain)
+	spamChecker := spam.NewChecker(db.Ent(), cfg.Spam, cfg.Server.PublicHostname)
 	tlsConfig, err := listenerTLSConfig(cfg.TLS)
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure listener tls: %w", err)
 	}
-	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler)
+	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler, spamChecker)
 	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore)
 	submissionServer := submissionsmtp.New(cfg.Submission, cfg.Server.PublicHostname, tlsConfig, db.Ent(), submissionService)
 

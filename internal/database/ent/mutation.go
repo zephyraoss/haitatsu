@@ -27,6 +27,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
 )
 
 const (
@@ -53,6 +54,7 @@ const (
 	TypeOutboundJob         = "OutboundJob"
 	TypeRoute               = "Route"
 	TypeRoutingRule         = "RoutingRule"
+	TypeSenderRule          = "SenderRule"
 )
 
 // AppPasswordMutation represents an operation that mutates the AppPassword nodes in the graph.
@@ -12650,4 +12652,736 @@ func (m *RoutingRuleMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RoutingRuleMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RoutingRule edge %s", name)
+}
+
+// SenderRuleMutation represents an operation that mutates the SenderRule nodes in the graph.
+type SenderRuleMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	scope         *string
+	scope_ref     *string
+	kind          *string
+	match_type    *string
+	value         *string
+	action        *string
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*SenderRule, error)
+	predicates    []predicate.SenderRule
+}
+
+var _ ent.Mutation = (*SenderRuleMutation)(nil)
+
+// senderruleOption allows management of the mutation configuration using functional options.
+type senderruleOption func(*SenderRuleMutation)
+
+// newSenderRuleMutation creates new mutation for the SenderRule entity.
+func newSenderRuleMutation(c config, op Op, opts ...senderruleOption) *SenderRuleMutation {
+	m := &SenderRuleMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSenderRule,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSenderRuleID sets the ID field of the mutation.
+func withSenderRuleID(id string) senderruleOption {
+	return func(m *SenderRuleMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SenderRule
+		)
+		m.oldValue = func(ctx context.Context) (*SenderRule, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SenderRule.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSenderRule sets the old SenderRule of the mutation.
+func withSenderRule(node *SenderRule) senderruleOption {
+	return func(m *SenderRuleMutation) {
+		m.oldValue = func(context.Context) (*SenderRule, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SenderRuleMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SenderRuleMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SenderRule entities.
+func (m *SenderRuleMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SenderRuleMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SenderRuleMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SenderRule.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetScope sets the "scope" field.
+func (m *SenderRuleMutation) SetScope(s string) {
+	m.scope = &s
+}
+
+// Scope returns the value of the "scope" field in the mutation.
+func (m *SenderRuleMutation) Scope() (r string, exists bool) {
+	v := m.scope
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScope returns the old "scope" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldScope(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScope is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScope requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScope: %w", err)
+	}
+	return oldValue.Scope, nil
+}
+
+// ResetScope resets all changes to the "scope" field.
+func (m *SenderRuleMutation) ResetScope() {
+	m.scope = nil
+}
+
+// SetScopeRef sets the "scope_ref" field.
+func (m *SenderRuleMutation) SetScopeRef(s string) {
+	m.scope_ref = &s
+}
+
+// ScopeRef returns the value of the "scope_ref" field in the mutation.
+func (m *SenderRuleMutation) ScopeRef() (r string, exists bool) {
+	v := m.scope_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScopeRef returns the old "scope_ref" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldScopeRef(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScopeRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScopeRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScopeRef: %w", err)
+	}
+	return oldValue.ScopeRef, nil
+}
+
+// ClearScopeRef clears the value of the "scope_ref" field.
+func (m *SenderRuleMutation) ClearScopeRef() {
+	m.scope_ref = nil
+	m.clearedFields[senderrule.FieldScopeRef] = struct{}{}
+}
+
+// ScopeRefCleared returns if the "scope_ref" field was cleared in this mutation.
+func (m *SenderRuleMutation) ScopeRefCleared() bool {
+	_, ok := m.clearedFields[senderrule.FieldScopeRef]
+	return ok
+}
+
+// ResetScopeRef resets all changes to the "scope_ref" field.
+func (m *SenderRuleMutation) ResetScopeRef() {
+	m.scope_ref = nil
+	delete(m.clearedFields, senderrule.FieldScopeRef)
+}
+
+// SetKind sets the "kind" field.
+func (m *SenderRuleMutation) SetKind(s string) {
+	m.kind = &s
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *SenderRuleMutation) Kind() (r string, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *SenderRuleMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetMatchType sets the "match_type" field.
+func (m *SenderRuleMutation) SetMatchType(s string) {
+	m.match_type = &s
+}
+
+// MatchType returns the value of the "match_type" field in the mutation.
+func (m *SenderRuleMutation) MatchType() (r string, exists bool) {
+	v := m.match_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMatchType returns the old "match_type" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldMatchType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMatchType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMatchType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMatchType: %w", err)
+	}
+	return oldValue.MatchType, nil
+}
+
+// ResetMatchType resets all changes to the "match_type" field.
+func (m *SenderRuleMutation) ResetMatchType() {
+	m.match_type = nil
+}
+
+// SetValue sets the "value" field.
+func (m *SenderRuleMutation) SetValue(s string) {
+	m.value = &s
+}
+
+// Value returns the value of the "value" field in the mutation.
+func (m *SenderRuleMutation) Value() (r string, exists bool) {
+	v := m.value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValue returns the old "value" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldValue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValue: %w", err)
+	}
+	return oldValue.Value, nil
+}
+
+// ResetValue resets all changes to the "value" field.
+func (m *SenderRuleMutation) ResetValue() {
+	m.value = nil
+}
+
+// SetAction sets the "action" field.
+func (m *SenderRuleMutation) SetAction(s string) {
+	m.action = &s
+}
+
+// Action returns the value of the "action" field in the mutation.
+func (m *SenderRuleMutation) Action() (r string, exists bool) {
+	v := m.action
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAction returns the old "action" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldAction(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAction: %w", err)
+	}
+	return oldValue.Action, nil
+}
+
+// ResetAction resets all changes to the "action" field.
+func (m *SenderRuleMutation) ResetAction() {
+	m.action = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SenderRuleMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SenderRuleMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SenderRuleMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SenderRuleMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SenderRuleMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SenderRule entity.
+// If the SenderRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SenderRuleMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SenderRuleMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SenderRuleMutation builder.
+func (m *SenderRuleMutation) Where(ps ...predicate.SenderRule) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SenderRuleMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SenderRuleMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SenderRule, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SenderRuleMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SenderRuleMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SenderRule).
+func (m *SenderRuleMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SenderRuleMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.scope != nil {
+		fields = append(fields, senderrule.FieldScope)
+	}
+	if m.scope_ref != nil {
+		fields = append(fields, senderrule.FieldScopeRef)
+	}
+	if m.kind != nil {
+		fields = append(fields, senderrule.FieldKind)
+	}
+	if m.match_type != nil {
+		fields = append(fields, senderrule.FieldMatchType)
+	}
+	if m.value != nil {
+		fields = append(fields, senderrule.FieldValue)
+	}
+	if m.action != nil {
+		fields = append(fields, senderrule.FieldAction)
+	}
+	if m.created_at != nil {
+		fields = append(fields, senderrule.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, senderrule.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SenderRuleMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case senderrule.FieldScope:
+		return m.Scope()
+	case senderrule.FieldScopeRef:
+		return m.ScopeRef()
+	case senderrule.FieldKind:
+		return m.Kind()
+	case senderrule.FieldMatchType:
+		return m.MatchType()
+	case senderrule.FieldValue:
+		return m.Value()
+	case senderrule.FieldAction:
+		return m.Action()
+	case senderrule.FieldCreatedAt:
+		return m.CreatedAt()
+	case senderrule.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SenderRuleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case senderrule.FieldScope:
+		return m.OldScope(ctx)
+	case senderrule.FieldScopeRef:
+		return m.OldScopeRef(ctx)
+	case senderrule.FieldKind:
+		return m.OldKind(ctx)
+	case senderrule.FieldMatchType:
+		return m.OldMatchType(ctx)
+	case senderrule.FieldValue:
+		return m.OldValue(ctx)
+	case senderrule.FieldAction:
+		return m.OldAction(ctx)
+	case senderrule.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case senderrule.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SenderRule field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SenderRuleMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case senderrule.FieldScope:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScope(v)
+		return nil
+	case senderrule.FieldScopeRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScopeRef(v)
+		return nil
+	case senderrule.FieldKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case senderrule.FieldMatchType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMatchType(v)
+		return nil
+	case senderrule.FieldValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValue(v)
+		return nil
+	case senderrule.FieldAction:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAction(v)
+		return nil
+	case senderrule.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case senderrule.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SenderRule field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SenderRuleMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SenderRuleMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SenderRuleMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SenderRule numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SenderRuleMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(senderrule.FieldScopeRef) {
+		fields = append(fields, senderrule.FieldScopeRef)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SenderRuleMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SenderRuleMutation) ClearField(name string) error {
+	switch name {
+	case senderrule.FieldScopeRef:
+		m.ClearScopeRef()
+		return nil
+	}
+	return fmt.Errorf("unknown SenderRule nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SenderRuleMutation) ResetField(name string) error {
+	switch name {
+	case senderrule.FieldScope:
+		m.ResetScope()
+		return nil
+	case senderrule.FieldScopeRef:
+		m.ResetScopeRef()
+		return nil
+	case senderrule.FieldKind:
+		m.ResetKind()
+		return nil
+	case senderrule.FieldMatchType:
+		m.ResetMatchType()
+		return nil
+	case senderrule.FieldValue:
+		m.ResetValue()
+		return nil
+	case senderrule.FieldAction:
+		m.ResetAction()
+		return nil
+	case senderrule.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case senderrule.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SenderRule field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SenderRuleMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SenderRuleMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SenderRuleMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SenderRuleMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SenderRuleMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SenderRuleMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SenderRuleMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SenderRule unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SenderRuleMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SenderRule edge %s", name)
 }

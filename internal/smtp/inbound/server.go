@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/emersion/go-smtp"
@@ -14,14 +15,15 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/routing"
+	"github.com/zephyraoss/haitatsu/internal/spam"
 )
 
 type Server struct {
 	server *smtp.Server
 }
 
-func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *routing.Resolver, messages *messages.Service, bounces *bounce.Handler) *Server {
-	server := smtp.NewServer(&backend{resolver: resolver, messages: messages, bounces: bounces})
+func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *routing.Resolver, messages *messages.Service, bounces *bounce.Handler, spamChecker *spam.Checker) *Server {
+	server := smtp.NewServer(&backend{resolver: resolver, messages: messages, bounces: bounces, spam: spamChecker})
 	server.Addr = cfg.InboundAddr
 	server.Domain = domain
 	server.TLSConfig = tlsConfig
@@ -49,16 +51,19 @@ type backend struct {
 	resolver *routing.Resolver
 	messages *messages.Service
 	bounces  *bounce.Handler
+	spam     *spam.Checker
 }
 
-func (b *backend) NewSession(*smtp.Conn) (smtp.Session, error) {
-	return &session{resolver: b.resolver, messages: b.messages, bounces: b.bounces}, nil
+func (b *backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
+	return &session{resolver: b.resolver, messages: b.messages, bounces: b.bounces, spam: b.spam, smtp: smtpContext(conn)}, nil
 }
 
 type session struct {
 	resolver   *routing.Resolver
 	messages   *messages.Service
 	bounces    *bounce.Handler
+	spam       *spam.Checker
+	smtp       spam.SMTPContext
 	mailFrom   string
 	recipients []routing.Result
 	bounceRcpt []bounce.Recipient
@@ -66,6 +71,7 @@ type session struct {
 
 func (s *session) Mail(from string, _ *smtp.MailOptions) error {
 	s.mailFrom = from
+	s.smtp.MailFrom = from
 	s.recipients = nil
 	return nil
 }
@@ -112,7 +118,11 @@ func (s *session) Data(r io.Reader) error {
 	if len(s.recipients) == 0 {
 		return nil
 	}
-	if _, err := s.messages.Deliver(context.Background(), raw, s.recipients); err != nil {
+	assessment := s.spam.Check(context.Background(), raw, s.smtp, s.recipients)
+	if assessment.Reject {
+		return &smtp.SMTPError{Code: 550, Message: "message rejected by policy"}
+	}
+	if _, err := s.messages.Deliver(context.Background(), raw, s.recipients, assessment); err != nil {
 		slog.Error("inbound delivery failed", "error", err)
 		return temporarySMTPError("temporary local problem")
 	}
@@ -131,4 +141,10 @@ func (s *session) Logout() error {
 
 func temporarySMTPError(message string) *smtp.SMTPError {
 	return &smtp.SMTPError{Code: 451, Message: message}
+}
+
+func smtpContext(conn *smtp.Conn) spam.SMTPContext {
+	remoteIP, _, _ := net.SplitHostPort(conn.Conn().RemoteAddr().String())
+	_, tlsUsed := conn.TLSConnectionState()
+	return spam.SMTPContext{RemoteIP: remoteIP, HELO: conn.Hostname(), TLS: tlsUsed}
 }

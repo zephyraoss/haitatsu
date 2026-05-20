@@ -27,6 +27,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -102,6 +103,7 @@ func checkColumn(t, c string) error {
 			outboundjob.Table:         outboundjob.ValidColumn,
 			route.Table:               route.ValidColumn,
 			routingrule.Table:         routingrule.ValidColumn,
+			senderrule.Table:          senderrule.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

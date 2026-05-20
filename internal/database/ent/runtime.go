@@ -21,6 +21,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/schema"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -307,4 +308,24 @@ func init() {
 	routingruleDescID := routingruleFields[0].Descriptor()
 	// routingrule.DefaultID holds the default value on creation for the id field.
 	routingrule.DefaultID = routingruleDescID.Default.(func() string)
+	senderruleFields := schema.SenderRule{}.Fields()
+	_ = senderruleFields
+	// senderruleDescAction is the schema descriptor for action field.
+	senderruleDescAction := senderruleFields[6].Descriptor()
+	// senderrule.DefaultAction holds the default value on creation for the action field.
+	senderrule.DefaultAction = senderruleDescAction.Default.(string)
+	// senderruleDescCreatedAt is the schema descriptor for created_at field.
+	senderruleDescCreatedAt := senderruleFields[7].Descriptor()
+	// senderrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	senderrule.DefaultCreatedAt = senderruleDescCreatedAt.Default.(func() time.Time)
+	// senderruleDescUpdatedAt is the schema descriptor for updated_at field.
+	senderruleDescUpdatedAt := senderruleFields[8].Descriptor()
+	// senderrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	senderrule.DefaultUpdatedAt = senderruleDescUpdatedAt.Default.(func() time.Time)
+	// senderrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	senderrule.UpdateDefaultUpdatedAt = senderruleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// senderruleDescID is the schema descriptor for id field.
+	senderruleDescID := senderruleFields[0].Descriptor()
+	// senderrule.DefaultID holds the default value on creation for the id field.
+	senderrule.DefaultID = senderruleDescID.Default.(func() string)
 }

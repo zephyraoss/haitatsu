@@ -42,6 +42,8 @@ type Tx struct {
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
+	// SenderRule is the client for interacting with the SenderRule builders.
+	SenderRule *SenderRuleClient
 
 	// lazily loaded.
 	client     *Client
@@ -188,6 +190,7 @@ func (tx *Tx) init() {
 	tx.OutboundJob = NewOutboundJobClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RoutingRule = NewRoutingRuleClient(tx.config)
+	tx.SenderRule = NewSenderRuleClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

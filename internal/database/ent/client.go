@@ -29,6 +29,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
 )
 
 // Client is the client that holds all ent builders.
@@ -66,6 +67,8 @@ type Client struct {
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
+	// SenderRule is the client for interacting with the SenderRule builders.
+	SenderRule *SenderRuleClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -92,6 +95,7 @@ func (c *Client) init() {
 	c.OutboundJob = NewOutboundJobClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
+	c.SenderRule = NewSenderRuleClient(c.config)
 }
 
 type (
@@ -199,6 +203,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
+		SenderRule:          NewSenderRuleClient(cfg),
 	}, nil
 }
 
@@ -233,6 +238,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
+		SenderRule:          NewSenderRuleClient(cfg),
 	}, nil
 }
 
@@ -264,7 +270,7 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.Folder,
 		c.Label, c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
-		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule,
+		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule, c.SenderRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -276,7 +282,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.Folder,
 		c.Label, c.Mailbox, c.MailboxMessage, c.MailboxMessageLabel, c.Message,
-		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule,
+		c.OutboundAttempt, c.OutboundJob, c.Route, c.RoutingRule, c.SenderRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -315,6 +321,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Route.mutate(ctx, m)
 	case *RoutingRuleMutation:
 		return c.RoutingRule.mutate(ctx, m)
+	case *SenderRuleMutation:
+		return c.SenderRule.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -2315,16 +2323,149 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 	}
 }
 
+// SenderRuleClient is a client for the SenderRule schema.
+type SenderRuleClient struct {
+	config
+}
+
+// NewSenderRuleClient returns a client for the SenderRule from the given config.
+func NewSenderRuleClient(c config) *SenderRuleClient {
+	return &SenderRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `senderrule.Hooks(f(g(h())))`.
+func (c *SenderRuleClient) Use(hooks ...Hook) {
+	c.hooks.SenderRule = append(c.hooks.SenderRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `senderrule.Intercept(f(g(h())))`.
+func (c *SenderRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SenderRule = append(c.inters.SenderRule, interceptors...)
+}
+
+// Create returns a builder for creating a SenderRule entity.
+func (c *SenderRuleClient) Create() *SenderRuleCreate {
+	mutation := newSenderRuleMutation(c.config, OpCreate)
+	return &SenderRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SenderRule entities.
+func (c *SenderRuleClient) CreateBulk(builders ...*SenderRuleCreate) *SenderRuleCreateBulk {
+	return &SenderRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SenderRuleClient) MapCreateBulk(slice any, setFunc func(*SenderRuleCreate, int)) *SenderRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SenderRuleCreateBulk{err: fmt.Errorf("calling to SenderRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SenderRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SenderRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SenderRule.
+func (c *SenderRuleClient) Update() *SenderRuleUpdate {
+	mutation := newSenderRuleMutation(c.config, OpUpdate)
+	return &SenderRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SenderRuleClient) UpdateOne(_m *SenderRule) *SenderRuleUpdateOne {
+	mutation := newSenderRuleMutation(c.config, OpUpdateOne, withSenderRule(_m))
+	return &SenderRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SenderRuleClient) UpdateOneID(id string) *SenderRuleUpdateOne {
+	mutation := newSenderRuleMutation(c.config, OpUpdateOne, withSenderRuleID(id))
+	return &SenderRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SenderRule.
+func (c *SenderRuleClient) Delete() *SenderRuleDelete {
+	mutation := newSenderRuleMutation(c.config, OpDelete)
+	return &SenderRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SenderRuleClient) DeleteOne(_m *SenderRule) *SenderRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SenderRuleClient) DeleteOneID(id string) *SenderRuleDeleteOne {
+	builder := c.Delete().Where(senderrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SenderRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for SenderRule.
+func (c *SenderRuleClient) Query() *SenderRuleQuery {
+	return &SenderRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSenderRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SenderRule entity by its id.
+func (c *SenderRuleClient) Get(ctx context.Context, id string) (*SenderRule, error) {
+	return c.Query().Where(senderrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SenderRuleClient) GetX(ctx context.Context, id string) *SenderRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SenderRuleClient) Hooks() []Hook {
+	return c.hooks.SenderRule
+}
+
+// Interceptors returns the client interceptors.
+func (c *SenderRuleClient) Interceptors() []Interceptor {
+	return c.inters.SenderRule
+}
+
+func (c *SenderRuleClient) mutate(ctx context.Context, m *SenderRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SenderRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SenderRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SenderRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SenderRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SenderRule mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
 		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, Folder, Label, Mailbox,
 		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
-		Route, RoutingRule []ent.Hook
+		Route, RoutingRule, SenderRule []ent.Hook
 	}
 	inters struct {
 		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, Folder, Label, Mailbox,
 		MailboxMessage, MailboxMessageLabel, Message, OutboundAttempt, OutboundJob,
-		Route, RoutingRule []ent.Interceptor
+		Route, RoutingRule, SenderRule []ent.Interceptor
 	}
 )

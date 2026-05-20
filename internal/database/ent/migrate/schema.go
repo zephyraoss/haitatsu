@@ -530,6 +530,36 @@ var (
 			},
 		},
 	}
+	// SenderRulesColumns holds the columns for the "sender_rules" table.
+	SenderRulesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "scope", Type: field.TypeString},
+		{Name: "scope_ref", Type: field.TypeString, Nullable: true},
+		{Name: "kind", Type: field.TypeString},
+		{Name: "match_type", Type: field.TypeString},
+		{Name: "value", Type: field.TypeString},
+		{Name: "action", Type: field.TypeString, Default: "junk"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SenderRulesTable holds the schema information for the "sender_rules" table.
+	SenderRulesTable = &schema.Table{
+		Name:       "sender_rules",
+		Columns:    SenderRulesColumns,
+		PrimaryKey: []*schema.Column{SenderRulesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "senderrule_scope_scope_ref_kind",
+				Unique:  false,
+				Columns: []*schema.Column{SenderRulesColumns[1], SenderRulesColumns[2], SenderRulesColumns[3]},
+			},
+			{
+				Name:    "senderrule_match_type_value",
+				Unique:  false,
+				Columns: []*schema.Column{SenderRulesColumns[4], SenderRulesColumns[5]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AppPasswordsTable,
@@ -547,6 +577,7 @@ var (
 		OutboundJobsTable,
 		RoutesTable,
 		RoutingRulesTable,
+		SenderRulesTable,
 	}
 )
 

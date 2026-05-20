@@ -81,6 +81,10 @@ func Register(router fiber.Router, client *ent.Client, store MessageStore, outbo
 	v1.Get("/dkim_keys", h.listDKIMKeys)
 	v1.Post("/dkim_keys", h.createDKIMKey)
 	v1.Get("/dkim_keys/:id", h.getDKIMKey)
+
+	v1.Get("/rules/sender", h.listSenderRules)
+	v1.Post("/rules/sender", h.createSenderRule)
+	v1.Delete("/rules/sender/:id", h.deleteSenderRule)
 }
 
 type mailboxRequest struct {

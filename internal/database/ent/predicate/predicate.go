@@ -50,3 +50,6 @@ type Route func(*sql.Selector)
 
 // RoutingRule is the predicate function for routingrule builders.
 type RoutingRule func(*sql.Selector)
+
+// SenderRule is the predicate function for senderrule builders.
+type SenderRule func(*sql.Selector)

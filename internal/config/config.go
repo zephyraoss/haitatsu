@@ -25,6 +25,7 @@ type Config struct {
 	Workers    WorkersConfig    `pkl:"workers"`
 	TLS        TLSConfig        `pkl:"tls"`
 	Webhooks   WebhookConfig    `pkl:"webhooks"`
+	Spam       SpamConfig       `pkl:"spam"`
 	Limits     LimitsConfig     `pkl:"limits"`
 }
 
@@ -115,6 +116,11 @@ type WebhookConfig struct {
 	Endpoints             map[string]string `pkl:"endpoints"`
 }
 
+type SpamConfig struct {
+	JunkThreshold   float64 `pkl:"junk_threshold"`
+	RejectThreshold float64 `pkl:"reject_threshold"`
+}
+
 type LimitsConfig struct {
 	MaxMessageSizeBytes  int64 `pkl:"max_message_size_bytes"`
 	MaxInboundRecipients int   `pkl:"max_inbound_recipients"`
@@ -203,6 +209,12 @@ func (c Config) Validate() error {
 	}
 	if len(c.Webhooks.Endpoints) > 0 && strings.TrimSpace(c.Webhooks.Secret) == "" {
 		problems = append(problems, "webhooks.secret is required when webhook endpoints are configured")
+	}
+	if c.Spam.JunkThreshold < 0 {
+		problems = append(problems, "spam.junk_threshold must be >= 0")
+	}
+	if c.Spam.RejectThreshold < 0 {
+		problems = append(problems, "spam.reject_threshold must be >= 0")
 	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))

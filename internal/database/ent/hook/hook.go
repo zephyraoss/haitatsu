@@ -189,6 +189,18 @@ func (f RoutingRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RoutingRuleMutation", m)
 }
 
+// The SenderRuleFunc type is an adapter to allow the use of ordinary
+// function as SenderRule mutator.
+type SenderRuleFunc func(context.Context, *ent.SenderRuleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SenderRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SenderRuleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SenderRuleMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, ent.Mutation) bool
 

@@ -12,6 +12,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/routing"
+	"github.com/zephyraoss/haitatsu/internal/spam"
 )
 
 type BlobStore interface {
@@ -34,11 +35,11 @@ func NewService(client *ent.Client, store BlobStore, events EventSink, publicHos
 	return &Service{client: client, store: store, events: events, publicHostname: publicHostname, instanceName: instanceName}
 }
 
-func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result) (*ent.Message, error) {
+func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
 	messageID := ids.New().String()
 	traceID := ids.New().String()
 	key := messageObjectKey(time.Now().UTC(), messageID)
-	stored := s.withTraceHeaders(raw, traceID)
+	stored := s.withTraceHeaders(raw, traceID, assessment.Header)
 	metadata := mailparse.Parse(stored)
 
 	if err := s.store.PutMessage(ctx, key, stored); err != nil {
@@ -60,7 +61,8 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 		SetTextBodyExtract(metadata.TextExtract).
 		SetHTMLBodyExtract(metadata.HTMLExtract).
 		SetAttachments(metadata.Attachments).
-		SetAuthResults(map[string]any{})
+		SetSpamScore(assessment.Score).
+		SetAuthResults(assessment.AuthResults)
 	if metadata.RFCMessageID != "" {
 		messageCreate.SetRfcMessageID(metadata.RFCMessageID)
 	}
@@ -72,7 +74,7 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	if err != nil {
 		return nil, err
 	}
-	if err := s.createMailboxMessages(ctx, message.ID, stored, recipients); err != nil {
+	if err := s.createMailboxMessages(ctx, message.ID, stored, recipients, assessment); err != nil {
 		return nil, err
 	}
 	if s.events != nil {
@@ -83,7 +85,7 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	return message, nil
 }
 
-func (s *Service) createMailboxMessages(ctx context.Context, messageID string, raw []byte, recipients []routing.Result) error {
+func (s *Service) createMailboxMessages(ctx context.Context, messageID string, raw []byte, recipients []routing.Result, assessment spam.Assessment) error {
 	seen := map[string]struct{}{}
 	for _, recipient := range recipients {
 		for _, mbox := range recipient.Mailboxes {
@@ -92,7 +94,11 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, r
 			}
 			seen[mbox.ID] = struct{}{}
 
-			inbox, err := s.client.Folder.Query().Where(folder.MailboxIDEQ(mbox.ID), folder.NameEQ("INBOX")).Only(ctx)
+			folderName := "INBOX"
+			if assessment.Junk {
+				folderName = "Junk"
+			}
+			deliveryFolder, err := s.client.Folder.Query().Where(folder.MailboxIDEQ(mbox.ID), folder.NameEQ(folderName)).Only(ctx)
 			if err != nil {
 				return err
 			}
@@ -100,7 +106,7 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, r
 			create := s.client.MailboxMessage.Create().
 				SetMailboxID(mbox.ID).
 				SetMessageID(messageID).
-				SetFolderID(inbox.ID).
+				SetFolderID(deliveryFolder.ID).
 				SetOriginalRcpt(recipient.OriginalRecipient).
 				SetBaseRcpt(recipient.BaseRecipient)
 			if recipient.PlusTag != "" {
@@ -129,8 +135,11 @@ func sha256Hex(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Service) withTraceHeaders(raw []byte, traceID string) []byte {
+func (s *Service) withTraceHeaders(raw []byte, traceID string, authResults string) []byte {
 	stamp := time.Now().UTC().Format(time.RFC1123Z)
-	headers := fmt.Sprintf("Received: by %s (Haitatsu/0.1; %s) with SMTP; %s\r\nAuthentication-Results: %s; none\r\nX-Haitatsu-Trace-ID: %s\r\nX-Haitatsu-Node: %s\r\n", s.publicHostname, s.instanceName, stamp, s.publicHostname, traceID, s.instanceName)
+	if authResults == "" {
+		authResults = s.publicHostname + "; none"
+	}
+	headers := fmt.Sprintf("Received: by %s (Haitatsu/0.1; %s) with SMTP; %s\r\nAuthentication-Results: %s\r\nX-Haitatsu-Trace-ID: %s\r\nX-Haitatsu-Node: %s\r\n", s.publicHostname, s.instanceName, stamp, authResults, traceID, s.instanceName)
 	return append([]byte(headers), raw...)
 }
