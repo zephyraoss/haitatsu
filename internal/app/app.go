@@ -90,7 +90,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName, cfg.Bounce.Domain)
 	server := httpapi.New(cfg, db.Ent(), db.SQL(), blobStore, submissionService, checker, m, runtime)
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, m, cfg.Server.InstanceName)
-	cleanupWorker := cleanup.New(db.Ent())
+	cleanupWorker := cleanup.New(db.Ent(), blobStore, m)
 	eventService := events.New(db.Ent())
 	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
 	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), eventService, cfg.Server.InstanceName)

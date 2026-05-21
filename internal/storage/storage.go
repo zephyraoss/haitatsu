@@ -58,3 +58,7 @@ func (c *Client) PutExport(ctx context.Context, key string, data []byte) error {
 	_, err := c.client.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "application/zip"})
 	return err
 }
+
+func (c *Client) DeleteObject(ctx context.Context, key string) error {
+	return c.client.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{})
+}

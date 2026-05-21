@@ -114,6 +114,7 @@ func (m *Metrics) WebhookFailure()            { m.WebhookFailuresTotal.Inc() }
 func (m *Metrics) IMAPSessionStart()          { m.IMAPSessions.Inc() }
 func (m *Metrics) IMAPSessionEnd()            { m.IMAPSessions.Dec() }
 func (m *Metrics) MessageDelivered(count int) { m.MessagesDeliveredTotal.Add(float64(count)) }
+func (m *Metrics) SetQueueDepth(count int)    { m.QueueDepth.Set(float64(count)) }
 func (m *Metrics) WorkerJob(jobType string, status string) {
 	m.WorkerJobsTotal.WithLabelValues(jobType, status).Inc()
 }
