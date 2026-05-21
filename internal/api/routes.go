@@ -120,9 +120,8 @@ type routeRequest struct {
 }
 
 type appPasswordRequest struct {
-	Name     string   `json:"name"`
-	Password string   `json:"password"`
-	Scopes   []string `json:"scopes"`
+	Name   string   `json:"name"`
+	Scopes []string `json:"scopes"`
 }
 
 type folderRequest struct {
@@ -289,14 +288,18 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
-	if req.Name == "" || req.Password == "" || len(req.Scopes) == 0 {
-		return problem(c, fiber.StatusBadRequest, "invalid_app_password", "Name, password, and scopes are required")
+	if req.Name == "" || len(req.Scopes) == 0 {
+		return problem(c, fiber.StatusBadRequest, "invalid_app_password", "Name and scopes are required")
 	}
 	if !validProtocolScopes(req.Scopes) {
 		return problem(c, fiber.StatusBadRequest, "invalid_app_password_scope", "App password scopes must be protocol scopes")
 	}
 
-	hash, err := passwordauth.HashPassword(req.Password)
+	password, err := passwordauth.GeneratePassword()
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "app_password_generate_failed", "Failed to generate app password")
+	}
+	hash, err := passwordauth.HashPassword(password)
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "app_password_hash_failed", "Failed to hash app password")
 	}
@@ -309,7 +312,7 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 		return err
 	}
 	response := appPasswordPublic(item)
-	response.Password = req.Password
+	response.Password = password
 	return created(c, response)
 }
 

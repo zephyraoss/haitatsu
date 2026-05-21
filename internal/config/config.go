@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -12,56 +13,56 @@ import (
 )
 
 type Config struct {
-	Server        ServerConfig       `pkl:"server"`
-	SMTP          SMTPConfig         `pkl:"smtp"`
-	IMAP          IMAPConfig         `pkl:"imap"`
-	Submission    SubmissionConfig   `pkl:"submission"`
-	Relay         RelayConfig        `pkl:"relay"`
-	Bounce        BounceConfig       `pkl:"bounce"`
-	Postgres      PostgresConfig     `pkl:"postgres"`
-	S3            S3Config           `pkl:"s3"`
-	Logging       LoggingConfig      `pkl:"logging"`
-	Metrics       MetricsConfig      `pkl:"metrics"`
-	API           APIConfig          `pkl:"api"`
-	Workers       WorkersConfig      `pkl:"workers"`
-	TLS           TLSConfig          `pkl:"tls"`
-	Webhooks      WebhookConfig      `pkl:"webhooks"`
-	Notifications NotificationConfig `pkl:"notifications"`
-	Spam          SpamConfig         `pkl:"spam"`
-	Limits        LimitsConfig       `pkl:"limits"`
+	Server        ServerConfig       `pkl:"server" json:"server"`
+	SMTP          SMTPConfig         `pkl:"smtp" json:"smtp"`
+	IMAP          IMAPConfig         `pkl:"imap" json:"imap"`
+	Submission    SubmissionConfig   `pkl:"submission" json:"submission"`
+	Relay         RelayConfig        `pkl:"relay" json:"relay"`
+	Bounce        BounceConfig       `pkl:"bounce" json:"bounce"`
+	Postgres      PostgresConfig     `pkl:"postgres" json:"postgres"`
+	S3            S3Config           `pkl:"s3" json:"s3"`
+	Logging       LoggingConfig      `pkl:"logging" json:"logging"`
+	Metrics       MetricsConfig      `pkl:"metrics" json:"metrics"`
+	API           APIConfig          `pkl:"api" json:"api"`
+	Workers       WorkersConfig      `pkl:"workers" json:"workers"`
+	TLS           TLSConfig          `pkl:"tls" json:"tls"`
+	Webhooks      WebhookConfig      `pkl:"webhooks" json:"webhooks"`
+	Notifications NotificationConfig `pkl:"notifications" json:"notifications"`
+	Spam          SpamConfig         `pkl:"spam" json:"spam"`
+	Limits        LimitsConfig       `pkl:"limits" json:"limits"`
 }
 
 type ServerConfig struct {
-	APIAddr                string `pkl:"api_addr"`
-	PublicHostname         string `pkl:"public_hostname"`
-	InstanceName           string `pkl:"instance_name"`
-	ShutdownTimeoutSeconds int    `pkl:"shutdown_timeout_seconds"`
+	APIAddr                string `pkl:"api_addr" json:"api_addr"`
+	PublicHostname         string `pkl:"public_hostname" json:"public_hostname"`
+	InstanceName           string `pkl:"instance_name" json:"instance_name"`
+	ShutdownTimeoutSeconds int    `pkl:"shutdown_timeout_seconds" json:"shutdown_timeout_seconds"`
 }
 
 type SMTPConfig struct {
-	InboundAddr          string `pkl:"inbound_addr"`
-	MaxMessageSizeBytes  int64  `pkl:"max_message_size_bytes"`
-	MaxInboundRecipients int    `pkl:"max_inbound_recipients"`
+	InboundAddr          string `pkl:"inbound_addr" json:"inbound_addr"`
+	MaxMessageSizeBytes  int64  `pkl:"max_message_size_bytes" json:"max_message_size_bytes"`
+	MaxInboundRecipients int    `pkl:"max_inbound_recipients" json:"max_inbound_recipients"`
 }
 
 type IMAPConfig struct {
-	Addr string `pkl:"addr"`
+	Addr string `pkl:"addr" json:"addr"`
 }
 
 type SubmissionConfig struct {
-	StartTLSAddr string `pkl:"starttls_addr"`
-	TLSAddr      string `pkl:"tls_addr"`
+	StartTLSAddr string `pkl:"starttls_addr" json:"starttls_addr"`
+	TLSAddr      string `pkl:"tls_addr" json:"tls_addr"`
 }
 
 type RelayConfig struct {
-	Addr     string `pkl:"addr"`
-	Username string `pkl:"username"`
-	Password string `pkl:"password"`
-	FromHost string `pkl:"from_host"`
+	Addr     string `pkl:"addr" json:"addr"`
+	Username string `pkl:"username" json:"username"`
+	Password string `pkl:"password" json:"password"`
+	FromHost string `pkl:"from_host" json:"from_host"`
 }
 
 type BounceConfig struct {
-	Domain string `pkl:"domain"`
+	Domain string `pkl:"domain" json:"domain"`
 }
 
 func (c ServerConfig) ShutdownTimeout() time.Duration {
@@ -72,76 +73,76 @@ func (c ServerConfig) ShutdownTimeout() time.Duration {
 }
 
 type PostgresConfig struct {
-	DSN string `pkl:"dsn"`
+	DSN string `pkl:"dsn" json:"dsn"`
 }
 
 type S3Config struct {
-	Endpoint        string `pkl:"endpoint"`
-	Region          string `pkl:"region"`
-	Bucket          string `pkl:"bucket"`
-	AccessKeyID     string `pkl:"access_key_id"`
-	SecretAccessKey string `pkl:"secret_access_key"`
-	UseSSL          bool   `pkl:"use_ssl"`
+	Endpoint        string `pkl:"endpoint" json:"endpoint"`
+	Region          string `pkl:"region" json:"region"`
+	Bucket          string `pkl:"bucket" json:"bucket"`
+	AccessKeyID     string `pkl:"access_key_id" json:"access_key_id"`
+	SecretAccessKey string `pkl:"secret_access_key" json:"secret_access_key"`
+	UseSSL          bool   `pkl:"use_ssl" json:"use_ssl"`
 }
 
 type LoggingConfig struct {
-	Level        string `pkl:"level"`
-	AxiomEnabled bool   `pkl:"axiom_enabled"`
-	AxiomDataset string `pkl:"axiom_dataset"`
-	AxiomToken   string `pkl:"axiom_token"`
-	AxiomURL     string `pkl:"axiom_url"`
+	Level        string `pkl:"level" json:"level"`
+	AxiomEnabled bool   `pkl:"axiom_enabled" json:"axiom_enabled"`
+	AxiomDataset string `pkl:"axiom_dataset" json:"axiom_dataset"`
+	AxiomToken   string `pkl:"axiom_token" json:"axiom_token"`
+	AxiomURL     string `pkl:"axiom_url" json:"axiom_url"`
 }
 
 type MetricsConfig struct {
-	Enabled bool `pkl:"enabled"`
+	Enabled bool `pkl:"enabled" json:"enabled"`
 }
 
 type APIConfig struct {
-	ServiceToken string `pkl:"service_token"`
+	ServiceToken string `pkl:"service_token" json:"service_token"`
 }
 
 type WorkersConfig struct {
-	Enabled     bool `pkl:"enabled"`
-	Concurrency int  `pkl:"concurrency"`
+	Enabled     bool `pkl:"enabled" json:"enabled"`
+	Concurrency int  `pkl:"concurrency" json:"concurrency"`
 }
 
 type TLSConfig struct {
-	Mode                          string `pkl:"mode"`
-	CertFile                      string `pkl:"cert_file"`
-	KeyFile                       string `pkl:"key_file"`
-	ACMEEmail                     string `pkl:"acme_email"`
-	ACMECA                        string `pkl:"acme_ca"`
-	ACMECachePath                 string `pkl:"acme_cache_path"`
-	ACMEListenHost                string `pkl:"acme_listen_host"`
-	ACMEHTTPPort                  int    `pkl:"acme_http_port"`
-	ACMETLSALPNPort               int    `pkl:"acme_tls_alpn_port"`
-	ACMEDisableHTTPChallenge      bool   `pkl:"acme_disable_http_challenge"`
-	ACMEDisableTLSALPNChallenge   bool   `pkl:"acme_disable_tls_alpn_challenge"`
-	ACMEDisableDistributedSolvers bool   `pkl:"acme_disable_distributed_solvers"`
+	Mode                          string `pkl:"mode" json:"mode"`
+	CertFile                      string `pkl:"cert_file" json:"cert_file"`
+	KeyFile                       string `pkl:"key_file" json:"key_file"`
+	ACMEEmail                     string `pkl:"acme_email" json:"acme_email"`
+	ACMECA                        string `pkl:"acme_ca" json:"acme_ca"`
+	ACMECachePath                 string `pkl:"acme_cache_path" json:"acme_cache_path"`
+	ACMEListenHost                string `pkl:"acme_listen_host" json:"acme_listen_host"`
+	ACMEHTTPPort                  int    `pkl:"acme_http_port" json:"acme_http_port"`
+	ACMETLSALPNPort               int    `pkl:"acme_tls_alpn_port" json:"acme_tls_alpn_port"`
+	ACMEDisableHTTPChallenge      bool   `pkl:"acme_disable_http_challenge" json:"acme_disable_http_challenge"`
+	ACMEDisableTLSALPNChallenge   bool   `pkl:"acme_disable_tls_alpn_challenge" json:"acme_disable_tls_alpn_challenge"`
+	ACMEDisableDistributedSolvers bool   `pkl:"acme_disable_distributed_solvers" json:"acme_disable_distributed_solvers"`
 }
 
 type WebhookConfig struct {
-	DefaultTimeoutSeconds int               `pkl:"default_timeout_seconds"`
-	Secret                string            `pkl:"secret"`
-	Endpoints             map[string]string `pkl:"endpoints"`
+	DefaultTimeoutSeconds int               `pkl:"default_timeout_seconds" json:"default_timeout_seconds"`
+	Secret                string            `pkl:"secret" json:"secret"`
+	Endpoints             map[string]string `pkl:"endpoints" json:"endpoints"`
 }
 
 type NotificationConfig struct {
-	FromAddress      string `pkl:"from_address"`
-	RenderURL        string `pkl:"render_url"`
-	RenderSecret     string `pkl:"render_secret"`
-	TimeoutSeconds   int    `pkl:"timeout_seconds"`
-	MaxResponseBytes int64  `pkl:"max_response_bytes"`
+	FromAddress      string `pkl:"from_address" json:"from_address"`
+	RenderURL        string `pkl:"render_url" json:"render_url"`
+	RenderSecret     string `pkl:"render_secret" json:"render_secret"`
+	TimeoutSeconds   int    `pkl:"timeout_seconds" json:"timeout_seconds"`
+	MaxResponseBytes int64  `pkl:"max_response_bytes" json:"max_response_bytes"`
 }
 
 type SpamConfig struct {
-	JunkThreshold   float64 `pkl:"junk_threshold"`
-	RejectThreshold float64 `pkl:"reject_threshold"`
+	JunkThreshold   float64 `pkl:"junk_threshold" json:"junk_threshold"`
+	RejectThreshold float64 `pkl:"reject_threshold" json:"reject_threshold"`
 }
 
 type LimitsConfig struct {
-	MaxMessageSizeBytes  int64 `pkl:"max_message_size_bytes"`
-	MaxInboundRecipients int   `pkl:"max_inbound_recipients"`
+	MaxMessageSizeBytes  int64 `pkl:"max_message_size_bytes" json:"max_message_size_bytes"`
+	MaxInboundRecipients int   `pkl:"max_inbound_recipients" json:"max_inbound_recipients"`
 }
 
 type ReloadImpact struct {
@@ -149,15 +150,21 @@ type ReloadImpact struct {
 }
 
 func Load(ctx context.Context, path string) (*Config, error) {
-	evaluator, err := pkl.NewEvaluator(ctx, pkl.PreconfiguredOptions)
+	evaluator, err := pkl.NewEvaluator(ctx, pkl.PreconfiguredOptions, func(options *pkl.EvaluatorOptions) {
+		options.OutputFormat = "json"
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create pkl evaluator: %w", err)
 	}
 	defer evaluator.Close()
 
 	var cfg Config
-	if err := evaluator.EvaluateModule(ctx, pkl.FileSource(path), &cfg); err != nil {
+	output, err := evaluator.EvaluateOutputText(ctx, pkl.FileSource(path))
+	if err != nil {
 		return nil, fmt.Errorf("evaluate pkl module: %w", err)
+	}
+	if err := json.Unmarshal([]byte(output), &cfg); err != nil {
+		return nil, fmt.Errorf("decode pkl json: %w", err)
 	}
 
 	if err := cfg.Validate(); err != nil {

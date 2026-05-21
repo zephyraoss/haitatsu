@@ -1,0 +1,105 @@
+server {
+  api_addr = "0.0.0.0:8080"
+  public_hostname = "mail.localhost"
+  instance_name = "compose-test-01"
+  shutdown_timeout_seconds = 10
+}
+
+smtp {
+  inbound_addr = "0.0.0.0:25"
+  max_message_size_bytes = 52428800
+  max_inbound_recipients = 100
+}
+
+imap {
+  addr = "0.0.0.0:143"
+}
+
+submission {
+  starttls_addr = "0.0.0.0:587"
+  tls_addr = "0.0.0.0:465"
+}
+
+relay {
+  addr = "localhost:2526"
+  username = ""
+  password = ""
+  from_host = "localhost"
+}
+
+bounce {
+  domain = "bounce.localhost"
+}
+
+postgres {
+  dsn = "postgres://haitatsu:woof@postgres:5432/haitatsu?sslmode=disable"
+}
+
+s3 {
+  endpoint = "minio:9000"
+  region = "us-east-1"
+  bucket = "haitatsu"
+  access_key_id = "woof"
+  secret_access_key = "woofwoof"
+  use_ssl = false
+}
+
+logging {
+  level = "info"
+  axiom_enabled = false
+  axiom_dataset = ""
+  axiom_token = ""
+  axiom_url = "https://api.axiom.co"
+}
+
+metrics {
+  enabled = true
+}
+
+api {
+  service_token = "woof"
+}
+
+workers {
+  enabled = true
+  concurrency = 2
+}
+
+tls {
+  mode = "off"
+  cert_file = ""
+  key_file = ""
+  acme_email = ""
+  acme_ca = "letsencrypt-staging"
+  acme_cache_path = "./cache/certmagic"
+  acme_listen_host = ""
+  acme_http_port = 0
+  acme_tls_alpn_port = 0
+  acme_disable_http_challenge = true
+  acme_disable_tls_alpn_challenge = true
+  acme_disable_distributed_solvers = false
+}
+
+webhooks {
+  default_timeout_seconds = 10
+  secret = "woof"
+  endpoints = new Mapping<String, String> {}
+}
+
+notifications {
+  from_address = "postmaster@mail.localhost"
+  render_url = ""
+  render_secret = "woof"
+  timeout_seconds = 10
+  max_response_bytes = 65536
+}
+
+spam {
+  junk_threshold = 5.0
+  reject_threshold = 10.0
+}
+
+limits {
+  max_message_size_bytes = 52428800
+  max_inbound_recipients = 100
+}

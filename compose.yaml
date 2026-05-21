@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: haitatsu
+      POSTGRES_USER: haitatsu
+      POSTGRES_PASSWORD: woof
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haitatsu -d haitatsu"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: woof
+      MINIO_ROOT_PASSWORD: woofwoof
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 woof woofwoof; do sleep 1; done &&
+      mc mb --ignore-existing local/haitatsu"
+
+  haitatsu:
+    image: haitatsu:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+      - "2525:25"
+      - "1143:143"
+      - "1465:465"
+      - "1587:587"
+    volumes:
+      - ./haitatsu.compose.pkl:/app/haitatsu.pkl:ro
+
+volumes:
+  postgres-data:
+  minio-data:

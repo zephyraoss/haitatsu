@@ -36,7 +36,7 @@ type mailboxMessageResponse struct {
 	Labels         []*ent.Label        `json:"labels"`
 }
 
-const messageSearchVector = "to_tsvector('english', concat_ws(' ', subject, from_addresses::text, to_addresses::text, cc_addresses::text, text_body_extract, html_body_extract, attachments::text))"
+const messageSearchVector = "to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(from_addresses::text, '') || ' ' || coalesce(to_addresses::text, '') || ' ' || coalesce(cc_addresses::text, '') || ' ' || coalesce(text_body_extract, '') || ' ' || coalesce(html_body_extract, '') || ' ' || coalesce(attachments::text, ''))"
 
 type messageSearch struct {
 	Terms         []string

@@ -1,0 +1,51 @@
+version: '3'
+
+vars:
+  BIN: haitatsu
+  LINUX_BIN: haitatsu-linux-amd64
+  IMAGE: haitatsu:local
+  COMPOSE: docker compose -f compose.yaml
+
+tasks:
+  build:
+    desc: Build local executable
+    cmds:
+      - go build -o {{.BIN}} ./cmd/haitatsu
+
+  build:linux:
+    desc: Build Linux amd64 executable
+    env:
+      GOOS: linux
+      GOARCH: amd64
+      CGO_ENABLED: '0'
+    cmds:
+      - go build -o {{.LINUX_BIN}} ./cmd/haitatsu
+
+  docker:build:
+    desc: Build Docker container image
+    cmds:
+      - docker build -t {{.IMAGE}} .
+
+  compose:up:
+    desc: Run test email server stack
+    deps:
+      - docker:build
+    cmds:
+      - '{{.COMPOSE}} up -d'
+
+  compose:down:
+    desc: Stop test email server stack
+    cmds:
+      - '{{.COMPOSE}} down'
+
+  db:wipe:
+    desc: Wipe Postgres data in the compose stack
+    cmds:
+      - '{{.COMPOSE}} stop haitatsu'
+      - '{{.COMPOSE}} exec -T postgres psql -U haitatsu -d haitatsu -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+      - '{{.COMPOSE}} start haitatsu'
+
+  compose:reset:
+    desc: Remove all compose containers and volumes
+    cmds:
+      - '{{.COMPOSE}} down -v --remove-orphans'

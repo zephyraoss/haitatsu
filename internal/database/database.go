@@ -17,7 +17,7 @@ const EntDialect = dialect.Postgres
 
 const messageSearchIndexSQL = `
 CREATE INDEX IF NOT EXISTS messages_search_vector_idx
-ON messages USING GIN (to_tsvector('english', concat_ws(' ', subject, from_addresses::text, to_addresses::text, cc_addresses::text, text_body_extract, html_body_extract, attachments::text)))
+ON messages USING GIN (to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(from_addresses::text, '') || ' ' || coalesce(to_addresses::text, '') || ' ' || coalesce(cc_addresses::text, '') || ' ' || coalesce(text_body_extract, '') || ' ' || coalesce(html_body_extract, '') || ' ' || coalesce(attachments::text, '')))
 `
 
 type Client struct {

@@ -18,7 +18,16 @@ const (
 	argonThreads = 4
 	argonKeyLen  = 32
 	saltLen      = 16
+	passwordLen  = 24
 )
+
+func GeneratePassword() (string, error) {
+	data := make([]byte, passwordLen)
+	if _, err := rand.Read(data); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
+}
 
 func HashPassword(password string) (string, error) {
 	if password == "" {
