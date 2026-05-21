@@ -452,7 +452,8 @@ func messageSearchWhere(search messageSearch) ([]string, []any) {
 		where = append(where, fmt.Sprintf(clause, len(args)))
 	}
 	if len(search.Terms) > 0 {
-		add(messageSearchVector+" @@ query", strings.Join(search.Terms, " "))
+		args = append(args, strings.Join(search.Terms, " "))
+		where = append(where, messageSearchVector+" @@ query")
 	}
 	if search.From != "" {
 		add("from_addresses::text ILIKE '%%' || $%d || '%%'", search.From)

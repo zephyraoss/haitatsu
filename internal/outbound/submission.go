@@ -175,7 +175,8 @@ func parsePrivateKey(value string) (*rsa.PrivateKey, error) {
 }
 
 func normalizeSubmittedMessage(raw []byte, from string, messageID string, hostname string, traceID string, node string) []byte {
-	header, body := splitMessage(raw)
+	header, body := mailparse.SplitHeaderBody(raw)
+	header = mailparse.JoinHeaderBody(header, nil)
 	if !hasHeader(header, "From") {
 		header = append(header, []byte("From: "+from+"\r\n")...)
 	}
@@ -187,17 +188,7 @@ func normalizeSubmittedMessage(raw []byte, from string, messageID string, hostna
 	}
 	header = append(header, []byte("X-Haitatsu-Trace-ID: "+traceID+"\r\n")...)
 	header = append(header, []byte("X-Haitatsu-Node: "+node+"\r\n")...)
-	return append(append(header, []byte("\r\n")...), body...)
-}
-
-func splitMessage(raw []byte) ([]byte, []byte) {
-	if index := bytes.Index(raw, []byte("\r\n\r\n")); index >= 0 {
-		return raw[:index+2], raw[index+4:]
-	}
-	if index := bytes.Index(raw, []byte("\n\n")); index >= 0 {
-		return bytes.ReplaceAll(raw[:index+1], []byte("\n"), []byte("\r\n")), raw[index+2:]
-	}
-	return bytes.ReplaceAll(raw, []byte("\n"), []byte("\r\n")), nil
+	return mailparse.JoinHeaderBody(header, body)
 }
 
 func hasHeader(header []byte, key string) bool {

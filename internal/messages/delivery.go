@@ -43,7 +43,7 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	messageID := ids.New().String()
 	traceID := ids.New().String()
 	key := messageObjectKey(time.Now().UTC(), messageID)
-	stored := s.withTraceHeaders(raw, traceID, assessment.Header)
+	stored := s.withTraceHeaders(mailparse.NormalizeMessage(raw), traceID, assessment.Header)
 	metadata := mailparse.Parse(stored)
 
 	if err := s.store.PutMessage(ctx, key, stored); err != nil {

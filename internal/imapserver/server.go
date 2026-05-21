@@ -23,6 +23,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
+	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
@@ -330,6 +331,7 @@ func (s *session) fetchMessage(w *goimapserver.FetchResponseWriter, item *ent.Ma
 	if err != nil {
 		return err
 	}
+	raw = mailparse.NormalizeMessage(raw)
 	if options.UID {
 		w.WriteUID(uid)
 	}
@@ -448,14 +450,8 @@ func uidValidity(mailboxID string) uint32 {
 }
 
 func messageHeader(raw []byte) textproto.Header {
-	index := bytes.Index(raw, []byte("\r\n\r\n"))
-	if index < 0 {
-		index = bytes.Index(raw, []byte("\n\n"))
-	}
-	if index < 0 {
-		index = len(raw)
-	}
-	header, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(raw[:index])))
+	headerBytes, _ := mailparse.SplitHeaderBody(raw)
+	header, err := textproto.ReadHeader(bufio.NewReader(bytes.NewReader(mailparse.JoinHeaderBody(headerBytes, nil))))
 	if err != nil {
 		return textproto.Header{}
 	}

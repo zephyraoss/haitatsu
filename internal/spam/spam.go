@@ -81,8 +81,9 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 		},
 	}
 	assessment.Header = c.authResultsHeader(spfResult, dkimResult, dmarcResult, smtp, metadata)
-	assessment.Junk = score >= c.junkThreshold() || dmarcPolicy == dmarc.PolicyQuarantine || listKind == "block"
-	assessment.Reject = score >= c.rejectThreshold() || dmarcPolicy == dmarc.PolicyReject || listAction == "reject"
+	dmarcFailed := dmarcResult == authres.ResultFail
+	assessment.Junk = score >= c.junkThreshold() || (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
+	assessment.Reject = score >= c.rejectThreshold() || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
 	return assessment
 }
 
@@ -169,12 +170,12 @@ func score(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcR
 	}
 	if dmarcResult == authres.ResultFail {
 		add(3, "dmarc_fail")
-	}
-	if policy == dmarc.PolicyQuarantine {
-		add(2, "dmarc_quarantine")
-	}
-	if policy == dmarc.PolicyReject {
-		add(10, "dmarc_reject")
+		if policy == dmarc.PolicyQuarantine {
+			add(2, "dmarc_quarantine")
+		}
+		if policy == dmarc.PolicyReject {
+			add(10, "dmarc_reject")
+		}
 	}
 	if listKind == "block" {
 		add(10, "blocklist")
