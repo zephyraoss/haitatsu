@@ -16,6 +16,8 @@ import (
 
 type Store interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
+	GetObject(ctx context.Context, key string) ([]byte, error)
+	PutMessage(ctx context.Context, key string, data []byte) error
 	PutExport(ctx context.Context, key string, data []byte) error
 }
 

@@ -93,7 +93,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	cleanupWorker := cleanup.New(db.Ent(), blobStore, m)
 	eventService := events.New(db.Ent())
 	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
-	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), eventService, cfg.Server.InstanceName)
+	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
 	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), cfg.Webhooks, m, cfg.Server.InstanceName)
 	resolver := routing.NewResolver(db.Ent())
 	ruleEngine := rules.New(db.Ent())

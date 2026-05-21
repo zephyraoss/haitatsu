@@ -46,6 +46,10 @@ func (c *Client) PutMessage(ctx context.Context, key string, data []byte) error 
 }
 
 func (c *Client) GetMessage(ctx context.Context, key string) ([]byte, error) {
+	return c.GetObject(ctx, key)
+}
+
+func (c *Client) GetObject(ctx context.Context, key string) ([]byte, error) {
 	object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
