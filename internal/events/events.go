@@ -8,6 +8,7 @@ import (
 )
 
 const MessageReceived = "message.received"
+const MessageRouted = "message.routed"
 const MailboxExportCompleted = "mailbox.export_completed"
 const MailboxExportFailed = "mailbox.export_failed"
 const MailboxImportCompleted = "mailbox.import_completed"

@@ -72,6 +72,12 @@ tls {
   acme_email = ""
   acme_ca = "letsencrypt"
   acme_cache_path = "./cache/certmagic"
+  acme_listen_host = ""
+  acme_http_port = 0
+  acme_tls_alpn_port = 0
+  acme_disable_http_challenge = false
+  acme_disable_tls_alpn_challenge = false
+  acme_disable_distributed_solvers = false
 }
 
 webhooks {
@@ -83,7 +89,9 @@ webhooks {
 notifications {
   from_address = "postmaster@mail.example.com"
   render_url = ""
+  render_secret = ""
   timeout_seconds = 10
+  max_response_bytes = 65536
 }
 
 spam {

@@ -3,9 +3,12 @@ package notifications
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"html"
+	"io"
 	"mime"
 	"net/http"
 	"net/mail"
@@ -26,6 +29,7 @@ type Service struct {
 	cfg      config.NotificationConfig
 	from     string
 	domain   string
+	maxBytes int64
 	http     *http.Client
 }
 
@@ -51,7 +55,11 @@ func New(client *ent.Client, messages *messages.Service, cfg config.Notification
 	if from == "" {
 		from = "postmaster@" + publicHostname
 	}
-	return &Service{client: client, messages: messages, cfg: cfg, from: from, domain: publicHostname, http: &http.Client{Timeout: timeout}}
+	maxBytes := cfg.MaxResponseBytes
+	if maxBytes <= 0 {
+		maxBytes = 64 * 1024
+	}
+	return &Service{client: client, messages: messages, cfg: cfg, from: from, domain: publicHostname, maxBytes: maxBytes, http: &http.Client{Timeout: timeout}}
 }
 
 func (s *Service) OutboundFailure(ctx context.Context, mailboxID string, messageID string, data map[string]any) error {
@@ -82,6 +90,12 @@ func (s *Service) render(ctx context.Context, typ string, mailboxID string, mess
 		return fallback(typ, data)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.RenderSecret != "" {
+		timestamp := time.Now().UTC().Format(time.RFC3339)
+		req.Header.Set("X-Haitatsu-Notification", typ)
+		req.Header.Set("X-Haitatsu-Timestamp", timestamp)
+		req.Header.Set("X-Haitatsu-Signature", signature(s.cfg.RenderSecret, timestamp, body))
+	}
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return fallback(typ, data)
@@ -91,7 +105,11 @@ func (s *Service) render(ctx context.Context, typ string, mailboxID string, mess
 		return fallback(typ, data)
 	}
 	var rendered renderedMessage
-	if err := json.NewDecoder(resp.Body).Decode(&rendered); err != nil {
+	response, err := io.ReadAll(io.LimitReader(resp.Body, s.maxBytes+1))
+	if err != nil || int64(len(response)) > s.maxBytes {
+		return fallback(typ, data)
+	}
+	if err := json.Unmarshal(response, &rendered); err != nil {
 		return fallback(typ, data)
 	}
 	if rendered.Subject == "" || rendered.Text == "" {
@@ -101,15 +119,61 @@ func (s *Service) render(ctx context.Context, typ string, mailboxID string, mess
 }
 
 func fallback(typ string, data map[string]any) renderedMessage {
-	subject := "Message delivery failed"
-	text := "A message could not be delivered."
-	if response, _ := data["response"].(string); response != "" {
-		text = fmt.Sprintf("A message could not be delivered.\n\n%s", response)
+	subject := fallbackSubject(typ)
+	text := fallbackText(typ, data)
+	return renderedMessage{Subject: subject, Text: text, HTML: htmlParagraphs(text)}
+}
+
+func fallbackSubject(typ string) string {
+	switch typ {
+	case "permanent_bounce":
+		return "Message delivery failed"
+	default:
+		return "Mailbox notification"
 	}
-	return renderedMessage{Subject: subject, Text: text, HTML: "<p>" + html.EscapeString(text) + "</p>"}
+}
+
+func fallbackText(typ string, data map[string]any) string {
+	switch typ {
+	case "permanent_bounce":
+		text := "A message could not be delivered."
+		if classification, _ := data["classification"].(string); classification != "" {
+			text += "\n\nStatus: " + classification
+		}
+		if response, _ := data["response"].(string); response != "" {
+			text += "\n\n" + response
+		}
+		return text
+	default:
+		return "Haitatsu generated a mailbox notification."
+	}
+}
+
+func htmlParagraphs(text string) string {
+	parts := strings.Split(text, "\n\n")
+	var buf strings.Builder
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		buf.WriteString("<p>")
+		buf.WriteString(html.EscapeString(part))
+		buf.WriteString("</p>")
+	}
+	return buf.String()
+}
+
+func signature(secret string, timestamp string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("."))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func buildMessage(from string, to string, domain string, rendered renderedMessage) []byte {
+	boundary := "haitatsu-notification-" + ids.New().String()
 	var buf bytes.Buffer
 	buf.WriteString("From: " + formatAddress("Haitatsu", from) + "\r\n")
 	buf.WriteString("To: " + formatAddress("", to) + "\r\n")
@@ -118,7 +182,6 @@ func buildMessage(from string, to string, domain string, rendered renderedMessag
 	buf.WriteString("Message-ID: <" + ids.New().String() + "@" + domain + ">\r\n")
 	buf.WriteString("MIME-Version: 1.0\r\n")
 	if rendered.HTML != "" {
-		boundary := "haitatsu-notification"
 		buf.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n\r\n")
 		buf.WriteString("--" + boundary + "\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + rendered.Text + "\r\n")
 		buf.WriteString("--" + boundary + "\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + rendered.HTML + "\r\n")

@@ -106,12 +106,18 @@ type WorkersConfig struct {
 }
 
 type TLSConfig struct {
-	Mode          string `pkl:"mode"`
-	CertFile      string `pkl:"cert_file"`
-	KeyFile       string `pkl:"key_file"`
-	ACMEEmail     string `pkl:"acme_email"`
-	ACMECA        string `pkl:"acme_ca"`
-	ACMECachePath string `pkl:"acme_cache_path"`
+	Mode                          string `pkl:"mode"`
+	CertFile                      string `pkl:"cert_file"`
+	KeyFile                       string `pkl:"key_file"`
+	ACMEEmail                     string `pkl:"acme_email"`
+	ACMECA                        string `pkl:"acme_ca"`
+	ACMECachePath                 string `pkl:"acme_cache_path"`
+	ACMEListenHost                string `pkl:"acme_listen_host"`
+	ACMEHTTPPort                  int    `pkl:"acme_http_port"`
+	ACMETLSALPNPort               int    `pkl:"acme_tls_alpn_port"`
+	ACMEDisableHTTPChallenge      bool   `pkl:"acme_disable_http_challenge"`
+	ACMEDisableTLSALPNChallenge   bool   `pkl:"acme_disable_tls_alpn_challenge"`
+	ACMEDisableDistributedSolvers bool   `pkl:"acme_disable_distributed_solvers"`
 }
 
 type WebhookConfig struct {
@@ -121,9 +127,11 @@ type WebhookConfig struct {
 }
 
 type NotificationConfig struct {
-	FromAddress    string `pkl:"from_address"`
-	RenderURL      string `pkl:"render_url"`
-	TimeoutSeconds int    `pkl:"timeout_seconds"`
+	FromAddress      string `pkl:"from_address"`
+	RenderURL        string `pkl:"render_url"`
+	RenderSecret     string `pkl:"render_secret"`
+	TimeoutSeconds   int    `pkl:"timeout_seconds"`
+	MaxResponseBytes int64  `pkl:"max_response_bytes"`
 }
 
 type SpamConfig struct {
@@ -227,6 +235,12 @@ func (c Config) Validate() error {
 	if strings.EqualFold(strings.TrimSpace(c.TLS.Mode), "acme") && strings.TrimSpace(c.TLS.ACMEEmail) == "" {
 		problems = append(problems, "tls.acme_email is required when ACME TLS is enabled")
 	}
+	if c.TLS.ACMEHTTPPort < 0 {
+		problems = append(problems, "tls.acme_http_port must be >= 0")
+	}
+	if c.TLS.ACMETLSALPNPort < 0 {
+		problems = append(problems, "tls.acme_tls_alpn_port must be >= 0")
+	}
 	if c.Limits.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "limits.max_message_size_bytes must be >= 0")
 	}
@@ -243,6 +257,9 @@ func (c Config) Validate() error {
 	}
 	if c.Notifications.TimeoutSeconds < 0 {
 		problems = append(problems, "notifications.timeout_seconds must be >= 0")
+	}
+	if c.Notifications.MaxResponseBytes < 0 {
+		problems = append(problems, "notifications.max_response_bytes must be >= 0")
 	}
 	if c.Spam.JunkThreshold < 0 {
 		problems = append(problems, "spam.junk_threshold must be >= 0")

@@ -5,13 +5,20 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -116,9 +123,27 @@ RETURNING id, mailbox_id, source_type, source
 }
 
 func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error) {
-	if job.SourceType != "zip" {
+	mbox, err := w.client.Mailbox.Query().Where(mailbox.IDEQ(job.MailboxID)).Only(ctx)
+	if err != nil {
+		return 0, err
+	}
+	inbox, err := w.client.Folder.Query().Where(folder.MailboxIDEQ(job.MailboxID), folder.NameEQ("INBOX")).Only(ctx)
+	if err != nil {
+		return 0, err
+	}
+	switch job.SourceType {
+	case "zip":
+		return w.importZip(ctx, job, mbox, inbox.ID)
+	case "maildir":
+		return w.importMaildir(ctx, job, mbox, inbox.ID)
+	case "imap":
+		return w.importIMAP(ctx, job, mbox, inbox.ID)
+	default:
 		return 0, fmt.Errorf("unsupported import source type %q", job.SourceType)
 	}
+}
+
+func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string) (int, error) {
 	key := sourceKey(job.Source)
 	if key == "" {
 		return 0, fmt.Errorf("zip import requires source.object_key")
@@ -128,14 +153,6 @@ func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error
 		return 0, err
 	}
 	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return 0, err
-	}
-	mbox, err := w.client.Mailbox.Query().Where(mailbox.IDEQ(job.MailboxID)).Only(ctx)
-	if err != nil {
-		return 0, err
-	}
-	inbox, err := w.client.Folder.Query().Where(folder.MailboxIDEQ(job.MailboxID), folder.NameEQ("INBOX")).Only(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -153,25 +170,140 @@ func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error
 		if err != nil {
 			return imported, err
 		}
-		_, err = w.client.MailboxMessage.Create().
-			SetMailboxID(job.MailboxID).
-			SetMessageID(msg.ID).
-			SetFolderID(inbox.ID).
-			SetOriginalRcpt(mbox.PrimaryAddress).
-			SetBaseRcpt(mbox.PrimaryAddress).
-			Save(ctx)
-		if ent.IsConstraintError(err) {
-			continue
-		}
+		created, err := w.attachMessage(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, msg.ID, int64(len(raw)))
 		if err != nil {
 			return imported, err
 		}
-		if _, err := w.client.Mailbox.UpdateOneID(job.MailboxID).AddUsedBytes(int64(len(raw))).Save(ctx); err != nil {
-			return imported, err
+		if created {
+			imported++
 		}
-		imported++
 	}
 	return imported, nil
+}
+
+func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string) (int, error) {
+	root := strings.TrimSpace(sourceString(job.Source, "path"))
+	if root == "" {
+		return 0, fmt.Errorf("maildir import requires source.path")
+	}
+	files, err := maildirFiles(root)
+	if err != nil {
+		return 0, err
+	}
+	imported := 0
+	for _, path := range files {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return imported, err
+		}
+		msg, err := w.messageForRaw(ctx, raw)
+		if err != nil {
+			return imported, err
+		}
+		created, err := w.attachMessage(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, msg.ID, int64(len(raw)))
+		if err != nil {
+			return imported, err
+		}
+		if created {
+			imported++
+		}
+	}
+	return imported, nil
+}
+
+func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string) (int, error) {
+	client, err := dialIMAP(job.Source)
+	if err != nil {
+		return 0, err
+	}
+	defer client.Close()
+	if err := client.Login(sourceString(job.Source, "username"), sourceString(job.Source, "password")).Wait(); err != nil {
+		return 0, err
+	}
+	mailboxes := sourceStringSlice(job.Source, "mailboxes")
+	if len(mailboxes) == 0 {
+		mailboxName := sourceString(job.Source, "mailbox")
+		if mailboxName == "" {
+			mailboxName = "INBOX"
+		}
+		mailboxes = []string{mailboxName}
+	}
+	imported := 0
+	for _, mailboxName := range mailboxes {
+		count, err := w.importIMAPMailbox(ctx, client, mailboxName, job.MailboxID, inboxID, mbox.PrimaryAddress)
+		if err != nil {
+			return imported, err
+		}
+		imported += count
+	}
+	return imported, nil
+}
+
+func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, inboxID string, primaryAddress string) (int, error) {
+	selected, err := client.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
+	if err != nil {
+		return 0, err
+	}
+	if selected.NumMessages == 0 {
+		return 0, nil
+	}
+	bodySection := &imap.FetchItemBodySection{}
+	var seqSet imap.SeqSet
+	seqSet.AddRange(1, selected.NumMessages)
+	fetch := client.Fetch(seqSet, &imap.FetchOptions{BodySection: []*imap.FetchItemBodySection{bodySection}})
+	imported := 0
+	closeWithError := func(err error) (int, error) {
+		_ = fetch.Close()
+		return imported, err
+	}
+	for {
+		remoteMessage := fetch.Next()
+		if remoteMessage == nil {
+			break
+		}
+		raw, err := fetchMessageRaw(remoteMessage)
+		if err != nil {
+			return closeWithError(err)
+		}
+		if len(raw) == 0 {
+			continue
+		}
+		msg, err := w.messageForRaw(ctx, raw)
+		if err != nil {
+			return closeWithError(err)
+		}
+		created, err := w.attachMessage(ctx, mailboxID, inboxID, primaryAddress, msg.ID, int64(len(raw)))
+		if err != nil {
+			return closeWithError(err)
+		}
+		if created {
+			imported++
+		}
+	}
+	if err := fetch.Close(); err != nil {
+		return imported, err
+	}
+	return imported, nil
+}
+
+func (w *ImportWorker) attachMessage(ctx context.Context, mailboxID string, inboxID string, primaryAddress string, messageID string, size int64) (bool, error) {
+	_, err := w.client.MailboxMessage.Create().
+		SetMailboxID(mailboxID).
+		SetMessageID(messageID).
+		SetFolderID(inboxID).
+		SetOriginalRcpt(primaryAddress).
+		SetBaseRcpt(primaryAddress).
+		Save(ctx)
+	if ent.IsConstraintError(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, err := w.client.Mailbox.UpdateOneID(mailboxID).AddUsedBytes(size).Save(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (w *ImportWorker) messageForRaw(ctx context.Context, raw []byte) (*ent.Message, error) {
@@ -230,6 +362,99 @@ func sourceKey(source map[string]any) string {
 	}
 	value, _ := source["key"].(string)
 	return value
+}
+
+func sourceString(source map[string]any, key string) string {
+	value, _ := source[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func sourceBool(source map[string]any, key string) bool {
+	value, _ := source[key].(bool)
+	return value
+}
+
+func sourceStringSlice(source map[string]any, key string) []string {
+	value, ok := source[key]
+	if !ok {
+		return nil
+	}
+	if stringsValue, ok := value.([]string); ok {
+		return stringsValue
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		if value, ok := item.(string); ok && strings.TrimSpace(value) != "" {
+			values = append(values, strings.TrimSpace(value))
+		}
+	}
+	return values
+}
+
+func dialIMAP(source map[string]any) (*imapclient.Client, error) {
+	addr := sourceString(source, "addr")
+	if addr == "" {
+		return nil, fmt.Errorf("imap import requires source.addr")
+	}
+	options := &imapclient.Options{TLSConfig: imapTLSConfig(addr, sourceBool(source, "skip_verify"))}
+	if sourceBool(source, "starttls") {
+		return imapclient.DialStartTLS(addr, options)
+	}
+	if tlsEnabled, ok := source["tls"].(bool); ok && !tlsEnabled {
+		return imapclient.DialInsecure(addr, options)
+	}
+	return imapclient.DialTLS(addr, options)
+}
+
+func imapTLSConfig(addr string, skipVerify bool) *tls.Config {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	return &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify}
+}
+
+func fetchMessageRaw(message *imapclient.FetchMessageData) ([]byte, error) {
+	for {
+		item := message.Next()
+		if item == nil {
+			return nil, nil
+		}
+		body, ok := item.(imapclient.FetchItemDataBodySection)
+		if !ok || body.Literal == nil {
+			continue
+		}
+		return io.ReadAll(body.Literal)
+	}
+}
+
+func maildirFiles(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if entry.Name() == "tmp" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		parent := filepath.Base(filepath.Dir(path))
+		if parent != "cur" && parent != "new" {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	return files, err
 }
 
 func readZipFile(file *zip.File) ([]byte, error) {

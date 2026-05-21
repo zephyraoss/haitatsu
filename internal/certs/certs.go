@@ -44,9 +44,15 @@ func acmeTLSConfig(ctx context.Context, cfg config.TLSConfig, publicHostname str
 		magic.Storage = &certmagic.FileStorage{Path: cfg.ACMECachePath}
 	}
 	magic.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
-		CA:     acmeCA(cfg.ACMECA),
-		Email:  cfg.ACMEEmail,
-		Agreed: true,
+		CA:                        acmeCA(cfg.ACMECA),
+		Email:                     cfg.ACMEEmail,
+		Agreed:                    true,
+		ListenHost:                cfg.ACMEListenHost,
+		AltHTTPPort:               cfg.ACMEHTTPPort,
+		AltTLSALPNPort:            cfg.ACMETLSALPNPort,
+		DisableHTTPChallenge:      cfg.ACMEDisableHTTPChallenge,
+		DisableTLSALPNChallenge:   cfg.ACMEDisableTLSALPNChallenge,
+		DisableDistributedSolvers: cfg.ACMEDisableDistributedSolvers,
 	})}
 	if err := magic.ManageSync(ctx, []string{publicHostname}); err != nil {
 		return nil, err

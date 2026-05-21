@@ -16,6 +16,11 @@ import (
 
 type Engine struct {
 	client *ent.Client
+	events EventSink
+}
+
+type EventSink interface {
+	Emit(ctx context.Context, eventType string, mailboxID string, payload map[string]any) error
 }
 
 type Delivery struct {
@@ -23,8 +28,12 @@ type Delivery struct {
 	Route   routing.Result
 }
 
-func New(client *ent.Client) *Engine {
-	return &Engine{client: client}
+func New(client *ent.Client, events ...EventSink) *Engine {
+	engine := &Engine{client: client}
+	if len(events) > 0 {
+		engine.events = events[0]
+	}
+	return engine
 }
 
 func (e *Engine) Apply(ctx context.Context, msg *ent.Message, deliveries []Delivery) error {
@@ -46,7 +55,7 @@ func (e *Engine) applyDelivery(ctx context.Context, msg *ent.Message, delivery D
 			continue
 		}
 		for _, action := range rule.Actions {
-			if err := e.applyAction(ctx, delivery.Message, action); err != nil {
+			if err := e.applyAction(ctx, msg, rule, delivery, action); err != nil {
 				return err
 			}
 		}
@@ -91,7 +100,8 @@ func (e *Engine) rules(ctx context.Context, msg *ent.Message, delivery Delivery)
 	return rules, nil
 }
 
-func (e *Engine) applyAction(ctx context.Context, item *ent.MailboxMessage, action map[string]any) error {
+func (e *Engine) applyAction(ctx context.Context, msg *ent.Message, rule *ent.RoutingRule, delivery Delivery, action map[string]any) error {
+	item := delivery.Message
 	typeName := actionString(action, "type")
 	if typeName == "" {
 		typeName = actionString(action, "action")
@@ -117,8 +127,46 @@ func (e *Engine) applyAction(ctx context.Context, item *ent.MailboxMessage, acti
 		return err
 	case "copy_to_mailbox":
 		return e.copyToMailbox(ctx, item, actionString(action, "mailbox_id"))
+	case "webhook", "emit_webhook":
+		return e.emitWebhook(ctx, msg, rule, delivery, action)
 	default:
 		return nil
+	}
+}
+
+func (e *Engine) emitWebhook(ctx context.Context, msg *ent.Message, rule *ent.RoutingRule, delivery Delivery, action map[string]any) error {
+	if e.events == nil {
+		return nil
+	}
+	eventType := actionString(action, "event_type")
+	if eventType == "" {
+		eventType = actionString(action, "event")
+	}
+	if eventType == "" {
+		eventType = "message.routed"
+	}
+	payload := webhookPayload(msg, rule, delivery, eventType)
+	if custom, ok := action["payload"].(map[string]any); ok {
+		for key, value := range custom {
+			payload[key] = value
+		}
+	}
+	return e.events.Emit(ctx, eventType, delivery.Message.MailboxID, payload)
+}
+
+func webhookPayload(msg *ent.Message, rule *ent.RoutingRule, delivery Delivery, eventType string) map[string]any {
+	return map[string]any{
+		"event":              eventType,
+		"trace_id":           msg.TraceID,
+		"message_id":         msg.ID,
+		"mailbox_id":         delivery.Message.MailboxID,
+		"mailbox_message_id": delivery.Message.ID,
+		"routing_rule_id":    rule.ID,
+		"routing_rule_name":  rule.Name,
+		"original_rcpt":      delivery.Route.OriginalRecipient,
+		"base_rcpt":          delivery.Route.BaseRecipient,
+		"plus_tag":           delivery.Route.PlusTag,
+		"route_id":           delivery.Route.RouteID,
 	}
 }
 
