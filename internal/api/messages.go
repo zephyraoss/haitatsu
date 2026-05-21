@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -33,6 +34,22 @@ type mailboxMessageResponse struct {
 	Labels         []*ent.Label        `json:"labels"`
 }
 
+type messageSearch struct {
+	Terms         []string
+	From          string
+	To            string
+	CC            string
+	Subject       string
+	Label         string
+	Folder        string
+	HasAttachment bool
+	Read          *bool
+	Flagged       *bool
+	Tag           string
+	After         *time.Time
+	Before        *time.Time
+}
+
 func (h *Handler) listMessages(c fiber.Ctx) error {
 	limit := requestLimit(c)
 	query := h.client.MailboxMessage.Query().
@@ -56,12 +73,18 @@ func (h *Handler) listMessages(c fiber.Ctx) error {
 		}
 		query.Where(mailboxmessage.IDIn(ids...))
 	}
-	if search := strings.TrimSpace(c.Query("q")); search != "" {
+	if rawSearch := strings.TrimSpace(c.Query("q")); rawSearch != "" {
+		search := parseMessageSearch(rawSearch)
+		if err := h.applyMailboxSearch(c, query, search); err != nil {
+			return problem(c, fiber.StatusBadRequest, "invalid_message_search", err.Error())
+		}
 		ids, err := h.searchMessageIDs(c, search)
 		if err != nil {
 			return problem(c, fiber.StatusInternalServerError, "message_search_failed", "Failed to search messages")
 		}
-		query.Where(mailboxmessage.MessageIDIn(ids...))
+		if ids != nil {
+			query.Where(mailboxmessage.MessageIDIn(ids...))
+		}
 	}
 
 	items, err := query.All(c.Context())
@@ -277,13 +300,94 @@ func (h *Handler) mailboxMessageIDsForLabel(c fiber.Ctx, labelID string) ([]stri
 	return ids, nil
 }
 
-func (h *Handler) searchMessageIDs(c fiber.Ctx, search string) ([]string, error) {
-	rows, err := h.db.QueryContext(c.Context(), `
-SELECT id
-FROM messages, websearch_to_tsquery('english', $1) query
-WHERE to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)) @@ query
-ORDER BY ts_rank(to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)), query) DESC, created_at DESC
-`, search)
+func parseMessageSearch(value string) messageSearch {
+	var search messageSearch
+	for _, token := range searchTokens(value) {
+		key, raw, ok := strings.Cut(token, ":")
+		if !ok {
+			search.Terms = append(search.Terms, token)
+			continue
+		}
+		raw = strings.Trim(raw, `"`)
+		switch strings.ToLower(key) {
+		case "from":
+			search.From = raw
+		case "to":
+			search.To = raw
+		case "cc":
+			search.CC = raw
+		case "subject":
+			search.Subject = raw
+		case "label":
+			search.Label = raw
+		case "folder":
+			search.Folder = raw
+		case "has":
+			search.HasAttachment = raw == "attachment"
+		case "is":
+			if raw == "read" {
+				search.Read = boolPtr(true)
+			}
+			if raw == "unread" {
+				search.Read = boolPtr(false)
+			}
+			if raw == "flagged" {
+				search.Flagged = boolPtr(true)
+			}
+		case "tag":
+			search.Tag = raw
+		case "after":
+			search.After = parseSearchDate(raw)
+		case "before":
+			search.Before = parseSearchDate(raw)
+		default:
+			search.Terms = append(search.Terms, token)
+		}
+	}
+	return search
+}
+
+func (h *Handler) applyMailboxSearch(c fiber.Ctx, query *ent.MailboxMessageQuery, search messageSearch) error {
+	if search.Read != nil {
+		query.Where(mailboxmessage.ReadEQ(*search.Read))
+	}
+	if search.Flagged != nil {
+		query.Where(mailboxmessage.FlaggedEQ(*search.Flagged))
+	}
+	if search.Tag != "" {
+		query.Where(mailboxmessage.PlusTagEQ(search.Tag))
+	}
+	if search.Folder != "" {
+		folder, err := h.client.Folder.Query().Where(folder.MailboxIDEQ(c.Params("mailbox_id")), folder.NameEQ(search.Folder)).Only(c.Context())
+		if err != nil {
+			return fmt.Errorf("folder not found")
+		}
+		query.Where(mailboxmessage.FolderIDEQ(folder.ID))
+	}
+	if search.Label != "" {
+		label, err := h.client.Label.Query().Where(label.MailboxIDEQ(c.Params("mailbox_id")), label.NameEQ(search.Label)).Only(c.Context())
+		if err != nil {
+			return fmt.Errorf("label not found")
+		}
+		ids, err := h.mailboxMessageIDsForLabel(c, label.ID)
+		if err != nil {
+			return err
+		}
+		query.Where(mailboxmessage.IDIn(ids...))
+	}
+	return nil
+}
+
+func (h *Handler) searchMessageIDs(c fiber.Ctx, search messageSearch) ([]string, error) {
+	where, args := messageSearchWhere(search)
+	if len(where) == 0 {
+		return nil, nil
+	}
+	query := "SELECT id FROM messages WHERE " + strings.Join(where, " AND ") + " ORDER BY created_at DESC"
+	if len(search.Terms) > 0 {
+		query = "SELECT id FROM messages, websearch_to_tsquery('english', $1) query WHERE " + strings.Join(where, " AND ") + " ORDER BY ts_rank(to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)), query) DESC, created_at DESC"
+	}
+	rows, err := h.db.QueryContext(c.Context(), query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -298,4 +402,76 @@ ORDER BY ts_rank(to_tsvector('english', concat_ws(' ', subject, text_body_extrac
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
+}
+
+func messageSearchWhere(search messageSearch) ([]string, []any) {
+	var where []string
+	var args []any
+	add := func(clause string, value any) {
+		args = append(args, value)
+		where = append(where, fmt.Sprintf(clause, len(args)))
+	}
+	if len(search.Terms) > 0 {
+		add("to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)) @@ query", strings.Join(search.Terms, " "))
+	}
+	if search.From != "" {
+		add("from_addresses::text ILIKE '%%' || $%d || '%%'", search.From)
+	}
+	if search.To != "" {
+		add("to_addresses::text ILIKE '%%' || $%d || '%%'", search.To)
+	}
+	if search.CC != "" {
+		add("cc_addresses::text ILIKE '%%' || $%d || '%%'", search.CC)
+	}
+	if search.Subject != "" {
+		add("subject ILIKE '%%' || $%d || '%%'", search.Subject)
+	}
+	if search.HasAttachment {
+		where = append(where, "jsonb_array_length(attachments) > 0")
+	}
+	if search.After != nil {
+		add("coalesce(date, created_at) >= $%d", *search.After)
+	}
+	if search.Before != nil {
+		add("coalesce(date, created_at) <= $%d", *search.Before)
+	}
+	return where, args
+}
+
+func searchTokens(value string) []string {
+	var tokens []string
+	var current strings.Builder
+	inQuote := false
+	for _, char := range value {
+		switch {
+		case char == '"':
+			inQuote = !inQuote
+			current.WriteRune(char)
+		case char == ' ' && !inQuote:
+			if current.Len() > 0 {
+				tokens = append(tokens, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(char)
+		}
+	}
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+	return tokens
+}
+
+func parseSearchDate(value string) *time.Time {
+	for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return &parsed
+		}
+	}
+	return nil
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
