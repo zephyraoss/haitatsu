@@ -15,6 +15,11 @@ import (
 
 const EntDialect = dialect.Postgres
 
+const messageSearchIndexSQL = `
+CREATE INDEX IF NOT EXISTS messages_search_vector_idx
+ON messages USING GIN (to_tsvector('english', concat_ws(' ', subject, from_addresses::text, to_addresses::text, cc_addresses::text, text_body_extract, html_body_extract, attachments::text)))
+`
+
 type Client struct {
 	db             *sql.DB
 	ent            *ent.Client
@@ -37,6 +42,9 @@ func Open(ctx context.Context, cfg config.PostgresConfig) (*Client, error) {
 
 func (c *Client) RunMigrations(ctx context.Context) error {
 	if err := c.ent.Schema.Create(ctx); err != nil {
+		return err
+	}
+	if _, err := c.db.ExecContext(ctx, messageSearchIndexSQL); err != nil {
 		return err
 	}
 	c.migrationsDone.Store(true)

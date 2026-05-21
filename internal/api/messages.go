@@ -36,6 +36,8 @@ type mailboxMessageResponse struct {
 	Labels         []*ent.Label        `json:"labels"`
 }
 
+const messageSearchVector = "to_tsvector('english', concat_ws(' ', subject, from_addresses::text, to_addresses::text, cc_addresses::text, text_body_extract, html_body_extract, attachments::text))"
+
 type messageSearch struct {
 	Terms         []string
 	From          string
@@ -423,7 +425,7 @@ func (h *Handler) searchMessageIDs(c fiber.Ctx, search messageSearch) ([]string,
 	}
 	query := "SELECT id FROM messages WHERE " + strings.Join(where, " AND ") + " ORDER BY created_at DESC"
 	if len(search.Terms) > 0 {
-		query = "SELECT id FROM messages, websearch_to_tsquery('english', $1) query WHERE " + strings.Join(where, " AND ") + " ORDER BY ts_rank(to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)), query) DESC, created_at DESC"
+		query = "SELECT id FROM messages, websearch_to_tsquery('english', $1) query WHERE " + strings.Join(where, " AND ") + " ORDER BY ts_rank(" + messageSearchVector + ", query) DESC, created_at DESC"
 	}
 	rows, err := h.db.QueryContext(c.Context(), query, args...)
 	if err != nil {
@@ -450,7 +452,7 @@ func messageSearchWhere(search messageSearch) ([]string, []any) {
 		where = append(where, fmt.Sprintf(clause, len(args)))
 	}
 	if len(search.Terms) > 0 {
-		add("to_tsvector('english', concat_ws(' ', subject, text_body_extract, html_body_extract, attachments::text)) @@ query", strings.Join(search.Terms, " "))
+		add(messageSearchVector+" @@ query", strings.Join(search.Terms, " "))
 	}
 	if search.From != "" {
 		add("from_addresses::text ILIKE '%%' || $%d || '%%'", search.From)
