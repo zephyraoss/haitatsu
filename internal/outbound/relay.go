@@ -24,17 +24,23 @@ type RelayStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 }
 
+type Notifier interface {
+	OutboundFailure(ctx context.Context, mailboxID string, messageID string, data map[string]any) error
+}
+
 type Worker struct {
 	db       *sql.DB
 	client   *ent.Client
 	store    RelayStore
 	cfg      config.RelayConfig
 	metrics  *metrics.Metrics
+	notifier Notifier
 	workerID string
 }
 
 type claimedJob struct {
 	ID         string
+	MailboxID  string
 	MessageID  string
 	ReturnPath string
 	Recipients []string
@@ -48,8 +54,8 @@ type deliveryResult struct {
 	Response           string
 }
 
-func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg config.RelayConfig, metrics *metrics.Metrics, workerID string) *Worker {
-	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, workerID: workerID}
+func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg config.RelayConfig, metrics *metrics.Metrics, notifier Notifier, workerID string) *Worker {
+	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID}
 }
 
 func (w *Worker) Run(ctx context.Context, concurrency int) {
@@ -115,12 +121,12 @@ WHERE id = (
   FOR UPDATE SKIP LOCKED
   LIMIT 1
 )
-RETURNING id, message_id, return_path, recipients, attempts
+RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 `, w.workerID, time.Now().Add(5*time.Minute))
 
 	var job claimedJob
 	var recipients []byte
-	if err := row.Scan(&job.ID, &job.MessageID, &job.ReturnPath, &recipients, &job.Attempts); err != nil {
+	if err := row.Scan(&job.ID, &job.MailboxID, &job.MessageID, &job.ReturnPath, &recipients, &job.Attempts); err != nil {
 		if err == sql.ErrNoRows {
 			return claimedJob{}, false, nil
 		}
@@ -164,20 +170,26 @@ func (w *Worker) deliver(ctx context.Context, job claimedJob) deliveryResult {
 
 func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResult) error {
 	update := w.client.OutboundJob.UpdateOneID(job.ID).ClearLockedBy().ClearLockedUntil()
+	failed := false
 	switch result.Classification {
 	case "success":
 		update.SetStatus("sent").ClearNextAttemptAt()
 	case "temporary":
 		if job.Attempts+1 >= maxRelayAttempts {
 			update.SetStatus("failed")
+			failed = true
 		} else {
 			update.SetStatus("retry").SetNextAttemptAt(time.Now().Add(time.Duration(job.Attempts+1) * time.Minute))
 		}
 		update.AddAttempts(1).SetLastError(result.errorMap())
 	default:
 		update.SetStatus("failed").AddAttempts(1).SetLastError(result.errorMap())
+		failed = true
 	}
 	_, err := update.Save(ctx)
+	if err == nil && failed && w.notifier != nil {
+		_ = w.notifier.OutboundFailure(ctx, job.MailboxID, job.MessageID, result.errorMap())
+	}
 	return err
 }
 

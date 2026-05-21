@@ -21,6 +21,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/logging"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
+	"github.com/zephyraoss/haitatsu/internal/notifications"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 	"github.com/zephyraoss/haitatsu/internal/routing"
 	"github.com/zephyraoss/haitatsu/internal/rules"
@@ -89,7 +90,6 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	checker := health.NewChecker(db, blobStore)
 	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName, cfg.Bounce.Domain)
 	server := httpapi.New(cfg, db.Ent(), db.SQL(), blobStore, submissionService, checker, m, runtime)
-	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, m, cfg.Server.InstanceName)
 	cleanupWorker := cleanup.New(db.Ent(), blobStore, m)
 	eventService := events.New(db.Ent())
 	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
@@ -98,6 +98,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	resolver := routing.NewResolver(db.Ent())
 	ruleEngine := rules.New(db.Ent())
 	messageService := messages.NewService(db.Ent(), blobStore, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	notificationService := notifications.New(db.Ent(), messageService, cfg.Notifications, cfg.Server.PublicHostname)
+	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, m, notificationService, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m, cfg.Bounce.Domain)
 	spamChecker := spam.NewChecker(db.Ent(), cfg.Spam, cfg.Server.PublicHostname)
 	tlsConfig, err := certs.TLSConfig(ctx, cfg.TLS, cfg.Server.PublicHostname)

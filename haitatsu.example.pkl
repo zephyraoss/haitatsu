@@ -80,6 +80,12 @@ webhooks {
   endpoints = new Mapping<String, String> {}
 }
 
+notifications {
+  from_address = "postmaster@mail.example.com"
+  render_url = ""
+  timeout_seconds = 10
+}
+
 spam {
   junk_threshold = 5.0
   reject_threshold = 10.0

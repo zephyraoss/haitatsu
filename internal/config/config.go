@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -11,22 +12,23 @@ import (
 )
 
 type Config struct {
-	Server     ServerConfig     `pkl:"server"`
-	SMTP       SMTPConfig       `pkl:"smtp"`
-	IMAP       IMAPConfig       `pkl:"imap"`
-	Submission SubmissionConfig `pkl:"submission"`
-	Relay      RelayConfig      `pkl:"relay"`
-	Bounce     BounceConfig     `pkl:"bounce"`
-	Postgres   PostgresConfig   `pkl:"postgres"`
-	S3         S3Config         `pkl:"s3"`
-	Logging    LoggingConfig    `pkl:"logging"`
-	Metrics    MetricsConfig    `pkl:"metrics"`
-	API        APIConfig        `pkl:"api"`
-	Workers    WorkersConfig    `pkl:"workers"`
-	TLS        TLSConfig        `pkl:"tls"`
-	Webhooks   WebhookConfig    `pkl:"webhooks"`
-	Spam       SpamConfig       `pkl:"spam"`
-	Limits     LimitsConfig     `pkl:"limits"`
+	Server        ServerConfig       `pkl:"server"`
+	SMTP          SMTPConfig         `pkl:"smtp"`
+	IMAP          IMAPConfig         `pkl:"imap"`
+	Submission    SubmissionConfig   `pkl:"submission"`
+	Relay         RelayConfig        `pkl:"relay"`
+	Bounce        BounceConfig       `pkl:"bounce"`
+	Postgres      PostgresConfig     `pkl:"postgres"`
+	S3            S3Config           `pkl:"s3"`
+	Logging       LoggingConfig      `pkl:"logging"`
+	Metrics       MetricsConfig      `pkl:"metrics"`
+	API           APIConfig          `pkl:"api"`
+	Workers       WorkersConfig      `pkl:"workers"`
+	TLS           TLSConfig          `pkl:"tls"`
+	Webhooks      WebhookConfig      `pkl:"webhooks"`
+	Notifications NotificationConfig `pkl:"notifications"`
+	Spam          SpamConfig         `pkl:"spam"`
+	Limits        LimitsConfig       `pkl:"limits"`
 }
 
 type ServerConfig struct {
@@ -116,6 +118,12 @@ type WebhookConfig struct {
 	DefaultTimeoutSeconds int               `pkl:"default_timeout_seconds"`
 	Secret                string            `pkl:"secret"`
 	Endpoints             map[string]string `pkl:"endpoints"`
+}
+
+type NotificationConfig struct {
+	FromAddress    string `pkl:"from_address"`
+	RenderURL      string `pkl:"render_url"`
+	TimeoutSeconds int    `pkl:"timeout_seconds"`
 }
 
 type SpamConfig struct {
@@ -227,6 +235,14 @@ func (c Config) Validate() error {
 	}
 	if len(c.Webhooks.Endpoints) > 0 && strings.TrimSpace(c.Webhooks.Secret) == "" {
 		problems = append(problems, "webhooks.secret is required when webhook endpoints are configured")
+	}
+	if strings.TrimSpace(c.Notifications.FromAddress) != "" {
+		if _, err := mail.ParseAddress(c.Notifications.FromAddress); err != nil {
+			problems = append(problems, "notifications.from_address must be a valid email address")
+		}
+	}
+	if c.Notifications.TimeoutSeconds < 0 {
+		problems = append(problems, "notifications.timeout_seconds must be >= 0")
 	}
 	if c.Spam.JunkThreshold < 0 {
 		problems = append(problems, "spam.junk_threshold must be >= 0")
