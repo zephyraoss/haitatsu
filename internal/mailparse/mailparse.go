@@ -2,6 +2,7 @@ package mailparse
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -26,6 +27,12 @@ type Metadata struct {
 	Attachments  []map[string]any
 }
 
+type Attachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
 func Parse(data []byte) Metadata {
 	reader, err := mail.CreateReader(bytes.NewReader(data))
 	if err != nil && reader == nil {
@@ -46,6 +53,7 @@ func Parse(data []byte) Metadata {
 		metadata.Date = &date
 	}
 
+	partIndex := 0
 	for {
 		part, err := reader.NextPart()
 		if err == io.EOF {
@@ -53,6 +61,13 @@ func Parse(data []byte) Metadata {
 		}
 		if err != nil || part == nil {
 			break
+		}
+		partIndex++
+		if attachment, ok := attachmentMetadata(part, partIndex); ok {
+			size, _ := io.Copy(io.Discard, part.Body)
+			attachment["size_bytes"] = size
+			metadata.Attachments = append(metadata.Attachments, attachment)
+			continue
 		}
 		contentType := partContentType(part)
 		body := readExtract(part.Body)
@@ -65,6 +80,42 @@ func Parse(data []byte) Metadata {
 	}
 
 	return metadata
+}
+
+func ExtractAttachment(data []byte, partIndex int) (Attachment, error) {
+	reader, err := mail.CreateReader(bytes.NewReader(data))
+	if err != nil && reader == nil {
+		return Attachment{}, err
+	}
+	defer reader.Close()
+
+	current := 0
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil || part == nil {
+			return Attachment{}, err
+		}
+		current++
+		if current != partIndex {
+			_, _ = io.Copy(io.Discard, part.Body)
+			continue
+		}
+		header, ok := part.Header.(*mail.AttachmentHeader)
+		if !ok {
+			return Attachment{}, fmt.Errorf("part is not an attachment")
+		}
+		filename, _ := header.Filename()
+		contentType, _, _ := header.ContentType()
+		body, err := io.ReadAll(part.Body)
+		if err != nil {
+			return Attachment{}, err
+		}
+		return Attachment{Filename: filename, ContentType: contentType, Data: body}, nil
+	}
+	return Attachment{}, fmt.Errorf("attachment not found")
 }
 
 func headerMap(header message.Header) map[string][]string {
@@ -116,10 +167,31 @@ func partContentType(part *mail.Part) string {
 	return contentType
 }
 
+func attachmentMetadata(part *mail.Part, partIndex int) (map[string]any, bool) {
+	header, ok := part.Header.(*mail.AttachmentHeader)
+	if !ok {
+		return nil, false
+	}
+	filename, _ := header.Filename()
+	contentType, _, _ := header.ContentType()
+	return map[string]any{
+		"part_index":   partIndex,
+		"filename":     filename,
+		"content_type": contentType,
+	}, true
+}
+
 func readExtract(reader io.Reader) string {
-	data, err := io.ReadAll(io.LimitReader(reader, extractLimit))
-	if err != nil {
+	var buf bytes.Buffer
+	_, err := io.CopyN(&buf, reader, extractLimit)
+	if err != nil && err != io.EOF {
+		_, _ = io.Copy(io.Discard, reader)
 		return ""
+	}
+	_, _ = io.Copy(io.Discard, reader)
+	data := buf.Bytes()
+	if err != nil {
+		return string(data)
 	}
 	return string(data)
 }

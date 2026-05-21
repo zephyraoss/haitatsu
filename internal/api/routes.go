@@ -75,6 +75,7 @@ func Register(router fiber.Router, client *ent.Client, db *sql.DB, store Message
 	v1.Get("/mailboxes/:mailbox_id/messages", h.listMessages)
 	v1.Get("/messages/:id", h.getMessage)
 	v1.Get("/messages/:id/raw", h.downloadRawMessage)
+	v1.Get("/messages/:id/attachments/:attachment_id", h.downloadAttachment)
 	v1.Post("/mailboxes/:mailbox_id/outbound", h.createOutboundMessage)
 	v1.Patch("/messages/:id", h.updateMailboxMessage)
 	v1.Post("/messages/:id/move", h.moveMessage)

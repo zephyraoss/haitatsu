@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
+	"github.com/zephyraoss/haitatsu/internal/mailparse"
 )
 
 type mailboxMessageUpdateRequest struct {
@@ -111,13 +113,9 @@ func (h *Handler) getMessage(c fiber.Ctx) error {
 }
 
 func (h *Handler) downloadRawMessage(c fiber.Ctx) error {
-	item, err := h.client.MailboxMessage.Get(c.Context(), c.Params("id"))
+	msg, err := h.messageForMailboxMessage(c)
 	if err != nil {
-		return entProblem(c, err, "message_not_found", "Message not found")
-	}
-	msg, err := h.client.Message.Get(c.Context(), item.MessageID)
-	if err != nil {
-		return entProblem(c, err, "message_not_found", "Message not found")
+		return err
 	}
 	raw, err := h.store.GetMessage(c.Context(), msg.BlobKey)
 	if err != nil {
@@ -126,6 +124,34 @@ func (h *Handler) downloadRawMessage(c fiber.Ctx) error {
 	c.Set("Content-Type", "message/rfc822")
 	c.Set("Content-Disposition", `attachment; filename="`+msg.ID+`.eml"`)
 	return c.Send(raw)
+}
+
+func (h *Handler) downloadAttachment(c fiber.Ctx) error {
+	partIndex, err := strconv.Atoi(c.Params("attachment_id"))
+	if err != nil || partIndex <= 0 {
+		return problem(c, fiber.StatusBadRequest, "invalid_attachment", "Attachment ID must be a positive part index")
+	}
+	msg, handlerErr := h.messageForMailboxMessage(c)
+	if handlerErr != nil {
+		return handlerErr
+	}
+	raw, err := h.store.GetMessage(c.Context(), msg.BlobKey)
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "attachment_download_failed", "Failed to download attachment")
+	}
+	attachment, err := mailparse.ExtractAttachment(raw, partIndex)
+	if err != nil {
+		return problem(c, fiber.StatusNotFound, "attachment_not_found", "Attachment not found")
+	}
+	if attachment.ContentType != "" {
+		c.Set("Content-Type", attachment.ContentType)
+	} else {
+		c.Set("Content-Type", "application/octet-stream")
+	}
+	if attachment.Filename != "" {
+		c.Set("Content-Disposition", `attachment; filename="`+safeFilename(attachment.Filename)+`"`)
+	}
+	return c.Send(attachment.Data)
 }
 
 func (h *Handler) updateMailboxMessage(c fiber.Ctx) error {
@@ -145,6 +171,18 @@ func (h *Handler) updateMailboxMessage(c fiber.Ctx) error {
 		return entProblem(c, err, "message_update_failed", "Failed to update message")
 	}
 	return data(c, item)
+}
+
+func (h *Handler) messageForMailboxMessage(c fiber.Ctx) (*ent.Message, error) {
+	item, err := h.client.MailboxMessage.Get(c.Context(), c.Params("id"))
+	if err != nil {
+		return nil, entProblem(c, err, "message_not_found", "Message not found")
+	}
+	msg, err := h.client.Message.Get(c.Context(), item.MessageID)
+	if err != nil {
+		return nil, entProblem(c, err, "message_not_found", "Message not found")
+	}
+	return msg, nil
 }
 
 func (h *Handler) moveMessage(c fiber.Ctx) error {
@@ -474,4 +512,11 @@ func parseSearchDate(value string) *time.Time {
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func safeFilename(value string) string {
+	value = strings.ReplaceAll(value, "\r", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	value = strings.ReplaceAll(value, `"`, "'")
+	return value
 }
