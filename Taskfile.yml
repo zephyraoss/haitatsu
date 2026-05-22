@@ -4,6 +4,12 @@ vars:
   BIN: haitatsu
   LINUX_BIN: haitatsu-linux-amd64
   IMAGE: haitatsu:local
+  ACR_NAME:
+    sh: echo "${ACR_NAME:-haitatsuacr}"
+  IMAGE_TAG:
+    sh: echo "${IMAGE_TAG:-v1}"
+  ACR_IMAGE: '{{.ACR_NAME}}.azurecr.io/haitatsu:{{.IMAGE_TAG}}'
+  DOCKER_PLATFORM: linux/amd64
   COMPOSE: docker compose -f compose.yaml
 
 tasks:
@@ -22,9 +28,30 @@ tasks:
       - go build -o {{.LINUX_BIN}} ./cmd/haitatsu
 
   docker:build:
-    desc: Build Docker container image
+    desc: Build Docker container image (local platform)
     cmds:
       - docker build -t {{.IMAGE}} .
+
+  docker:build:linux:
+    desc: Build Docker image for linux/amd64 (Azure VMSS)
+    cmds:
+      - docker build --platform {{.DOCKER_PLATFORM}} -t {{.ACR_IMAGE}} .
+
+  docker:login:acr:
+    desc: Log in to Azure Container Registry (admin user; set ACR_PASSWORD)
+    cmds:
+      - test -n "$ACR_PASSWORD" || (echo "set ACR_PASSWORD to the registry admin password" >&2 && exit 1)
+      - echo "$ACR_PASSWORD" | docker login {{.ACR_NAME}}.azurecr.io -u {{.ACR_NAME}} --password-stdin
+
+  docker:push:acr:
+    desc: Push linux/amd64 image to ACR (run docker:build:linux first, or use docker:publish)
+    cmds:
+      - docker push {{.ACR_IMAGE}}
+
+  docker:publish:
+    desc: Build linux/amd64 and push to ACR (one step; requires docker login)
+    cmds:
+      - docker buildx build --platform {{.DOCKER_PLATFORM}} -t {{.ACR_IMAGE}} --push .
 
   compose:up:
     desc: Run test email server stack

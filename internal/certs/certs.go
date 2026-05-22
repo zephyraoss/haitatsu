@@ -11,6 +11,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/config"
 )
 
+const defaultACMECachePath = "./cache/certmagic"
+
 func TLSConfig(ctx context.Context, cfg config.TLSConfig, publicHostname string) (*tls.Config, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.Mode)) {
 	case "", "manual":
@@ -40,9 +42,7 @@ func acmeTLSConfig(ctx context.Context, cfg config.TLSConfig, publicHostname str
 		return nil, fmt.Errorf("public hostname is required for ACME TLS")
 	}
 	magic := certmagic.NewDefault()
-	if cfg.ACMECachePath != "" {
-		magic.Storage = &certmagic.FileStorage{Path: cfg.ACMECachePath}
-	}
+	magic.Storage = &certmagic.FileStorage{Path: acmeCachePath(cfg)}
 	magic.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
 		CA:                        acmeCA(cfg.ACMECA),
 		Email:                     cfg.ACMEEmail,
@@ -54,12 +54,19 @@ func acmeTLSConfig(ctx context.Context, cfg config.TLSConfig, publicHostname str
 		DisableTLSALPNChallenge:   cfg.ACMEDisableTLSALPNChallenge,
 		DisableDistributedSolvers: cfg.ACMEDisableDistributedSolvers,
 	})}
-	if err := magic.ManageSync(ctx, []string{publicHostname}); err != nil {
+	if err := magic.ManageAsync(ctx, []string{publicHostname}); err != nil {
 		return nil, err
 	}
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.ServerName = publicHostname
 	return tlsConfig, nil
+}
+
+func acmeCachePath(cfg config.TLSConfig) string {
+	if path := strings.TrimSpace(cfg.ACMECachePath); path != "" {
+		return path
+	}
+	return defaultACMECachePath
 }
 
 func acmeCA(value string) string {

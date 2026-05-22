@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/zephyraoss/haitatsu/internal/bounce"
 	"github.com/zephyraoss/haitatsu/internal/certs"
@@ -106,6 +107,9 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure listener tls: %w", err)
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.TLS.Mode), "acme") {
+		logger.Info("acme certificate provisioning started in background", "hostname", cfg.Server.PublicHostname)
 	}
 	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler, spamChecker, m)
 	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore, m)

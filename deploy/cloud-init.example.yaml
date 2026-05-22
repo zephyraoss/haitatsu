@@ -1,0 +1,116 @@
+#cloud-config
+# VMSS custom data for Haitatsu on Azure.
+# Replace STORAGE_ACCOUNT, STORAGE_KEY, ACR_NAME, ACR_ADMIN_PASSWORD, IMAGE_TAG, and /etc/haitatsu/env secrets.
+# ACR: Portal → Container registry → Access keys → Admin user → Enabled; username = registry name.
+# computerNamePrefix should be "haitatsu" (Azure name like haitatsu000001 → haitatsu-1).
+
+package_update: true
+packages:
+  - docker.io
+  - cifs-utils
+  - curl
+
+write_files:
+  - path: /etc/smbcredentials
+    permissions: '0600'
+    content: |
+      username=STORAGE_ACCOUNT
+      password=STORAGE_KEY
+  - path: /etc/haitatsu/bootstrap.env
+    permissions: '0600'
+    content: |
+      ACR_NAME=ACR_NAME
+      IMAGE_TAG=IMAGE_TAG
+      ACR_PASSWORD=ACR_ADMIN_PASSWORD
+  - path: /etc/haitatsu/env
+    permissions: '0600'
+    content: |
+      HAITATSU_INSTANCE_NAME=haitatsu-0
+      HAITATSU_POSTGRES_DSN=postgres://haitatsu:DBPASS@10.0.4.5:5432/haitatsu?sslmode=disable
+      HAITATSU_S3_ACCESS_KEY=haitatsu-s3-root
+      HAITATSU_S3_SECRET_KEY=S3ROOTSECRET
+      HAITATSU_SERVICE_TOKEN=SERVICE_TOKEN
+      HAITATSU_RELAY_USERNAME=mb12345
+      HAITATSU_RELAY_PASSWORD=relay-password
+  - path: /etc/fstab
+    append: true
+    content: |
+      //STORAGE_ACCOUNT.file.core.windows.net/certmagic /mnt/certmagic cifs nofail,vers=3.0,credentials=/etc/smbcredentials,dir_mode=0750,file_mode=0640,uid=10001,gid=10001 0 0
+      //STORAGE_ACCOUNT.file.core.windows.net/config /mnt/config cifs nofail,vers=3.0,credentials=/etc/smbcredentials,dir_mode=0755,file_mode=0644 0 0
+  - path: /usr/local/sbin/haitatsu-instance-id.py
+    permissions: '0755'
+    content: |
+      import json
+      import urllib.request
+
+      req = urllib.request.Request(
+          "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01&format=json",
+          headers={"Metadata": "true"},
+      )
+      data = json.load(urllib.request.urlopen(req, timeout=5))
+      resource_id = data.get("resourceId") or ""
+      if "/virtualMachines/" in resource_id:
+          instance_id = resource_id.rsplit("/virtualMachines/", 1)[-1]
+          print(instance_id if instance_id.isdigit() else instance_id[:8])
+      else:
+          name = data.get("name") or ""
+          suffix = name.removeprefix("haitatsu") or name or "0"
+          print(suffix)
+  - path: /usr/local/sbin/haitatsu-run-container.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      set -a
+      # shellcheck source=/dev/null
+      source /etc/haitatsu/bootstrap.env
+      set +a
+
+      ACR_NAME="${ACR_NAME:-ACR_NAME}"
+      IMAGE_TAG="${IMAGE_TAG:-IMAGE_TAG}"
+      IMAGE="${ACR_NAME}.azurecr.io/haitatsu:${IMAGE_TAG}"
+
+      echo "$ACR_PASSWORD" | docker login "${ACR_NAME}.azurecr.io" -u "${ACR_NAME}" --password-stdin
+      docker pull "$IMAGE"
+      docker rm -f haitatsu 2>/dev/null || true
+      docker run -d --name haitatsu --restart unless-stopped \
+        --env-file /etc/haitatsu/env \
+        -p 25:25 -p 143:143 -p 465:465 -p 587:587 -p 80:80 -p 443:443 -p 8080:8080 \
+        -v /mnt/certmagic:/app/cache/certmagic \
+        -v /mnt/config/haitatsu.pkl:/app/haitatsu.pkl:ro \
+        "$IMAGE"
+  - path: /usr/local/sbin/haitatsu-vm-bootstrap.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/certmagic /mnt/config
+      mount -a
+
+      IDX=$(python3 /usr/local/sbin/haitatsu-instance-id.py)
+      SHORT="haitatsu-${IDX}"
+      hostnamectl set-hostname "$SHORT"
+      grep -q '^HAITATSU_INSTANCE_NAME=' /etc/haitatsu/env \
+        && sed -i "s/^HAITATSU_INSTANCE_NAME=.*/HAITATSU_INSTANCE_NAME=${SHORT}/" /etc/haitatsu/env \
+        || echo "HAITATSU_INSTANCE_NAME=${SHORT}" >> /etc/haitatsu/env
+
+      if [[ -d /mnt/config/haitatsu.pkl ]]; then
+        echo "Azure Files config share has haitatsu.pkl as a directory; upload a file named haitatsu.pkl" >&2
+        exit 1
+      fi
+      if [[ ! -f /mnt/config/haitatsu.pkl ]]; then
+        echo "missing /mnt/config/haitatsu.pkl on Azure Files config share" >&2
+        exit 1
+      fi
+
+      systemctl enable docker
+      systemctl start docker
+
+      /usr/local/sbin/haitatsu-run-container.sh
+
+      curl -sf http://127.0.0.1:8080/health >/dev/null && echo "haitatsu health ok"
+
+runcmd:
+  - [bash, /usr/local/sbin/haitatsu-vm-bootstrap.sh]

@@ -71,7 +71,7 @@ tls {
   key_file = ""
   acme_email = ""
   acme_ca = "letsencrypt"
-  acme_cache_path = "./cache/certmagic"
+  acme_cache_path = ""
   acme_listen_host = ""
   acme_http_port = 0
   acme_tls_alpn_port = 0
