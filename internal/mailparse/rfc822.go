@@ -1,6 +1,10 @@
 package mailparse
 
-import "bytes"
+import (
+	"bufio"
+	"bytes"
+	"io"
+)
 
 func NormalizeMessage(raw []byte) []byte {
 	header, body := SplitHeaderBody(raw)
@@ -8,6 +12,9 @@ func NormalizeMessage(raw []byte) []byte {
 }
 
 func SplitHeaderBody(raw []byte) (header, body []byte) {
+	if header, body, ok := splitHeaderBodyRFC822(raw); ok {
+		return header, body
+	}
 	if header, body, ok := splitAtSeparator(raw, []byte("\r\n\n"), 2, 3); ok {
 		return header, body
 	}
@@ -28,6 +35,40 @@ func SplitHeaderBody(raw []byte) (header, body []byte) {
 		return raw[:index], raw[index+2:]
 	}
 	return splitHeaderBodyLines(raw)
+}
+
+func splitHeaderBodyRFC822(raw []byte) (header, body []byte, ok bool) {
+	reader := bufio.NewReader(bytes.NewReader(raw))
+	var headerBuf bytes.Buffer
+	foundEnd := false
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if isHeaderTerminatorLine(line) && headerBuf.Len() > 0 {
+				foundEnd = true
+				break
+			}
+			headerBuf.Write(line)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, false
+		}
+	}
+	if !foundEnd {
+		return nil, nil, false
+	}
+	rest, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, nil, false
+	}
+	return headerBuf.Bytes(), rest, true
+}
+
+func isHeaderTerminatorLine(line []byte) bool {
+	return len(bytes.TrimSpace(bytes.TrimRight(line, "\r\n"))) == 0
 }
 
 func splitAtSeparator(raw, separator []byte, headerEnd, bodyStart int) (header, body []byte, ok bool) {
