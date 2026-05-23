@@ -31,6 +31,7 @@ const labelPrefix = "Labels/"
 
 type MessageStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
+	PutMessage(ctx context.Context, key string, data []byte) error
 }
 
 type Server struct {
@@ -44,7 +45,7 @@ func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, store
 			metrics.IMAPSessionStart()
 			return &session{client: client, store: store, metrics: metrics}, &goimapserver.GreetingData{}, nil
 		},
-		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIdle: {}},
+		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIdle: {}, imap.CapUIDPlus: {}},
 		TLSConfig:    tlsConfig,
 		InsecureAuth: tlsConfig == nil,
 	})
@@ -185,8 +186,8 @@ func (s *session) Status(mailboxName string, _ *imap.StatusOptions) (*imap.Statu
 	return &imap.StatusData{Mailbox: mailboxName, NumMessages: &numMessages, NumUnseen: &numUnseen, NumDeleted: &numDeleted, UIDNext: imap.UID(len(messages) + 1), UIDValidity: uidValidity(s.mailboxID)}, nil
 }
 
-func (s *session) Append(string, imap.LiteralReader, *imap.AppendOptions) (*imap.AppendData, error) {
-	return nil, unsupported("append")
+func (s *session) Append(mailboxName string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
+	return s.appendMessage(mailboxName, r, options)
 }
 
 func (s *session) Poll(*goimapserver.UpdateWriter, bool) error { return nil }
