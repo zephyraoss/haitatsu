@@ -175,7 +175,6 @@ func parsePrivateKey(value string) (*rsa.PrivateKey, error) {
 
 func normalizeSubmittedMessage(raw []byte, from string, messageID string, hostname string, traceID string, node string) []byte {
 	header, body := mailparse.SplitHeaderBody(raw)
-	header = mailparse.JoinHeaderBody(header, nil)
 	if !hasHeader(header, "From") {
 		header = append(header, []byte("From: "+from+"\r\n")...)
 	}
