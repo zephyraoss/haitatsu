@@ -8,13 +8,66 @@ func NormalizeMessage(raw []byte) []byte {
 }
 
 func SplitHeaderBody(raw []byte) (header, body []byte) {
-	if index := bytes.Index(raw, []byte("\r\n\r\n")); index >= 0 {
-		return raw[:index], raw[index+4:]
+	if header, body, ok := splitAtSeparator(raw, []byte("\r\n\n"), 2, 3); ok {
+		return header, body
 	}
-	if index := bytes.Index(raw, []byte("\n\n")); index >= 0 {
+	for search := 0; ; {
+		segment := raw[search:]
+		index := bytes.Index(segment, []byte("\r\n\r\n"))
+		if index < 0 {
+			break
+		}
+		index += search
+		header, body = raw[:index], raw[index+4:]
+		if headerBlockValid(header) {
+			return header, body
+		}
+		search = index + 4
+	}
+	if index := indexLFHeaderEnd(raw); index >= 0 {
 		return raw[:index], raw[index+2:]
 	}
 	return splitHeaderBodyLines(raw)
+}
+
+func splitAtSeparator(raw, separator []byte, headerEnd, bodyStart int) (header, body []byte, ok bool) {
+	index := bytes.Index(raw, separator)
+	if index < 0 {
+		return nil, nil, false
+	}
+	header, body = raw[:index+headerEnd], raw[index+bodyStart:]
+	if !headerBlockValid(header) {
+		return nil, nil, false
+	}
+	return header, body, true
+}
+
+func headerBlockValid(header []byte) bool {
+	normalized := bytes.ReplaceAll(bytes.ReplaceAll(header, []byte("\r\n"), []byte("\n")), []byte("\r"), []byte("\n"))
+	for _, line := range bytes.Split(normalized, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		if !isHeaderLine(line) {
+			return false
+		}
+	}
+	return true
+}
+
+func indexLFHeaderEnd(raw []byte) int {
+	for index := 0; index+1 < len(raw); index++ {
+		if raw[index] != '\n' || raw[index+1] != '\n' {
+			continue
+		}
+		if index > 0 && raw[index-1] == '\r' {
+			continue
+		}
+		if headerBlockValid(raw[:index]) {
+			return index
+		}
+	}
+	return -1
 }
 
 func JoinHeaderBody(header, body []byte) []byte {
@@ -61,7 +114,11 @@ func splitHeaderBodyLines(raw []byte) (header, body []byte) {
 		}
 		headerLines = append(headerLines, line)
 	}
-	return joinLines(headerLines), joinLines(bodyLines)
+	header = joinLines(headerLines)
+	if len(header) > 0 {
+		header = append(header, '\n')
+	}
+	return header, joinLines(bodyLines)
 }
 
 func joinLines(lines [][]byte) []byte {
@@ -115,6 +172,17 @@ func isHeaderLine(line []byte) bool {
 		}
 	}
 	return true
+}
+
+func AppendHeaderFields(header []byte, fields ...[]byte) []byte {
+	header = bytes.TrimRight(header, "\r\n")
+	for _, field := range fields {
+		if len(header) > 0 {
+			header = append(header, '\n')
+		}
+		header = append(header, bytes.TrimRight(field, "\r\n")...)
+	}
+	return header
 }
 
 func isHeaderKeyByte(b byte) bool {

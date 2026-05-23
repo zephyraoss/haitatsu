@@ -60,6 +60,18 @@ func TestToCRLFHeader(t *testing.T) {
 	}
 }
 
+func TestAppendHeaderFieldsLFHeader(t *testing.T) {
+	header := []byte("From: a@example.com\nSubject: test\n")
+	header = AppendHeaderFields(header, []byte("Date: Thu, 21 May 2026 12:00:00 +0000"), []byte("X-Haitatsu-Trace-ID: abc"))
+	joined := string(JoinHeaderBody(header, []byte("Hello\n")))
+	if strings.Contains(joined, "\r\n\r\nDate:") {
+		t.Fatalf("blank line inserted between headers: %q", joined)
+	}
+	if !strings.Contains(joined, "X-Haitatsu-Trace-ID: abc\r\n\r\nHello") {
+		t.Fatalf("joined = %q", joined)
+	}
+}
+
 func TestJoinHeaderBody(t *testing.T) {
 	joined := string(JoinHeaderBody([]byte("From: a@example.com\nSubject: Hello"), []byte("Body line\n")))
 	if !strings.Contains(joined, "Subject: Hello\r\n\r\nBody line") {

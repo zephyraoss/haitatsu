@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/textproto"
 	"strings"
 	"time"
 
@@ -174,18 +175,43 @@ func parsePrivateKey(value string) (*rsa.PrivateKey, error) {
 }
 
 func normalizeSubmittedMessage(raw []byte, from string, messageID string, hostname string, traceID string, node string) []byte {
+	normalized, err := mailparse.InjectHeaders(raw, func(h textproto.MIMEHeader) {
+		if h.Get("From") == "" {
+			h.Set("From", from)
+		}
+		if h.Get("Date") == "" {
+			h.Set("Date", time.Now().UTC().Format(time.RFC1123Z))
+		}
+		if h.Get("Message-ID") == "" {
+			h.Set("Message-ID", "<"+messageID+"@"+hostname+">")
+		}
+		h.Set("X-Haitatsu-Trace-ID", traceID)
+		h.Set("X-Haitatsu-Node", node)
+	})
+	if err == nil {
+		return normalized
+	}
+	return normalizeSubmittedMessageFallback(raw, from, messageID, hostname, traceID, node)
+}
+
+func normalizeSubmittedMessageFallback(raw []byte, from string, messageID string, hostname string, traceID string, node string) []byte {
 	header, body := mailparse.SplitHeaderBody(raw)
+	body = mailparse.StripHaitatsuHeadersFromBody(body)
+	var extra [][]byte
 	if !hasHeader(header, "From") {
-		header = append(header, []byte("From: "+from+"\r\n")...)
+		extra = append(extra, []byte("From: "+from))
 	}
 	if !hasHeader(header, "Date") {
-		header = append(header, []byte("Date: "+time.Now().UTC().Format(time.RFC1123Z)+"\r\n")...)
+		extra = append(extra, []byte("Date: "+time.Now().UTC().Format(time.RFC1123Z)))
 	}
 	if !hasHeader(header, "Message-ID") {
-		header = append(header, []byte("Message-ID: <"+messageID+"@"+hostname+">\r\n")...)
+		extra = append(extra, []byte("Message-ID: <"+messageID+"@"+hostname+">"))
 	}
-	header = append(header, []byte("X-Haitatsu-Trace-ID: "+traceID+"\r\n")...)
-	header = append(header, []byte("X-Haitatsu-Node: "+node+"\r\n")...)
+	extra = append(extra,
+		[]byte("X-Haitatsu-Trace-ID: "+traceID),
+		[]byte("X-Haitatsu-Node: "+node),
+	)
+	header = mailparse.AppendHeaderFields(header, extra...)
 	return mailparse.JoinHeaderBody(header, body)
 }
 
