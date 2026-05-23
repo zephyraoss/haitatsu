@@ -27,10 +27,6 @@ relay {
   from_host = "localhost"
 }
 
-bounce {
-  domain = "bounce.localhost"
-}
-
 postgres {
   dsn = "postgres://haitatsu:woof@postgres:5432/haitatsu?sslmode=disable"
 }

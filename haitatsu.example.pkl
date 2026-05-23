@@ -27,10 +27,6 @@ relay {
   from_host = "smtp.mailbaby.net"
 }
 
-bounce {
-  domain = "bounce.zephyra.cloud"
-}
-
 postgres {
   dsn = "postgres://haitatsu:haitatsu@localhost:5432/haitatsu?sslmode=disable"
 }

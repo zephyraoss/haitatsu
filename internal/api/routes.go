@@ -15,6 +15,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
+	"github.com/zephyraoss/haitatsu/internal/mailaddr"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 )
 
@@ -173,6 +174,9 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if req.PrimaryAddress == "" {
 		return problem(c, fiber.StatusBadRequest, "primary_address_required", "Primary address is required")
 	}
+	if err := mailaddr.ValidateAddressNotReserved(req.PrimaryAddress); err != nil {
+		return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
+	}
 
 	create := h.client.Mailbox.Create().SetPrimaryAddress(req.PrimaryAddress)
 	if req.QuotaBytes != nil {
@@ -214,6 +218,9 @@ func (h *Handler) updateMailbox(c fiber.Ctx) error {
 
 	update := h.client.Mailbox.UpdateOneID(c.Params("id"))
 	if req.PrimaryAddress != "" {
+		if err := mailaddr.ValidateAddressNotReserved(req.PrimaryAddress); err != nil {
+			return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
+		}
 		update.SetPrimaryAddress(req.PrimaryAddress)
 	}
 	if req.Status != "" {
@@ -345,6 +352,9 @@ func (h *Handler) createRoute(c fiber.Ctx) error {
 	if req.SourceAddress == "" || req.Type == "" {
 		return problem(c, fiber.StatusBadRequest, "invalid_route", "Source address and type are required")
 	}
+	if err := mailaddr.ValidateAddressNotReserved(req.SourceAddress); err != nil {
+		return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
+	}
 
 	create := h.client.Route.Create().SetSourceAddress(req.SourceAddress).SetType(req.Type).SetDestinations(req.Destinations)
 	if req.Status != "" {
@@ -375,6 +385,9 @@ func (h *Handler) updateRoute(c fiber.Ctx) error {
 	}
 	update := h.client.Route.UpdateOneID(c.Params("id"))
 	if req.SourceAddress != "" {
+		if err := mailaddr.ValidateAddressNotReserved(req.SourceAddress); err != nil {
+			return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
+		}
 		update.SetSourceAddress(req.SourceAddress)
 	}
 	if req.Type != "" {

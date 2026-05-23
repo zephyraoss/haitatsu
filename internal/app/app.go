@@ -89,7 +89,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	runtime := &App{configPath: opts.ConfigPath, config: cfg, logger: logger, database: db, storage: blobStore}
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
-	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName, cfg.Bounce.Domain)
+	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	server := httpapi.New(cfg, db.Ent(), db.SQL(), blobStore, submissionService, checker, m, runtime)
 	cleanupWorker := cleanup.New(db.Ent(), blobStore, m)
 	eventService := events.New(db.Ent())
@@ -101,7 +101,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	messageService := messages.NewService(db.Ent(), blobStore, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	notificationService := notifications.New(db.Ent(), messageService, cfg.Notifications, cfg.Server.PublicHostname)
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, m, notificationService, cfg.Server.InstanceName)
-	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m, cfg.Bounce.Domain)
+	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
 	spamChecker := spam.NewChecker(db.Ent(), cfg.Spam, cfg.Server.PublicHostname)
 	tlsConfig, err := certs.TLSConfig(ctx, cfg.TLS, cfg.Server.PublicHostname)
 	if err != nil {

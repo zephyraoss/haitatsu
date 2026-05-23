@@ -18,19 +18,35 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/ids"
+	"github.com/zephyraoss/haitatsu/internal/mailaddr"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
+const verpPrefix = "bounces+"
+
 type Store interface {
 	PutMessage(ctx context.Context, key string, data []byte) error
+}
+
+type hostedDomainChecker interface {
+	IsHosted(ctx context.Context, domain string) (bool, error)
+}
+
+type dkimHostedDomains struct {
+	client *ent.Client
+}
+
+func (d dkimHostedDomains) IsHosted(ctx context.Context, domain string) (bool, error) {
+	return d.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).Exist(ctx)
 }
 
 type Handler struct {
 	client  *ent.Client
 	store   Store
 	metrics *metrics.Metrics
-	domain  string
+	hosted  hostedDomainChecker
 }
 
 type Recipient struct {
@@ -38,23 +54,39 @@ type Recipient struct {
 	MessageID string
 }
 
-func NewHandler(client *ent.Client, store Store, metrics *metrics.Metrics, domain string) *Handler {
-	return &Handler{client: client, store: store, metrics: metrics, domain: strings.ToLower(domain)}
+func NewHandler(client *ent.Client, store Store, metrics *metrics.Metrics) *Handler {
+	return &Handler{
+		client:  client,
+		store:   store,
+		metrics: metrics,
+		hosted:  dkimHostedDomains{client: client},
+	}
 }
 
-func (h *Handler) ParseRecipient(address string) (Recipient, bool, bool) {
+func (h *Handler) ParseRecipient(ctx context.Context, address string) (Recipient, bool, bool) {
 	local, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(address)), "@")
-	if !ok || domain != h.domain {
+	if !ok {
 		return Recipient{}, false, false
 	}
-	messageID, ok := strings.CutPrefix(local, "bounce+")
+	if !strings.HasPrefix(local, verpPrefix) {
+		if mailaddr.ReservedLocalPart(local) {
+			return Recipient{}, true, false
+		}
+		return Recipient{}, false, false
+	}
+	messageID, ok := strings.CutPrefix(local, verpPrefix)
 	if !ok {
 		return Recipient{}, true, false
 	}
-	if _, err := ulid.Parse(messageID); err != nil {
+	parsed, err := ulid.Parse(messageID)
+	if err != nil {
 		return Recipient{}, true, false
 	}
-	return Recipient{Address: address, MessageID: messageID}, true, true
+	hosted, err := h.hosted.IsHosted(ctx, domain)
+	if err != nil || !hosted {
+		return Recipient{}, true, false
+	}
+	return Recipient{Address: address, MessageID: parsed.String()}, true, true
 }
 
 func (h *Handler) Record(ctx context.Context, recipient Recipient, raw []byte) error {

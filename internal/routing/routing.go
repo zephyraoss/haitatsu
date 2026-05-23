@@ -8,6 +8,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
+	"github.com/zephyraoss/haitatsu/internal/mailaddr"
 )
 
 type Resolver struct {
@@ -35,6 +36,10 @@ func NewResolver(client *ent.Client) *Resolver {
 
 func (r *Resolver) Resolve(ctx context.Context, recipient string) (Result, bool, error) {
 	address := normalizeAddress(recipient)
+	local, _, ok := strings.Cut(address, "@")
+	if ok && mailaddr.ReservedLocalPart(local) {
+		return Result{}, false, nil
+	}
 	base, tag := splitPlusTag(address)
 	literal := candidate{LookupAddress: address, OriginalRecipient: address, BaseRecipient: address}
 

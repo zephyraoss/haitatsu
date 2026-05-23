@@ -37,11 +37,10 @@ type Submission struct {
 	store          BlobStore
 	publicHostname string
 	instanceName   string
-	bounceDomain   string
 }
 
-func NewSubmission(client *ent.Client, store BlobStore, publicHostname string, instanceName string, bounceDomain string) *Submission {
-	return &Submission{client: client, store: store, publicHostname: publicHostname, instanceName: instanceName, bounceDomain: bounceDomain}
+func NewSubmission(client *ent.Client, store BlobStore, publicHostname string, instanceName string) *Submission {
+	return &Submission{client: client, store: store, publicHostname: publicHostname, instanceName: instanceName}
 }
 
 func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, raw []byte, recipients []string) (*ent.Message, error) {
@@ -86,7 +85,7 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	if err := s.saveToSent(ctx, mailboxID, msg.ID, signed); err != nil {
 		return nil, err
 	}
-	if _, err := s.client.OutboundJob.Create().SetMailboxID(mailboxID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, s.bounceDomain)).SetRecipients(recipients).Save(ctx); err != nil {
+	if _, err := s.client.OutboundJob.Create().SetMailboxID(mailboxID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, domain)).SetRecipients(recipients).Save(ctx); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -103,8 +102,8 @@ func outboundRecipients(recipients []string, metadata mailparse.Metadata) []stri
 	return values
 }
 
-func ReturnPath(messageID string, bounceDomain string) string {
-	return "bounce+" + messageID + "@" + bounceDomain
+func ReturnPath(messageID, domain string) string {
+	return "bounces+" + messageID + "@" + domain
 }
 
 func (s *Submission) createMessage(ctx context.Context, id string, traceID string, key string, raw []byte, metadata mailparse.Metadata) (*ent.Message, error) {

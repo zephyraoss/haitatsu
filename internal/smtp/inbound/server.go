@@ -81,7 +81,7 @@ func (s *session) Mail(from string, _ *smtp.MailOptions) error {
 }
 
 func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
-	if recipient, bounceDomain, valid := s.bounces.ParseRecipient(to); bounceDomain {
+	if recipient, bounceDomain, valid := s.bounces.ParseRecipient(context.Background(), to); bounceDomain {
 		if !valid {
 			return &smtp.SMTPError{Code: 550, Message: "invalid bounce recipient"}
 		}

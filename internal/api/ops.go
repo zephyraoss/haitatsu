@@ -35,7 +35,6 @@ func (h *Handler) checkDNS(c fiber.Ctx) error {
 		h.checkDKIM(c, domain),
 		checkTXT("spf", domain, "v=spf1"),
 		checkTXT("dmarc", "_dmarc."+domain, "v=DMARC1"),
-		h.checkBounceMX(),
 	}
 	return data(c, fiber.Map{"domain": domain, "checks": checks})
 }
@@ -69,14 +68,6 @@ func (h *Handler) checkDKIM(c fiber.Ctx, domain string) dnsCheck {
 		}
 	}
 	return dnsCheck{Name: "dkim", Status: "warning", Message: "DKIM TXT record does not look valid"}
-}
-
-func (h *Handler) checkBounceMX() dnsCheck {
-	mx, err := net.LookupMX(h.config.Bounce.Domain)
-	if err != nil || len(mx) == 0 {
-		return dnsCheck{Name: "bounce-mx", Status: "missing", Message: "No bounce-domain MX records found"}
-	}
-	return dnsCheck{Name: "bounce-mx", Status: "ok", Message: "Bounce-domain MX records exist"}
 }
 
 func checkTXT(name string, domain string, prefix string) dnsCheck {

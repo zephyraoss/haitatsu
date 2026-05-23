@@ -18,7 +18,6 @@ type Config struct {
 	IMAP          IMAPConfig         `pkl:"imap" json:"imap"`
 	Submission    SubmissionConfig   `pkl:"submission" json:"submission"`
 	Relay         RelayConfig        `pkl:"relay" json:"relay"`
-	Bounce        BounceConfig       `pkl:"bounce" json:"bounce"`
 	Postgres      PostgresConfig     `pkl:"postgres" json:"postgres"`
 	S3            S3Config           `pkl:"s3" json:"s3"`
 	Logging       LoggingConfig      `pkl:"logging" json:"logging"`
@@ -59,10 +58,6 @@ type RelayConfig struct {
 	Username string `pkl:"username" json:"username"`
 	Password string `pkl:"password" json:"password"`
 	FromHost string `pkl:"from_host" json:"from_host"`
-}
-
-type BounceConfig struct {
-	Domain string `pkl:"domain" json:"domain"`
 }
 
 func (c ServerConfig) ShutdownTimeout() time.Duration {
@@ -199,9 +194,6 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Relay.Addr) == "" {
 		problems = append(problems, "relay.addr is required")
 	}
-	if strings.TrimSpace(c.Bounce.Domain) == "" {
-		problems = append(problems, "bounce.domain is required")
-	}
 	if c.SMTP.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "smtp.max_message_size_bytes must be >= 0")
 	}
@@ -306,9 +298,6 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	}
 	if c.Relay != next.Relay {
 		changes = append(changes, "relay")
-	}
-	if c.Bounce != next.Bounce {
-		changes = append(changes, "bounce")
 	}
 	if c.TLS != next.TLS {
 		changes = append(changes, "tls")
