@@ -3,9 +3,22 @@ package api
 import (
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
+	"github.com/zephyraoss/haitatsu/internal/importexport"
 )
+
+// redactedImportJob copies a job with credential values in source masked so
+// remote-IMAP passwords never round-trip through the API.
+func redactedImportJob(job *ent.ImportJob) *ent.ImportJob {
+	if job == nil || job.Source == nil {
+		return job
+	}
+	copied := *job
+	copied.Source = importexport.RedactSource(job.Source)
+	return &copied
+}
 
 type importRequest struct {
 	SourceType string         `json:"source_type"`
@@ -52,11 +65,29 @@ func (h *Handler) createImport(c fiber.Ctx) error {
 	if req.Source == nil {
 		req.Source = map[string]any{}
 	}
+	switch req.SourceType {
+	case "zip":
+		if key, _ := req.Source["object_key"].(string); key == "" {
+			if key, _ := req.Source["key"].(string); key == "" {
+				return problem(c, fiber.StatusBadRequest, "source_invalid", "Zip import requires source.object_key")
+			}
+		}
+	case "maildir":
+		if path, _ := req.Source["path"].(string); path == "" {
+			return problem(c, fiber.StatusBadRequest, "source_invalid", "Maildir import requires source.path")
+		}
+	case "imap":
+		if addr, _ := req.Source["addr"].(string); addr == "" {
+			return problem(c, fiber.StatusBadRequest, "source_invalid", "IMAP import requires source.addr")
+		}
+	default:
+		return problem(c, fiber.StatusBadRequest, "source_type_invalid", "Source type must be one of: zip, maildir, imap")
+	}
 	job, err := h.client.ImportJob.Create().SetMailboxID(c.Params("mailbox_id")).SetSourceType(req.SourceType).SetSource(req.Source).Save(c.Context())
 	if err != nil {
 		return entProblem(c, err, "import_create_failed", "Failed to create import")
 	}
-	return created(c, job)
+	return created(c, redactedImportJob(job))
 }
 
 func (h *Handler) listImports(c fiber.Ctx) error {
@@ -69,7 +100,11 @@ func (h *Handler) listImports(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "import_list_failed", "Failed to list imports")
 	}
-	return list(c, items, limit, "")
+	redacted := make([]*ent.ImportJob, len(items))
+	for i, item := range items {
+		redacted[i] = redactedImportJob(item)
+	}
+	return list(c, redacted, limit, "")
 }
 
 func (h *Handler) getImport(c fiber.Ctx) error {
@@ -77,5 +112,5 @@ func (h *Handler) getImport(c fiber.Ctx) error {
 	if err != nil {
 		return entProblem(c, err, "import_not_found", "Import not found")
 	}
-	return data(c, job)
+	return data(c, redactedImportJob(job))
 }

@@ -97,7 +97,7 @@ func (w *ImportWorker) processOne(ctx context.Context) error {
 	}
 	n, err := w.client.ImportJob.Update().
 		Where(importjob.IDEQ(job.ID), importjob.LockedByEQ(owner)).
-		SetStatus("completed").SetImportedCount(count).ClearLockedBy().ClearLockedUntil().
+		SetStatus("completed").SetImportedCount(count).SetSource(ScrubSource(job.Source)).ClearLockedBy().ClearLockedUntil().
 		Save(ctx)
 	if err != nil {
 		return err
@@ -548,7 +548,7 @@ func (w *ImportWorker) messageForRaw(ctx context.Context, sha string, raw []byte
 func (w *ImportWorker) fail(ctx context.Context, job importJob, owner string, cause error) error {
 	n, err := w.client.ImportJob.Update().
 		Where(importjob.IDEQ(job.ID), importjob.LockedByEQ(owner)).
-		SetStatus("failed").SetLastError(map[string]any{"error": cause.Error()}).ClearLockedBy().ClearLockedUntil().
+		SetStatus("failed").SetLastError(map[string]any{"error": cause.Error()}).SetSource(ScrubSource(job.Source)).ClearLockedBy().ClearLockedUntil().
 		Save(ctx)
 	if err != nil {
 		return err
