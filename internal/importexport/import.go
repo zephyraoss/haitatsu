@@ -90,7 +90,7 @@ func (w *ImportWorker) processOne(ctx context.Context) error {
 			w.release(job.ID, owner)
 			return err
 		}
-		return w.fail(ctx, job, owner, err)
+		return w.fail(ctx, job, owner, count, err)
 	}
 	n, err := w.client.ImportJob.Update().
 		Where(importjob.IDEQ(job.ID), importjob.LockedByEQ(owner)).
@@ -184,16 +184,41 @@ func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error
 		return 0, err
 	}
 	folders := newFolderCache(inbox.ID)
+	progress := &importProgress{client: w.client, jobID: job.ID}
 	switch job.SourceType {
 	case "zip":
-		return w.importZip(ctx, job, mbox, inbox.ID)
+		err = w.importZip(ctx, job, mbox, inbox.ID, progress)
 	case "maildir":
-		return w.importMaildir(ctx, job, mbox, folders)
+		err = w.importMaildir(ctx, job, mbox, folders, progress)
 	case "imap":
-		return w.importIMAP(ctx, job, mbox, folders)
+		err = w.importIMAP(ctx, job, mbox, folders, progress)
 	default:
-		return 0, fmt.Errorf("unsupported import source type %q", job.SourceType)
+		err = fmt.Errorf("unsupported import source type %q", job.SourceType)
 	}
+	progress.flush(ctx)
+	return progress.imported, err
+}
+
+const progressFlushEvery = 25
+
+type importProgress struct {
+	client   *ent.Client
+	jobID    string
+	imported int
+}
+
+func (p *importProgress) recordCreated(ctx context.Context) {
+	p.imported++
+	if p.imported%progressFlushEvery == 0 {
+		p.flush(ctx)
+	}
+}
+
+func (p *importProgress) flush(ctx context.Context) {
+	if p.jobID == "" || p.imported == 0 {
+		return
+	}
+	_, _ = p.client.ImportJob.UpdateOneID(p.jobID).SetImportedCount(p.imported).Save(ctx)
 }
 
 type importFlags struct {
@@ -265,19 +290,19 @@ func canonicalFolderSegment(segment string) string {
 	return segment
 }
 
-func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string) (int, error) {
+func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string, progress *importProgress) error {
 	key := sourceKey(job.Source)
 	if key == "" {
-		return 0, fmt.Errorf("zip import requires source.object_key")
+		return fmt.Errorf("zip import requires source.object_key")
 	}
 	reader, err := w.store.GetObjectReader(ctx, key)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	tmp, err := os.CreateTemp("", "haitatsu-import-*.zip")
 	if err != nil {
 		reader.Close()
-		return 0, err
+		return err
 	}
 	defer func() {
 		tmp.Close()
@@ -286,94 +311,93 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 	size, err := io.Copy(tmp, reader)
 	reader.Close()
 	if err != nil {
-		return 0, err
+		return err
 	}
 	archive, err := zip.NewReader(tmp, size)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
-	imported := 0
 	for _, file := range archive.File {
 		if file.FileInfo().IsDir() || !strings.HasSuffix(strings.ToLower(file.Name), ".eml") {
 			continue
 		}
 		raw, err := readZipFile(file)
 		if err != nil {
-			return imported, err
+			return err
 		}
 		created, err := w.addToMailbox(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, raw, importFlags{})
 		if err != nil {
-			return imported, err
+			return err
 		}
 		if created {
-			imported++
+			progress.recordCreated(ctx)
 		}
 	}
-	return imported, nil
+	return nil
 }
 
-func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache) (int, error) {
+func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
 	root := strings.TrimSpace(sourceString(job.Source, "path"))
 	if root == "" {
-		return 0, fmt.Errorf("maildir import requires source.path")
+		return fmt.Errorf("maildir import requires source.path")
 	}
 	entries, err := maildirEntries(root)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	imported := 0
 	for _, entry := range entries {
 		raw, err := os.ReadFile(entry.path)
 		if err != nil {
-			return imported, err
+			return err
 		}
 		folderID, err := w.ensureFolder(ctx, folders, job.MailboxID, entry.folder)
 		if err != nil {
-			return imported, err
+			return err
 		}
 		created, err := w.addToMailbox(ctx, job.MailboxID, folderID, mbox.PrimaryAddress, raw, entry.flags)
 		if err != nil {
-			return imported, err
+			return err
 		}
 		if created {
-			imported++
+			progress.recordCreated(ctx)
 		}
 	}
-	return imported, nil
+	return nil
 }
 
-func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache) (int, error) {
+func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
 	client, err := dialIMAP(job.Source)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer client.Close()
 	if err := client.Login(sourceString(job.Source, "username"), sourceString(job.Source, "password")).Wait(); err != nil {
-		return 0, err
+		return err
 	}
 	mailboxes := sourceStringSlice(job.Source, "mailboxes")
 	if len(mailboxes) == 0 {
-		mailboxName := sourceString(job.Source, "mailbox")
-		if mailboxName == "" {
-			mailboxName = "INBOX"
+		if mailboxName := sourceString(job.Source, "mailbox"); mailboxName != "" {
+			mailboxes = []string{mailboxName}
 		}
-		mailboxes = []string{mailboxName}
 	}
 	delim := remoteDelimiter(client)
-	imported := 0
+	if len(mailboxes) == 0 {
+		mailboxes, delim, err = listRemoteMailboxes(client)
+		if err != nil {
+			return err
+		}
+	}
 	for _, mailboxName := range mailboxes {
 		folderID, err := w.ensureFolder(ctx, folders, job.MailboxID, destinationFolderName(mailboxName, delim))
 		if err != nil {
-			return imported, err
+			return err
 		}
-		count, err := w.importIMAPMailbox(ctx, client, mailboxName, job.MailboxID, folderID, mbox.PrimaryAddress)
-		if err != nil {
-			return imported, err
+		if err := w.importIMAPMailbox(ctx, client, mailboxName, job.MailboxID, folderID, mbox.PrimaryAddress, progress); err != nil {
+			return err
 		}
-		imported += count
 	}
-	return imported, nil
+	return nil
 }
 
 func remoteDelimiter(client *imapclient.Client) string {
@@ -382,6 +406,37 @@ func remoteDelimiter(client *imapclient.Client) string {
 		return "/"
 	}
 	return string(items[0].Delim)
+}
+
+func listRemoteMailboxes(client *imapclient.Client) ([]string, string, error) {
+	items, err := client.List("", "*", nil).Collect()
+	if err != nil {
+		return nil, "", err
+	}
+	delim := "/"
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.Delim != 0 {
+			delim = string(item.Delim)
+		}
+		if hasMailboxAttr(item.Attrs, imap.MailboxAttrNoSelect) {
+			continue
+		}
+		names = append(names, item.Mailbox)
+	}
+	if len(names) == 0 {
+		names = []string{"INBOX"}
+	}
+	return names, delim, nil
+}
+
+func hasMailboxAttr(attrs []imap.MailboxAttr, expected imap.MailboxAttr) bool {
+	for _, attr := range attrs {
+		if attr == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func destinationFolderName(remoteName string, delim string) string {
@@ -399,35 +454,31 @@ func destinationFolderName(remoteName string, delim string) string {
 
 const imapFetchBatchSize = 200
 
-func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, folderID string, primaryAddress string) (int, error) {
+func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, folderID string, primaryAddress string, progress *importProgress) error {
 	selected, err := client.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
-		return 0, err
+		return err
 	}
-	imported := 0
 	for start := uint32(1); start <= selected.NumMessages; start += imapFetchBatchSize {
 		if err := ctx.Err(); err != nil {
-			return imported, err
+			return err
 		}
 		end := min(start+imapFetchBatchSize-1, selected.NumMessages)
-		count, err := w.fetchIMAPBatch(ctx, client, start, end, mailboxID, folderID, primaryAddress)
-		imported += count
-		if err != nil {
-			return imported, err
+		if err := w.fetchIMAPBatch(ctx, client, start, end, mailboxID, folderID, primaryAddress, progress); err != nil {
+			return err
 		}
 	}
-	return imported, nil
+	return nil
 }
 
-func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Client, start uint32, end uint32, mailboxID string, folderID string, primaryAddress string) (int, error) {
+func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Client, start uint32, end uint32, mailboxID string, folderID string, primaryAddress string, progress *importProgress) error {
 	bodySection := &imap.FetchItemBodySection{}
 	var seqSet imap.SeqSet
 	seqSet.AddRange(start, end)
 	fetch := client.Fetch(seqSet, &imap.FetchOptions{Flags: true, BodySection: []*imap.FetchItemBodySection{bodySection}})
-	imported := 0
-	closeWithError := func(err error) (int, error) {
+	closeWithError := func(err error) error {
 		_ = fetch.Close()
-		return imported, err
+		return err
 	}
 	for {
 		remoteMessage := fetch.Next()
@@ -446,13 +497,10 @@ func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Cl
 			return closeWithError(err)
 		}
 		if created {
-			imported++
+			progress.recordCreated(ctx)
 		}
 	}
-	if err := fetch.Close(); err != nil {
-		return imported, err
-	}
-	return imported, nil
+	return fetch.Close()
 }
 
 func (w *ImportWorker) addToMailbox(ctx context.Context, mailboxID string, folderID string, primaryAddress string, raw []byte, flags importFlags) (bool, error) {
@@ -548,10 +596,10 @@ func (w *ImportWorker) messageForRaw(ctx context.Context, sha string, raw []byte
 	return create.Save(ctx)
 }
 
-func (w *ImportWorker) fail(ctx context.Context, job importJob, owner string, cause error) error {
+func (w *ImportWorker) fail(ctx context.Context, job importJob, owner string, count int, cause error) error {
 	n, err := w.client.ImportJob.Update().
 		Where(importjob.IDEQ(job.ID), importjob.LockedByEQ(owner)).
-		SetStatus("failed").SetLastError(map[string]any{"error": cause.Error()}).SetSource(ScrubSource(job.Source)).ClearLockedBy().ClearLockedUntil().
+		SetStatus("failed").SetImportedCount(count).SetLastError(map[string]any{"error": cause.Error()}).SetSource(ScrubSource(job.Source)).ClearLockedBy().ClearLockedUntil().
 		Save(ctx)
 	if err != nil {
 		return err

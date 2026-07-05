@@ -299,6 +299,38 @@ func TestAddToMailboxSkipsDuplicateMessageRows(t *testing.T) {
 	}
 }
 
+func TestImportJobPersistsProgress(t *testing.T) {
+	ctx := context.Background()
+	client := newTestClient(t)
+	worker := &ImportWorker{client: client, store: newFakeStore()}
+	mbox := seedMailbox(t, client)
+
+	root := t.TempDir()
+	for i := range 3 {
+		writeMaildirMessage(t, root, fmt.Sprintf("cur/%d.host", i), rawMessage(fmt.Sprintf("progress-%d", i)))
+	}
+	source := map[string]any{"path": root}
+	row, err := client.ImportJob.Create().SetMailboxID(mbox.ID).SetSourceType("maildir").SetSource(source).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count, err := worker.importJob(ctx, importJob{ID: row.ID, MailboxID: mbox.ID, SourceType: "maildir", Source: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Fatalf("imported %d, want 3", count)
+	}
+	reloaded, err := client.ImportJob.Get(ctx, row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.ImportedCount != 3 {
+		t.Errorf("imported_count = %d, want 3", reloaded.ImportedCount)
+	}
+}
+
 func TestExportBuildZIP(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
