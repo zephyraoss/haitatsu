@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/events"
+	"github.com/zephyraoss/haitatsu/internal/ids"
 )
 
 type Store interface {
@@ -61,20 +63,32 @@ func (w *ExportWorker) loop(ctx context.Context) {
 }
 
 func (w *ExportWorker) processOne(ctx context.Context) error {
-	job, ok, err := w.claim(ctx)
+	job, owner, ok, err := w.claim(ctx)
 	if err != nil || !ok {
 		return err
 	}
-	data, err := w.buildZIP(ctx, job.MailboxID)
+	jobCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go w.renewLease(jobCtx, cancel, job.ID, owner)
+	data, err := w.buildZIP(jobCtx, job.MailboxID)
 	if err != nil {
-		return w.fail(ctx, job, err)
+		if jobCtx.Err() != nil {
+			w.release(job.ID, owner)
+			return err
+		}
+		return w.fail(ctx, job, owner, err)
 	}
 	key := "exports/" + job.ID
-	if err := w.store.PutExport(ctx, key, data); err != nil {
-		return w.fail(ctx, job, err)
+	if err := w.store.PutExport(jobCtx, key, data); err != nil {
+		if jobCtx.Err() != nil {
+			w.release(job.ID, owner)
+			return err
+		}
+		return w.fail(ctx, job, owner, err)
 	}
 	expiresAt := time.Now().Add(15 * 24 * time.Hour)
-	_, err = w.client.ExportJob.UpdateOneID(job.ID).
+	n, err := w.client.ExportJob.Update().
+		Where(exportjob.IDEQ(job.ID), exportjob.LockedByEQ(owner)).
 		SetStatus("completed").
 		SetObjectKey(key).
 		SetSizeBytes(int64(len(data))).
@@ -85,13 +99,17 @@ func (w *ExportWorker) processOne(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if n == 0 {
+		return nil
+	}
 	return w.events.Emit(ctx, events.MailboxExportCompleted, job.MailboxID, map[string]any{"event": events.MailboxExportCompleted, "export_id": job.ID, "mailbox_id": job.MailboxID, "object_key": key, "expires_at": expiresAt.Format(time.RFC3339)})
 }
 
-func (w *ExportWorker) claim(ctx context.Context) (exportJob, bool, error) {
+func (w *ExportWorker) claim(ctx context.Context) (exportJob, string, bool, error) {
+	owner := w.workerID + "/" + ids.New().String()
 	tx, err := w.db.BeginTx(ctx, nil)
 	if err != nil {
-		return exportJob{}, false, err
+		return exportJob{}, "", false, err
 	}
 	defer tx.Rollback()
 
@@ -105,19 +123,51 @@ WHERE id = (
   LIMIT 1
 )
 RETURNING id, mailbox_id
-`, w.workerID, time.Now().Add(10*time.Minute))
+`, owner, time.Now().Add(jobLeaseDuration))
 
 	var job exportJob
 	if err := row.Scan(&job.ID, &job.MailboxID); err != nil {
 		if err == sql.ErrNoRows {
-			return exportJob{}, false, nil
+			return exportJob{}, "", false, nil
 		}
-		return exportJob{}, false, err
+		return exportJob{}, "", false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return exportJob{}, false, err
+		return exportJob{}, "", false, err
 	}
-	return job, true, nil
+	return job, owner, true, nil
+}
+
+func (w *ExportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
+	ticker := time.NewTicker(jobLeaseRenewInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := w.client.ExportJob.Update().
+				Where(exportjob.IDEQ(jobID), exportjob.StatusEQ("processing"), exportjob.LockedByEQ(owner)).
+				SetLockedUntil(time.Now().Add(jobLeaseDuration)).
+				Save(ctx)
+			if err != nil {
+				continue
+			}
+			if n == 0 {
+				cancel()
+				return
+			}
+		}
+	}
+}
+
+func (w *ExportWorker) release(jobID string, owner string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _ = w.client.ExportJob.Update().
+		Where(exportjob.IDEQ(jobID), exportjob.LockedByEQ(owner)).
+		SetStatus("queued").ClearLockedBy().ClearLockedUntil().
+		Save(ctx)
 }
 
 func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) ([]byte, error) {
@@ -150,10 +200,16 @@ func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) ([]byte, 
 	return buf.Bytes(), nil
 }
 
-func (w *ExportWorker) fail(ctx context.Context, job exportJob, cause error) error {
-	_, err := w.client.ExportJob.UpdateOneID(job.ID).SetStatus("failed").SetLastError(map[string]any{"error": cause.Error()}).ClearLockedBy().ClearLockedUntil().Save(ctx)
+func (w *ExportWorker) fail(ctx context.Context, job exportJob, owner string, cause error) error {
+	n, err := w.client.ExportJob.Update().
+		Where(exportjob.IDEQ(job.ID), exportjob.LockedByEQ(owner)).
+		SetStatus("failed").SetLastError(map[string]any{"error": cause.Error()}).ClearLockedBy().ClearLockedUntil().
+		Save(ctx)
 	if err != nil {
 		return err
+	}
+	if n == 0 {
+		return nil
 	}
 	return w.events.Emit(ctx, events.MailboxExportFailed, job.MailboxID, map[string]any{"event": events.MailboxExportFailed, "export_id": job.ID, "mailbox_id": job.MailboxID, "error": cause.Error()})
 }

@@ -22,11 +22,18 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	messagepred "github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/events"
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
+)
+
+const (
+	jobLeaseDuration      = 10 * time.Minute
+	jobLeaseRenewInterval = 2 * time.Minute
 )
 
 type ImportWorker struct {
@@ -71,25 +78,41 @@ func (w *ImportWorker) loop(ctx context.Context) {
 }
 
 func (w *ImportWorker) processOne(ctx context.Context) error {
-	job, ok, err := w.claim(ctx)
+	job, owner, ok, err := w.claim(ctx)
 	if err != nil || !ok {
 		return err
 	}
-	count, err := w.importJob(ctx, job)
+	jobCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go w.renewLease(jobCtx, cancel, job.ID, owner)
+	count, err := w.importJob(jobCtx, job)
 	if err != nil {
-		return w.fail(ctx, job, err)
+		if jobCtx.Err() != nil {
+			// Shutdown or lost lease: release our claim (a no-op if another
+			// worker took over) so the job is requeued instead of failed.
+			w.release(job.ID, owner)
+			return err
+		}
+		return w.fail(ctx, job, owner, err)
 	}
-	_, err = w.client.ImportJob.UpdateOneID(job.ID).SetStatus("completed").SetImportedCount(count).ClearLockedBy().ClearLockedUntil().Save(ctx)
+	n, err := w.client.ImportJob.Update().
+		Where(importjob.IDEQ(job.ID), importjob.LockedByEQ(owner)).
+		SetStatus("completed").SetImportedCount(count).ClearLockedBy().ClearLockedUntil().
+		Save(ctx)
 	if err != nil {
 		return err
+	}
+	if n == 0 {
+		return nil
 	}
 	return w.events.Emit(ctx, events.MailboxImportCompleted, job.MailboxID, map[string]any{"event": events.MailboxImportCompleted, "import_id": job.ID, "mailbox_id": job.MailboxID, "imported_count": count})
 }
 
-func (w *ImportWorker) claim(ctx context.Context) (importJob, bool, error) {
+func (w *ImportWorker) claim(ctx context.Context) (importJob, string, bool, error) {
+	owner := w.workerID + "/" + ids.New().String()
 	tx, err := w.db.BeginTx(ctx, nil)
 	if err != nil {
-		return importJob{}, false, err
+		return importJob{}, "", false, err
 	}
 	defer tx.Rollback()
 
@@ -103,23 +126,59 @@ WHERE id = (
   LIMIT 1
 )
 RETURNING id, mailbox_id, source_type, source
-`, w.workerID, time.Now().Add(10*time.Minute))
+`, owner, time.Now().Add(jobLeaseDuration))
 
 	var job importJob
 	var source []byte
 	if err := row.Scan(&job.ID, &job.MailboxID, &job.SourceType, &source); err != nil {
 		if err == sql.ErrNoRows {
-			return importJob{}, false, nil
+			return importJob{}, "", false, nil
 		}
-		return importJob{}, false, err
+		return importJob{}, "", false, err
 	}
 	if err := json.Unmarshal(source, &job.Source); err != nil {
-		return importJob{}, false, err
+		return importJob{}, "", false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return importJob{}, false, err
+		return importJob{}, "", false, err
 	}
-	return job, true, nil
+	return job, owner, true, nil
+}
+
+// renewLease extends the job lock while the import runs so the cleanup
+// worker doesn't requeue a job that is still making progress. If the lease
+// is lost (another worker took the job over), the job context is cancelled
+// so this worker abandons it.
+func (w *ImportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
+	ticker := time.NewTicker(jobLeaseRenewInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := w.client.ImportJob.Update().
+				Where(importjob.IDEQ(jobID), importjob.StatusEQ("processing"), importjob.LockedByEQ(owner)).
+				SetLockedUntil(time.Now().Add(jobLeaseDuration)).
+				Save(ctx)
+			if err != nil {
+				continue
+			}
+			if n == 0 {
+				cancel()
+				return
+			}
+		}
+	}
+}
+
+func (w *ImportWorker) release(jobID string, owner string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _ = w.client.ImportJob.Update().
+		Where(importjob.IDEQ(jobID), importjob.LockedByEQ(owner)).
+		SetStatus("queued").ClearLockedBy().ClearLockedUntil().
+		Save(ctx)
 }
 
 func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error) {
@@ -241,11 +300,7 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 		if err != nil {
 			return imported, err
 		}
-		msg, err := w.messageForRaw(ctx, raw)
-		if err != nil {
-			return imported, err
-		}
-		created, err := w.attachMessage(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, msg.ID, int64(len(raw)), importFlags{})
+		created, err := w.addToMailbox(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, raw, importFlags{})
 		if err != nil {
 			return imported, err
 		}
@@ -275,11 +330,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 		if err != nil {
 			return imported, err
 		}
-		msg, err := w.messageForRaw(ctx, raw)
-		if err != nil {
-			return imported, err
-		}
-		created, err := w.attachMessage(ctx, job.MailboxID, folderID, mbox.PrimaryAddress, msg.ID, int64(len(raw)), entry.flags)
+		created, err := w.addToMailbox(ctx, job.MailboxID, folderID, mbox.PrimaryAddress, raw, entry.flags)
 		if err != nil {
 			return imported, err
 		}
@@ -379,11 +430,7 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 		if len(raw) == 0 {
 			continue
 		}
-		msg, err := w.messageForRaw(ctx, raw)
-		if err != nil {
-			return closeWithError(err)
-		}
-		created, err := w.attachMessage(ctx, mailboxID, folderID, primaryAddress, msg.ID, int64(len(raw)), flags)
+		created, err := w.addToMailbox(ctx, mailboxID, folderID, primaryAddress, raw, flags)
 		if err != nil {
 			return closeWithError(err)
 		}
@@ -395,6 +442,43 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 		return imported, err
 	}
 	return imported, nil
+}
+
+// addToMailbox stores raw message content (deduplicated by sha256) and
+// attaches it to the mailbox. It returns false when the mailbox already
+// holds a message with identical content, so re-runs and overlapping jobs
+// never produce visible duplicates.
+func (w *ImportWorker) addToMailbox(ctx context.Context, mailboxID string, folderID string, primaryAddress string, raw []byte, flags importFlags) (bool, error) {
+	sha := sha256Hex(raw)
+	attached, err := w.alreadyAttached(ctx, mailboxID, sha)
+	if err != nil {
+		return false, err
+	}
+	if attached {
+		return false, nil
+	}
+	msg, err := w.messageForRaw(ctx, sha, raw)
+	if err != nil {
+		return false, err
+	}
+	return w.attachMessage(ctx, mailboxID, folderID, primaryAddress, msg.ID, int64(len(raw)), flags)
+}
+
+// alreadyAttached reports whether any message with this content hash is
+// attached to the mailbox. Content can be duplicated across Message rows
+// (sha256 has no unique constraint because live delivery paths insert
+// without deduplication), so this checks all of them.
+func (w *ImportWorker) alreadyAttached(ctx context.Context, mailboxID string, sha string) (bool, error) {
+	messageIDs, err := w.client.Message.Query().Where(messagepred.Sha256EQ(sha)).IDs(ctx)
+	if err != nil {
+		return false, err
+	}
+	if len(messageIDs) == 0 {
+		return false, nil
+	}
+	return w.client.MailboxMessage.Query().
+		Where(mailboxmessage.MailboxIDEQ(mailboxID), mailboxmessage.MessageIDIn(messageIDs...)).
+		Exist(ctx)
 }
 
 func (w *ImportWorker) attachMessage(ctx context.Context, mailboxID string, folderID string, primaryAddress string, messageID string, size int64, flags importFlags) (bool, error) {
@@ -420,9 +504,8 @@ func (w *ImportWorker) attachMessage(ctx context.Context, mailboxID string, fold
 	return true, nil
 }
 
-func (w *ImportWorker) messageForRaw(ctx context.Context, raw []byte) (*ent.Message, error) {
-	sha := sha256Hex(raw)
-	existing, err := w.client.Message.Query().Where(messagepred.Sha256EQ(sha)).First(ctx)
+func (w *ImportWorker) messageForRaw(ctx context.Context, sha string, raw []byte) (*ent.Message, error) {
+	existing, err := w.client.Message.Query().Where(messagepred.Sha256EQ(sha)).Order(ent.Asc(messagepred.FieldID)).First(ctx)
 	if err == nil {
 		return existing, nil
 	}
@@ -462,10 +545,16 @@ func (w *ImportWorker) messageForRaw(ctx context.Context, raw []byte) (*ent.Mess
 	return create.Save(ctx)
 }
 
-func (w *ImportWorker) fail(ctx context.Context, job importJob, cause error) error {
-	_, err := w.client.ImportJob.UpdateOneID(job.ID).SetStatus("failed").SetLastError(map[string]any{"error": cause.Error()}).ClearLockedBy().ClearLockedUntil().Save(ctx)
+func (w *ImportWorker) fail(ctx context.Context, job importJob, owner string, cause error) error {
+	n, err := w.client.ImportJob.Update().
+		Where(importjob.IDEQ(job.ID), importjob.LockedByEQ(owner)).
+		SetStatus("failed").SetLastError(map[string]any{"error": cause.Error()}).ClearLockedBy().ClearLockedUntil().
+		Save(ctx)
 	if err != nil {
 		return err
+	}
+	if n == 0 {
+		return nil
 	}
 	return w.events.Emit(ctx, events.MailboxImportFailed, job.MailboxID, map[string]any{"event": events.MailboxImportFailed, "import_id": job.ID, "mailbox_id": job.MailboxID, "error": cause.Error()})
 }
