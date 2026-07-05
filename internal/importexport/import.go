@@ -131,16 +131,91 @@ func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error
 	if err != nil {
 		return 0, err
 	}
+	folders := newFolderCache(inbox.ID)
 	switch job.SourceType {
 	case "zip":
 		return w.importZip(ctx, job, mbox, inbox.ID)
 	case "maildir":
-		return w.importMaildir(ctx, job, mbox, inbox.ID)
+		return w.importMaildir(ctx, job, mbox, folders)
 	case "imap":
-		return w.importIMAP(ctx, job, mbox, inbox.ID)
+		return w.importIMAP(ctx, job, mbox, folders)
 	default:
 		return 0, fmt.Errorf("unsupported import source type %q", job.SourceType)
 	}
+}
+
+// importFlags carries per-message state recovered from the source. Maildir
+// answered/draft flags have no MailboxMessage counterpart and are dropped.
+type importFlags struct {
+	read    bool
+	flagged bool
+	deleted bool
+}
+
+type folderCache struct {
+	ids map[string]string
+}
+
+func newFolderCache(inboxID string) *folderCache {
+	return &folderCache{ids: map[string]string{"INBOX": inboxID}}
+}
+
+func (w *ImportWorker) ensureFolder(ctx context.Context, cache *folderCache, mailboxID string, name string) (string, error) {
+	if id, ok := cache.ids[name]; ok {
+		return id, nil
+	}
+	existing, err := w.client.Folder.Query().Where(folder.MailboxIDEQ(mailboxID), folder.NameEQ(name)).First(ctx)
+	if err == nil {
+		cache.ids[name] = existing.ID
+		return existing.ID, nil
+	}
+	if !ent.IsNotFound(err) {
+		return "", err
+	}
+	created, err := w.client.Folder.Create().SetMailboxID(mailboxID).SetName(name).Save(ctx)
+	if err == nil {
+		cache.ids[name] = created.ID
+		return created.ID, nil
+	}
+	if !ent.IsConstraintError(err) {
+		return "", err
+	}
+	existing, err = w.client.Folder.Query().Where(folder.MailboxIDEQ(mailboxID), folder.NameEQ(name)).First(ctx)
+	if err != nil {
+		return "", err
+	}
+	cache.ids[name] = existing.ID
+	return existing.ID, nil
+}
+
+// systemFolderAliases maps common provider folder names onto the system
+// folders created with every mailbox, so imports reuse them instead of
+// creating near-duplicates like "Sent Items" next to "Sent".
+var systemFolderAliases = map[string]string{
+	"inbox":            "INBOX",
+	"sent":             "Sent",
+	"sent items":       "Sent",
+	"sent messages":    "Sent",
+	"sent mail":        "Sent",
+	"drafts":           "Drafts",
+	"draft":            "Drafts",
+	"trash":            "Trash",
+	"deleted items":    "Trash",
+	"deleted messages": "Trash",
+	"junk":             "Junk",
+	"junk e-mail":      "Junk",
+	"junk email":       "Junk",
+	"spam":             "Junk",
+	"bulk mail":        "Junk",
+	"archive":          "Archive",
+	"archives":         "Archive",
+}
+
+func canonicalFolderSegment(segment string) string {
+	if mapped, ok := systemFolderAliases[strings.ToLower(segment)]; ok {
+		return mapped
+	}
+	return segment
 }
 
 func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string) (int, error) {
@@ -170,7 +245,7 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 		if err != nil {
 			return imported, err
 		}
-		created, err := w.attachMessage(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, msg.ID, int64(len(raw)))
+		created, err := w.attachMessage(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, msg.ID, int64(len(raw)), importFlags{})
 		if err != nil {
 			return imported, err
 		}
@@ -181,18 +256,22 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 	return imported, nil
 }
 
-func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string) (int, error) {
+func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache) (int, error) {
 	root := strings.TrimSpace(sourceString(job.Source, "path"))
 	if root == "" {
 		return 0, fmt.Errorf("maildir import requires source.path")
 	}
-	files, err := maildirFiles(root)
+	entries, err := maildirEntries(root)
 	if err != nil {
 		return 0, err
 	}
 	imported := 0
-	for _, path := range files {
-		raw, err := os.ReadFile(path)
+	for _, entry := range entries {
+		raw, err := os.ReadFile(entry.path)
+		if err != nil {
+			return imported, err
+		}
+		folderID, err := w.ensureFolder(ctx, folders, job.MailboxID, entry.folder)
 		if err != nil {
 			return imported, err
 		}
@@ -200,7 +279,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 		if err != nil {
 			return imported, err
 		}
-		created, err := w.attachMessage(ctx, job.MailboxID, inboxID, mbox.PrimaryAddress, msg.ID, int64(len(raw)))
+		created, err := w.attachMessage(ctx, job.MailboxID, folderID, mbox.PrimaryAddress, msg.ID, int64(len(raw)), entry.flags)
 		if err != nil {
 			return imported, err
 		}
@@ -211,7 +290,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 	return imported, nil
 }
 
-func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string) (int, error) {
+func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache) (int, error) {
 	client, err := dialIMAP(job.Source)
 	if err != nil {
 		return 0, err
@@ -228,9 +307,14 @@ func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.
 		}
 		mailboxes = []string{mailboxName}
 	}
+	delim := remoteDelimiter(client)
 	imported := 0
 	for _, mailboxName := range mailboxes {
-		count, err := w.importIMAPMailbox(ctx, client, mailboxName, job.MailboxID, inboxID, mbox.PrimaryAddress)
+		folderID, err := w.ensureFolder(ctx, folders, job.MailboxID, destinationFolderName(mailboxName, delim))
+		if err != nil {
+			return imported, err
+		}
+		count, err := w.importIMAPMailbox(ctx, client, mailboxName, job.MailboxID, folderID, mbox.PrimaryAddress)
 		if err != nil {
 			return imported, err
 		}
@@ -239,7 +323,34 @@ func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.
 	return imported, nil
 }
 
-func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, inboxID string, primaryAddress string) (int, error) {
+// remoteDelimiter asks the remote server for its hierarchy delimiter via a
+// LIST "" "" query, falling back to "/" if the server gives nothing usable.
+func remoteDelimiter(client *imapclient.Client) string {
+	items, err := client.List("", "", nil).Collect()
+	if err != nil || len(items) == 0 || items[0].Delim == 0 {
+		return "/"
+	}
+	return string(items[0].Delim)
+}
+
+// destinationFolderName translates a remote mailbox name into a local folder
+// path: the remote delimiter becomes "/", a leading INBOX namespace prefix
+// (Courier-style "INBOX.Sent") is dropped, and well-known names map onto
+// system folders.
+func destinationFolderName(remoteName string, delim string) string {
+	name := remoteName
+	if delim != "" && delim != "/" {
+		name = strings.ReplaceAll(name, delim, "/")
+	}
+	segments := strings.Split(name, "/")
+	if len(segments) > 1 && strings.EqualFold(segments[0], "INBOX") {
+		segments = segments[1:]
+	}
+	segments[0] = canonicalFolderSegment(segments[0])
+	return strings.Join(segments, "/")
+}
+
+func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, folderID string, primaryAddress string) (int, error) {
 	selected, err := client.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
 		return 0, err
@@ -250,7 +361,7 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 	bodySection := &imap.FetchItemBodySection{}
 	var seqSet imap.SeqSet
 	seqSet.AddRange(1, selected.NumMessages)
-	fetch := client.Fetch(seqSet, &imap.FetchOptions{BodySection: []*imap.FetchItemBodySection{bodySection}})
+	fetch := client.Fetch(seqSet, &imap.FetchOptions{Flags: true, BodySection: []*imap.FetchItemBodySection{bodySection}})
 	imported := 0
 	closeWithError := func(err error) (int, error) {
 		_ = fetch.Close()
@@ -261,7 +372,7 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 		if remoteMessage == nil {
 			break
 		}
-		raw, err := fetchMessageRaw(remoteMessage)
+		raw, flags, err := fetchMessageData(remoteMessage)
 		if err != nil {
 			return closeWithError(err)
 		}
@@ -272,7 +383,7 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 		if err != nil {
 			return closeWithError(err)
 		}
-		created, err := w.attachMessage(ctx, mailboxID, inboxID, primaryAddress, msg.ID, int64(len(raw)))
+		created, err := w.attachMessage(ctx, mailboxID, folderID, primaryAddress, msg.ID, int64(len(raw)), flags)
 		if err != nil {
 			return closeWithError(err)
 		}
@@ -286,13 +397,16 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 	return imported, nil
 }
 
-func (w *ImportWorker) attachMessage(ctx context.Context, mailboxID string, inboxID string, primaryAddress string, messageID string, size int64) (bool, error) {
+func (w *ImportWorker) attachMessage(ctx context.Context, mailboxID string, folderID string, primaryAddress string, messageID string, size int64, flags importFlags) (bool, error) {
 	_, err := w.client.MailboxMessage.Create().
 		SetMailboxID(mailboxID).
 		SetMessageID(messageID).
-		SetFolderID(inboxID).
+		SetFolderID(folderID).
 		SetOriginalRcpt(primaryAddress).
 		SetBaseRcpt(primaryAddress).
+		SetRead(flags.read).
+		SetFlagged(flags.flagged).
+		SetImapDeleted(flags.deleted).
 		Save(ctx)
 	if ent.IsConstraintError(err) {
 		return false, nil
@@ -418,22 +532,47 @@ func imapTLSConfig(addr string, skipVerify bool) *tls.Config {
 	return &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify}
 }
 
-func fetchMessageRaw(message *imapclient.FetchMessageData) ([]byte, error) {
+func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags, error) {
+	var raw []byte
+	var flags importFlags
 	for {
 		item := message.Next()
 		if item == nil {
-			return nil, nil
+			return raw, flags, nil
 		}
-		body, ok := item.(imapclient.FetchItemDataBodySection)
-		if !ok || body.Literal == nil {
-			continue
+		switch data := item.(type) {
+		case imapclient.FetchItemDataBodySection:
+			if data.Literal == nil {
+				continue
+			}
+			body, err := io.ReadAll(data.Literal)
+			if err != nil {
+				return nil, flags, err
+			}
+			raw = body
+		case imapclient.FetchItemDataFlags:
+			for _, flag := range data.Flags {
+				switch flag {
+				case imap.FlagSeen:
+					flags.read = true
+				case imap.FlagFlagged:
+					flags.flagged = true
+				case imap.FlagDeleted:
+					flags.deleted = true
+				}
+			}
 		}
-		return io.ReadAll(body.Literal)
 	}
 }
 
-func maildirFiles(root string) ([]string, error) {
-	var files []string
+type maildirEntry struct {
+	path   string
+	folder string
+	flags  importFlags
+}
+
+func maildirEntries(root string) ([]maildirEntry, error) {
+	var entries []maildirEntry
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -451,10 +590,62 @@ func maildirFiles(root string) ([]string, error) {
 		if parent != "cur" && parent != "new" {
 			return nil
 		}
-		files = append(files, path)
+		entries = append(entries, maildirEntry{
+			path:   path,
+			folder: maildirFolderName(root, filepath.Dir(filepath.Dir(path))),
+			flags:  maildirFlags(entry.Name()),
+		})
 		return nil
 	})
-	return files, err
+	return entries, err
+}
+
+// maildirFolderName maps the directory holding cur/new onto a local folder
+// path. The maildir root is INBOX. Subfolders follow either the Maildir++
+// layout used by Dovecot/cPanel, where ".Work.Projects" is a single
+// dot-prefixed directory encoding hierarchy with dots, or a plain nested
+// (fs) layout. Local hierarchy uses "/", matching the IMAP LIST delimiter.
+func maildirFolderName(root string, dir string) string {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == "." {
+		return "INBOX"
+	}
+	var segments []string
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if trimmed := strings.TrimPrefix(part, "."); strings.HasPrefix(part, ".") && trimmed != "" {
+			segments = append(segments, strings.Split(trimmed, ".")...)
+		} else if part != "" {
+			segments = append(segments, part)
+		}
+	}
+	if len(segments) == 0 {
+		return "INBOX"
+	}
+	if len(segments) > 1 && strings.EqualFold(segments[0], "INBOX") {
+		segments = segments[1:]
+	}
+	segments[0] = canonicalFolderSegment(segments[0])
+	return strings.Join(segments, "/")
+}
+
+// maildirFlags parses the ":2,<flags>" suffix of a maildir filename.
+func maildirFlags(filename string) importFlags {
+	idx := strings.LastIndex(filename, ":2,")
+	if idx < 0 {
+		return importFlags{}
+	}
+	var flags importFlags
+	for _, r := range filename[idx+3:] {
+		switch r {
+		case 'S':
+			flags.read = true
+		case 'F':
+			flags.flagged = true
+		case 'T':
+			flags.deleted = true
+		}
+	}
+	return flags
 }
 
 func readZipFile(file *zip.File) ([]byte, error) {
