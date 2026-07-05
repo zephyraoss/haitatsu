@@ -44,7 +44,7 @@ func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, store
 			metrics.IMAPSessionStart()
 			return &session{client: client, store: store, metrics: metrics}, &goimapserver.GreetingData{}, nil
 		},
-		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIdle: {}, imap.CapUIDPlus: {}},
+		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIdle: {}, imap.CapUIDPlus: {}, imap.CapMove: {}},
 		TLSConfig:    tlsConfig,
 		InsecureAuth: tlsConfig == nil,
 	})
@@ -286,10 +286,6 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 		}
 	}
 	return nil
-}
-
-func (s *session) Copy(imap.NumSet, string) (*imap.CopyData, error) {
-	return nil, unsupported("copy")
 }
 
 func (s *session) messages(mailboxName string) ([]*ent.MailboxMessage, error) {
