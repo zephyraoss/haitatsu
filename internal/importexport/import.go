@@ -2,7 +2,6 @@ package importexport
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -88,8 +87,6 @@ func (w *ImportWorker) processOne(ctx context.Context) error {
 	count, err := w.importJob(jobCtx, job)
 	if err != nil {
 		if jobCtx.Err() != nil {
-			// Shutdown or lost lease: release our claim (a no-op if another
-			// worker took over) so the job is requeued instead of failed.
 			w.release(job.ID, owner)
 			return err
 		}
@@ -145,10 +142,6 @@ RETURNING id, mailbox_id, source_type, source
 	return job, owner, true, nil
 }
 
-// renewLease extends the job lock while the import runs so the cleanup
-// worker doesn't requeue a job that is still making progress. If the lease
-// is lost (another worker took the job over), the job context is cancelled
-// so this worker abandons it.
 func (w *ImportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
 	ticker := time.NewTicker(jobLeaseRenewInterval)
 	defer ticker.Stop()
@@ -203,8 +196,6 @@ func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error
 	}
 }
 
-// importFlags carries per-message state recovered from the source. Maildir
-// answered/draft flags have no MailboxMessage counterpart and are dropped.
 type importFlags struct {
 	read    bool
 	flagged bool
@@ -247,9 +238,6 @@ func (w *ImportWorker) ensureFolder(ctx context.Context, cache *folderCache, mai
 	return existing.ID, nil
 }
 
-// systemFolderAliases maps common provider folder names onto the system
-// folders created with every mailbox, so imports reuse them instead of
-// creating near-duplicates like "Sent Items" next to "Sent".
 var systemFolderAliases = map[string]string{
 	"inbox":            "INBOX",
 	"sent":             "Sent",
@@ -282,11 +270,25 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 	if key == "" {
 		return 0, fmt.Errorf("zip import requires source.object_key")
 	}
-	data, err := w.store.GetObject(ctx, key)
+	reader, err := w.store.GetObjectReader(ctx, key)
 	if err != nil {
 		return 0, err
 	}
-	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	tmp, err := os.CreateTemp("", "haitatsu-import-*.zip")
+	if err != nil {
+		reader.Close()
+		return 0, err
+	}
+	defer func() {
+		tmp.Close()
+		os.Remove(tmp.Name())
+	}()
+	size, err := io.Copy(tmp, reader)
+	reader.Close()
+	if err != nil {
+		return 0, err
+	}
+	archive, err := zip.NewReader(tmp, size)
 	if err != nil {
 		return 0, err
 	}
@@ -374,8 +376,6 @@ func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.
 	return imported, nil
 }
 
-// remoteDelimiter asks the remote server for its hierarchy delimiter via a
-// LIST "" "" query, falling back to "/" if the server gives nothing usable.
 func remoteDelimiter(client *imapclient.Client) string {
 	items, err := client.List("", "", nil).Collect()
 	if err != nil || len(items) == 0 || items[0].Delim == 0 {
@@ -384,10 +384,6 @@ func remoteDelimiter(client *imapclient.Client) string {
 	return string(items[0].Delim)
 }
 
-// destinationFolderName translates a remote mailbox name into a local folder
-// path: the remote delimiter becomes "/", a leading INBOX namespace prefix
-// (Courier-style "INBOX.Sent") is dropped, and well-known names map onto
-// system folders.
 func destinationFolderName(remoteName string, delim string) string {
 	name := remoteName
 	if delim != "" && delim != "/" {
@@ -401,17 +397,32 @@ func destinationFolderName(remoteName string, delim string) string {
 	return strings.Join(segments, "/")
 }
 
+const imapFetchBatchSize = 200
+
 func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, folderID string, primaryAddress string) (int, error) {
 	selected, err := client.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
 		return 0, err
 	}
-	if selected.NumMessages == 0 {
-		return 0, nil
+	imported := 0
+	for start := uint32(1); start <= selected.NumMessages; start += imapFetchBatchSize {
+		if err := ctx.Err(); err != nil {
+			return imported, err
+		}
+		end := min(start+imapFetchBatchSize-1, selected.NumMessages)
+		count, err := w.fetchIMAPBatch(ctx, client, start, end, mailboxID, folderID, primaryAddress)
+		imported += count
+		if err != nil {
+			return imported, err
+		}
 	}
+	return imported, nil
+}
+
+func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Client, start uint32, end uint32, mailboxID string, folderID string, primaryAddress string) (int, error) {
 	bodySection := &imap.FetchItemBodySection{}
 	var seqSet imap.SeqSet
-	seqSet.AddRange(1, selected.NumMessages)
+	seqSet.AddRange(start, end)
 	fetch := client.Fetch(seqSet, &imap.FetchOptions{Flags: true, BodySection: []*imap.FetchItemBodySection{bodySection}})
 	imported := 0
 	closeWithError := func(err error) (int, error) {
@@ -444,10 +455,6 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 	return imported, nil
 }
 
-// addToMailbox stores raw message content (deduplicated by sha256) and
-// attaches it to the mailbox. It returns false when the mailbox already
-// holds a message with identical content, so re-runs and overlapping jobs
-// never produce visible duplicates.
 func (w *ImportWorker) addToMailbox(ctx context.Context, mailboxID string, folderID string, primaryAddress string, raw []byte, flags importFlags) (bool, error) {
 	sha := sha256Hex(raw)
 	attached, err := w.alreadyAttached(ctx, mailboxID, sha)
@@ -464,10 +471,6 @@ func (w *ImportWorker) addToMailbox(ctx context.Context, mailboxID string, folde
 	return w.attachMessage(ctx, mailboxID, folderID, primaryAddress, msg.ID, int64(len(raw)), flags)
 }
 
-// alreadyAttached reports whether any message with this content hash is
-// attached to the mailbox. Content can be duplicated across Message rows
-// (sha256 has no unique constraint because live delivery paths insert
-// without deduplication), so this checks all of them.
 func (w *ImportWorker) alreadyAttached(ctx context.Context, mailboxID string, sha string) (bool, error) {
 	messageIDs, err := w.client.Message.Query().Where(messagepred.Sha256EQ(sha)).IDs(ctx)
 	if err != nil {
@@ -689,11 +692,6 @@ func maildirEntries(root string) ([]maildirEntry, error) {
 	return entries, err
 }
 
-// maildirFolderName maps the directory holding cur/new onto a local folder
-// path. The maildir root is INBOX. Subfolders follow either the Maildir++
-// layout used by Dovecot/cPanel, where ".Work.Projects" is a single
-// dot-prefixed directory encoding hierarchy with dots, or a plain nested
-// (fs) layout. Local hierarchy uses "/", matching the IMAP LIST delimiter.
 func maildirFolderName(root string, dir string) string {
 	rel, err := filepath.Rel(root, dir)
 	if err != nil || rel == "." {
@@ -717,7 +715,6 @@ func maildirFolderName(root string, dir string) string {
 	return strings.Join(segments, "/")
 }
 
-// maildirFlags parses the ":2,<flags>" suffix of a maildir filename.
 func maildirFlags(filename string) importFlags {
 	idx := strings.LastIndex(filename, ":2,")
 	if idx < 0 {

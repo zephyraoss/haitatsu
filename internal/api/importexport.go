@@ -9,8 +9,6 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/importexport"
 )
 
-// redactedImportJob copies a job with credential values in source masked so
-// remote-IMAP passwords never round-trip through the API.
 func redactedImportJob(job *ent.ImportJob) *ent.ImportJob {
 	if job == nil || job.Source == nil {
 		return job

@@ -58,8 +58,20 @@ func (c *Client) GetObject(ctx context.Context, key string) ([]byte, error) {
 	return io.ReadAll(object)
 }
 
-func (c *Client) PutExport(ctx context.Context, key string, data []byte) error {
-	_, err := c.client.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "application/zip"})
+func (c *Client) GetObjectReader(ctx context.Context, key string) (io.ReadCloser, error) {
+	object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := object.Stat(); err != nil {
+		object.Close()
+		return nil, err
+	}
+	return object, nil
+}
+
+func (c *Client) PutExportStream(ctx context.Context, key string, data io.Reader, size int64) error {
+	_, err := c.client.PutObject(ctx, c.bucket, key, data, size, minio.PutObjectOptions{ContentType: "application/zip"})
 	return err
 }
 

@@ -10,8 +10,6 @@ func sensitiveSourceKey(key string) bool {
 	return false
 }
 
-// RedactSource returns a copy of an import source with credential values
-// masked, for returning job rows over the API.
 func RedactSource(source map[string]any) map[string]any {
 	if source == nil {
 		return nil
@@ -27,9 +25,6 @@ func RedactSource(source map[string]any) map[string]any {
 	return redacted
 }
 
-// ScrubSource returns a copy of an import source with credential fields
-// removed entirely, for persisting once a job reaches a terminal state and
-// the credentials are no longer needed.
 func ScrubSource(source map[string]any) map[string]any {
 	if source == nil {
 		return nil

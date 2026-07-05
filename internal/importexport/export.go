@@ -2,10 +2,11 @@ package importexport
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
@@ -18,9 +19,9 @@ import (
 
 type Store interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
-	GetObject(ctx context.Context, key string) ([]byte, error)
+	GetObjectReader(ctx context.Context, key string) (io.ReadCloser, error)
 	PutMessage(ctx context.Context, key string, data []byte) error
-	PutExport(ctx context.Context, key string, data []byte) error
+	PutExportStream(ctx context.Context, key string, data io.Reader, size int64) error
 }
 
 type ExportWorker struct {
@@ -70,7 +71,7 @@ func (w *ExportWorker) processOne(ctx context.Context) error {
 	jobCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go w.renewLease(jobCtx, cancel, job.ID, owner)
-	data, err := w.buildZIP(jobCtx, job.MailboxID)
+	archive, size, err := w.buildZIP(jobCtx, job.MailboxID)
 	if err != nil {
 		if jobCtx.Err() != nil {
 			w.release(job.ID, owner)
@@ -78,8 +79,12 @@ func (w *ExportWorker) processOne(ctx context.Context) error {
 		}
 		return w.fail(ctx, job, owner, err)
 	}
+	defer func() {
+		archive.Close()
+		os.Remove(archive.Name())
+	}()
 	key := "exports/" + job.ID
-	if err := w.store.PutExport(jobCtx, key, data); err != nil {
+	if err := w.store.PutExportStream(jobCtx, key, archive, size); err != nil {
 		if jobCtx.Err() != nil {
 			w.release(job.ID, owner)
 			return err
@@ -91,7 +96,7 @@ func (w *ExportWorker) processOne(ctx context.Context) error {
 		Where(exportjob.IDEQ(job.ID), exportjob.LockedByEQ(owner)).
 		SetStatus("completed").
 		SetObjectKey(key).
-		SetSizeBytes(int64(len(data))).
+		SetSizeBytes(size).
 		SetExpiresAt(expiresAt).
 		ClearLockedBy().
 		ClearLockedUntil().
@@ -170,34 +175,49 @@ func (w *ExportWorker) release(jobID string, owner string) {
 		Save(ctx)
 }
 
-func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) ([]byte, error) {
+func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) (*os.File, int64, error) {
 	items, err := w.client.MailboxMessage.Query().Where(mailboxmessage.MailboxIDEQ(mailboxID), mailboxmessage.DeletedAtIsNil()).All(ctx)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	var buf bytes.Buffer
-	archive := zip.NewWriter(&buf)
+	tmp, err := os.CreateTemp("", "haitatsu-export-*.zip")
+	if err != nil {
+		return nil, 0, err
+	}
+	discard := func(err error) (*os.File, int64, error) {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return nil, 0, err
+	}
+	archive := zip.NewWriter(tmp)
 	for _, item := range items {
 		msg, err := w.client.Message.Query().Where(message.IDEQ(item.MessageID)).Only(ctx)
 		if err != nil {
-			return nil, err
+			return discard(err)
 		}
 		raw, err := w.store.GetMessage(ctx, msg.BlobKey)
 		if err != nil {
-			return nil, err
+			return discard(err)
 		}
 		file, err := archive.Create(fmt.Sprintf("messages/%s.eml", msg.ID))
 		if err != nil {
-			return nil, err
+			return discard(err)
 		}
 		if _, err := file.Write(raw); err != nil {
-			return nil, err
+			return discard(err)
 		}
 	}
 	if err := archive.Close(); err != nil {
-		return nil, err
+		return discard(err)
 	}
-	return buf.Bytes(), nil
+	size, err := tmp.Seek(0, io.SeekEnd)
+	if err != nil {
+		return discard(err)
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		return discard(err)
+	}
+	return tmp, size, nil
 }
 
 func (w *ExportWorker) fail(ctx context.Context, job exportJob, owner string, cause error) error {
