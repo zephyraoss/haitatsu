@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/caddyserver/certmagic"
@@ -11,7 +13,13 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/config"
 )
 
-const defaultACMECachePath = "./cache/certmagic"
+func defaultACMECachePath() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return "./cache/certmagic"
+	}
+	return filepath.Join(filepath.Dir(executable), "cache", "certmagic")
+}
 
 func TLSConfig(ctx context.Context, cfg config.TLSConfig, publicHostname string) (*tls.Config, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.Mode)) {
@@ -66,7 +74,7 @@ func acmeCachePath(cfg config.TLSConfig) string {
 	if path := strings.TrimSpace(cfg.ACMECachePath); path != "" {
 		return path
 	}
-	return defaultACMECachePath
+	return defaultACMECachePath()
 }
 
 func acmeCA(value string) string {

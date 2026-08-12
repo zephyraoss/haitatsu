@@ -5,12 +5,43 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
 )
+
+const (
+	retryAttempts     = 3
+	retryInitialDelay = 250 * time.Millisecond
+)
+
+func retryTransient(ctx context.Context, op func() error) error {
+	var err error
+	delay := retryInitialDelay
+	for attempt := 0; attempt < retryAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return err
+			case <-time.After(delay):
+			}
+			delay *= 4
+		}
+		err = op()
+		if err == nil || !transientError(err) || ctx.Err() != nil {
+			return err
+		}
+	}
+	return err
+}
+
+func transientError(err error) bool {
+	resp := minio.ToErrorResponse(err)
+	return resp.StatusCode < 400 || resp.StatusCode >= 500
+}
 
 type Client struct {
 	client *minio.Client
@@ -41,8 +72,10 @@ func (c *Client) Health(ctx context.Context) error {
 }
 
 func (c *Client) PutMessage(ctx context.Context, key string, data []byte) error {
-	_, err := c.client.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "message/rfc822"})
-	return err
+	return retryTransient(ctx, func() error {
+		_, err := c.client.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "message/rfc822"})
+		return err
+	})
 }
 
 func (c *Client) GetMessage(ctx context.Context, key string) ([]byte, error) {
@@ -50,31 +83,61 @@ func (c *Client) GetMessage(ctx context.Context, key string) ([]byte, error) {
 }
 
 func (c *Client) GetObject(ctx context.Context, key string) ([]byte, error) {
-	object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+	var data []byte
+	err := retryTransient(ctx, func() error {
+		object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+		if err != nil {
+			return err
+		}
+		defer object.Close()
+		data, err = io.ReadAll(object)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer object.Close()
-	return io.ReadAll(object)
+	return data, nil
 }
 
 func (c *Client) GetObjectReader(ctx context.Context, key string) (io.ReadCloser, error) {
-	object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+	var reader io.ReadCloser
+	err := retryTransient(ctx, func() error {
+		object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+		if err != nil {
+			return err
+		}
+		if _, err := object.Stat(); err != nil {
+			object.Close()
+			return err
+		}
+		reader = object
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if _, err := object.Stat(); err != nil {
-		object.Close()
-		return nil, err
-	}
-	return object, nil
+	return reader, nil
 }
 
 func (c *Client) PutExportStream(ctx context.Context, key string, data io.Reader, size int64) error {
-	_, err := c.client.PutObject(ctx, c.bucket, key, data, size, minio.PutObjectOptions{ContentType: "application/zip"})
-	return err
+	seeker, retryable := data.(io.Seeker)
+	upload := func() error {
+		if retryable {
+			if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+				return err
+			}
+		}
+		_, err := c.client.PutObject(ctx, c.bucket, key, data, size, minio.PutObjectOptions{ContentType: "application/zip"})
+		return err
+	}
+	if !retryable {
+		return upload()
+	}
+	return retryTransient(ctx, upload)
 }
 
 func (c *Client) DeleteObject(ctx context.Context, key string) error {
-	return c.client.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{})
+	return retryTransient(ctx, func() error {
+		return c.client.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{})
+	})
 }

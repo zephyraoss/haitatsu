@@ -39,10 +39,11 @@ type Server struct {
 }
 
 func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, store MessageStore, metrics *metrics.Metrics) *Server {
+	throttle := passwordauth.NewFailureThrottle(10, 10*time.Minute, 15*time.Minute)
 	server := goimapserver.New(&goimapserver.Options{
-		NewSession: func(*goimapserver.Conn) (goimapserver.Session, *goimapserver.GreetingData, error) {
+		NewSession: func(conn *goimapserver.Conn) (goimapserver.Session, *goimapserver.GreetingData, error) {
 			metrics.IMAPSessionStart()
-			return &session{client: client, store: store, metrics: metrics}, &goimapserver.GreetingData{}, nil
+			return &session{client: client, store: store, metrics: metrics, throttle: throttle, remoteIP: remoteIP(conn.NetConn())}, &goimapserver.GreetingData{}, nil
 		},
 		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}, imap.CapIdle: {}, imap.CapUIDPlus: {}, imap.CapMove: {}},
 		TLSConfig:    tlsConfig,
@@ -67,8 +68,21 @@ type session struct {
 	client       *ent.Client
 	store        MessageStore
 	metrics      *metrics.Metrics
+	throttle     *passwordauth.FailureThrottle
+	remoteIP     string
 	mailboxID    string
 	selectedName string
+}
+
+func remoteIP(conn net.Conn) string {
+	if conn == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err != nil {
+		return conn.RemoteAddr().String()
+	}
+	return host
 }
 
 func (s *session) Close() error {
@@ -77,6 +91,18 @@ func (s *session) Close() error {
 }
 
 func (s *session) Login(username, password string) error {
+	if s.throttle.Blocked(s.remoteIP) {
+		return goimapserver.ErrAuthFailed
+	}
+	if err := s.login(username, password); err != nil {
+		s.throttle.RecordFailure(s.remoteIP)
+		return err
+	}
+	s.throttle.RecordSuccess(s.remoteIP)
+	return nil
+}
+
+func (s *session) login(username, password string) error {
 	mbox, err := s.client.Mailbox.Query().Where(mailbox.PrimaryAddressEqualFold(username), mailbox.StatusEQ("active"), mailbox.DeletedAtIsNil()).Only(context.Background())
 	if err != nil {
 		return goimapserver.ErrAuthFailed

@@ -46,7 +46,7 @@ func New(cfg *config.Config, entClient *ent.Client, db *sql.DB, store MessageSto
 		return c.JSON(fiber.Map{"status": "ready"})
 	})
 
-	app.Get("/metrics", adaptor.HTTPHandler(m.Handler()))
+	app.Get("/metrics", api.ServiceTokenMiddleware(cfg.API), adaptor.HTTPHandler(m.Handler()))
 	api.Register(app, entClient, db, store, submission, *cfg, reloader)
 
 	return &Server{app: app, addr: cfg.Server.APIAddr}

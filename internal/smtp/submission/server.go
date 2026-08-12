@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"net"
 	"net/mail"
 	"strings"
 	"time"
@@ -26,7 +27,7 @@ type Server struct {
 }
 
 func New(cfg config.SubmissionConfig, domain string, tlsConfig *tls.Config, client *ent.Client, submission *outbound.Submission) *Server {
-	backend := &backend{client: client, submission: submission}
+	backend := &backend{client: client, submission: submission, throttle: passwordauth.NewFailureThrottle(10, 10*time.Minute, 15*time.Minute)}
 	var tlsServer *smtp.Server
 	if tlsConfig != nil {
 		tlsServer = newServer(cfg.TLSAddr, domain, tlsConfig, backend)
@@ -72,18 +73,32 @@ func newServer(addr string, domain string, tlsConfig *tls.Config, backend smtp.B
 type backend struct {
 	client     *ent.Client
 	submission *outbound.Submission
+	throttle   *passwordauth.FailureThrottle
 }
 
-func (b *backend) NewSession(*smtp.Conn) (smtp.Session, error) {
-	return &session{client: b.client, submission: b.submission}, nil
+func (b *backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
+	return &session{client: b.client, submission: b.submission, throttle: b.throttle, remoteIP: remoteIP(conn.Conn())}, nil
 }
 
 type session struct {
 	client     *ent.Client
 	submission *outbound.Submission
+	throttle   *passwordauth.FailureThrottle
+	remoteIP   string
 	mailbox    *ent.Mailbox
 	mailFrom   string
 	recipients []string
+}
+
+func remoteIP(conn net.Conn) string {
+	if conn == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err != nil {
+		return conn.RemoteAddr().String()
+	}
+	return host
 }
 
 func (s *session) AuthMechanisms() []string {
@@ -98,6 +113,18 @@ func (s *session) Auth(mech string) (sasl.Server, error) {
 }
 
 func (s *session) authenticate(identity, username, password string) error {
+	if s.throttle.Blocked(s.remoteIP) {
+		return smtp.ErrAuthFailed
+	}
+	if err := s.verifyCredentials(identity, username, password); err != nil {
+		s.throttle.RecordFailure(s.remoteIP)
+		return err
+	}
+	s.throttle.RecordSuccess(s.remoteIP)
+	return nil
+}
+
+func (s *session) verifyCredentials(identity, username, password string) error {
 	if identity != "" && identity != username {
 		return smtp.ErrAuthFailed
 	}

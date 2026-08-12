@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"sync/atomic"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -31,6 +32,10 @@ func Open(ctx context.Context, cfg config.PostgresConfig) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, err
