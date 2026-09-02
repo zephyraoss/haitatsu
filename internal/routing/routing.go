@@ -67,10 +67,6 @@ func (r *Resolver) Resolve(ctx context.Context, recipient string) (Result, bool,
 	return r.catchAllRoute(ctx, target)
 }
 
-func OverQuota(mbox *ent.Mailbox) bool {
-	return mbox.QuotaBytes > 0 && mbox.UsedBytes >= mbox.QuotaBytes
-}
-
 func (r *Resolver) exactMailbox(ctx context.Context, target candidate) (Result, bool, error) {
 	mbox, err := r.client.Mailbox.Query().Where(mailbox.PrimaryAddressEQ(target.LookupAddress), mailbox.StatusEQ("active"), mailbox.DeletedAtIsNil()).Only(ctx)
 	if err != nil {

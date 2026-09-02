@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
@@ -18,6 +20,7 @@ type AuditEventCreate struct {
 	config
 	mutation *AuditEventMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetEventType sets the "event_type" field.
@@ -213,6 +216,7 @@ func (_c *AuditEventCreate) createSpec() (*AuditEvent, *sqlgraph.CreateSpec) {
 		_node = &AuditEvent{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(auditevent.Table, sqlgraph.NewFieldSpec(auditevent.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -256,11 +260,410 @@ func (_c *AuditEventCreate) createSpec() (*AuditEvent, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.AuditEvent.Create().
+//		SetEventType(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.AuditEventUpsert) {
+//			SetEventType(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *AuditEventCreate) OnConflict(opts ...sql.ConflictOption) *AuditEventUpsertOne {
+	_c.conflict = opts
+	return &AuditEventUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.AuditEvent.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *AuditEventCreate) OnConflictColumns(columns ...string) *AuditEventUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &AuditEventUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// AuditEventUpsertOne is the builder for "upsert"-ing
+	//  one AuditEvent node.
+	AuditEventUpsertOne struct {
+		create *AuditEventCreate
+	}
+
+	// AuditEventUpsert is the "OnConflict" setter.
+	AuditEventUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetEventType sets the "event_type" field.
+func (u *AuditEventUpsert) SetEventType(v string) *AuditEventUpsert {
+	u.Set(auditevent.FieldEventType, v)
+	return u
+}
+
+// UpdateEventType sets the "event_type" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateEventType() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldEventType)
+	return u
+}
+
+// SetActorType sets the "actor_type" field.
+func (u *AuditEventUpsert) SetActorType(v string) *AuditEventUpsert {
+	u.Set(auditevent.FieldActorType, v)
+	return u
+}
+
+// UpdateActorType sets the "actor_type" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateActorType() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldActorType)
+	return u
+}
+
+// SetActorID sets the "actor_id" field.
+func (u *AuditEventUpsert) SetActorID(v string) *AuditEventUpsert {
+	u.Set(auditevent.FieldActorID, v)
+	return u
+}
+
+// UpdateActorID sets the "actor_id" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateActorID() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldActorID)
+	return u
+}
+
+// ClearActorID clears the value of the "actor_id" field.
+func (u *AuditEventUpsert) ClearActorID() *AuditEventUpsert {
+	u.SetNull(auditevent.FieldActorID)
+	return u
+}
+
+// SetEntityType sets the "entity_type" field.
+func (u *AuditEventUpsert) SetEntityType(v string) *AuditEventUpsert {
+	u.Set(auditevent.FieldEntityType, v)
+	return u
+}
+
+// UpdateEntityType sets the "entity_type" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateEntityType() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldEntityType)
+	return u
+}
+
+// SetEntityID sets the "entity_id" field.
+func (u *AuditEventUpsert) SetEntityID(v string) *AuditEventUpsert {
+	u.Set(auditevent.FieldEntityID, v)
+	return u
+}
+
+// UpdateEntityID sets the "entity_id" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateEntityID() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldEntityID)
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *AuditEventUpsert) SetMailboxID(v string) *AuditEventUpsert {
+	u.Set(auditevent.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateMailboxID() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldMailboxID)
+	return u
+}
+
+// ClearMailboxID clears the value of the "mailbox_id" field.
+func (u *AuditEventUpsert) ClearMailboxID() *AuditEventUpsert {
+	u.SetNull(auditevent.FieldMailboxID)
+	return u
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *AuditEventUpsert) SetTraceID(v string) *AuditEventUpsert {
+	u.Set(auditevent.FieldTraceID, v)
+	return u
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateTraceID() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldTraceID)
+	return u
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *AuditEventUpsert) ClearTraceID() *AuditEventUpsert {
+	u.SetNull(auditevent.FieldTraceID)
+	return u
+}
+
+// SetDetails sets the "details" field.
+func (u *AuditEventUpsert) SetDetails(v map[string]interface{}) *AuditEventUpsert {
+	u.Set(auditevent.FieldDetails, v)
+	return u
+}
+
+// UpdateDetails sets the "details" field to the value that was provided on create.
+func (u *AuditEventUpsert) UpdateDetails() *AuditEventUpsert {
+	u.SetExcluded(auditevent.FieldDetails)
+	return u
+}
+
+// ClearDetails clears the value of the "details" field.
+func (u *AuditEventUpsert) ClearDetails() *AuditEventUpsert {
+	u.SetNull(auditevent.FieldDetails)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.AuditEvent.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(auditevent.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *AuditEventUpsertOne) UpdateNewValues() *AuditEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(auditevent.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(auditevent.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.AuditEvent.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *AuditEventUpsertOne) Ignore() *AuditEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *AuditEventUpsertOne) DoNothing() *AuditEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the AuditEventCreate.OnConflict
+// documentation for more info.
+func (u *AuditEventUpsertOne) Update(set func(*AuditEventUpsert)) *AuditEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&AuditEventUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetEventType sets the "event_type" field.
+func (u *AuditEventUpsertOne) SetEventType(v string) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetEventType(v)
+	})
+}
+
+// UpdateEventType sets the "event_type" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateEventType() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateEventType()
+	})
+}
+
+// SetActorType sets the "actor_type" field.
+func (u *AuditEventUpsertOne) SetActorType(v string) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetActorType(v)
+	})
+}
+
+// UpdateActorType sets the "actor_type" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateActorType() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateActorType()
+	})
+}
+
+// SetActorID sets the "actor_id" field.
+func (u *AuditEventUpsertOne) SetActorID(v string) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetActorID(v)
+	})
+}
+
+// UpdateActorID sets the "actor_id" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateActorID() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateActorID()
+	})
+}
+
+// ClearActorID clears the value of the "actor_id" field.
+func (u *AuditEventUpsertOne) ClearActorID() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearActorID()
+	})
+}
+
+// SetEntityType sets the "entity_type" field.
+func (u *AuditEventUpsertOne) SetEntityType(v string) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetEntityType(v)
+	})
+}
+
+// UpdateEntityType sets the "entity_type" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateEntityType() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateEntityType()
+	})
+}
+
+// SetEntityID sets the "entity_id" field.
+func (u *AuditEventUpsertOne) SetEntityID(v string) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetEntityID(v)
+	})
+}
+
+// UpdateEntityID sets the "entity_id" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateEntityID() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateEntityID()
+	})
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *AuditEventUpsertOne) SetMailboxID(v string) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateMailboxID() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// ClearMailboxID clears the value of the "mailbox_id" field.
+func (u *AuditEventUpsertOne) ClearMailboxID() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearMailboxID()
+	})
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *AuditEventUpsertOne) SetTraceID(v string) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateTraceID() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *AuditEventUpsertOne) ClearTraceID() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearTraceID()
+	})
+}
+
+// SetDetails sets the "details" field.
+func (u *AuditEventUpsertOne) SetDetails(v map[string]interface{}) *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetDetails(v)
+	})
+}
+
+// UpdateDetails sets the "details" field to the value that was provided on create.
+func (u *AuditEventUpsertOne) UpdateDetails() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateDetails()
+	})
+}
+
+// ClearDetails clears the value of the "details" field.
+func (u *AuditEventUpsertOne) ClearDetails() *AuditEventUpsertOne {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearDetails()
+	})
+}
+
+// Exec executes the query.
+func (u *AuditEventUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for AuditEventCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *AuditEventUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *AuditEventUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: AuditEventUpsertOne.ID is not supported by MySQL driver. Use AuditEventUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *AuditEventUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // AuditEventCreateBulk is the builder for creating many AuditEvent entities in bulk.
 type AuditEventCreateBulk struct {
 	config
 	err      error
 	builders []*AuditEventCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the AuditEvent entities in the database.
@@ -290,6 +693,7 @@ func (_c *AuditEventCreateBulk) Save(ctx context.Context) ([]*AuditEvent, error)
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -336,6 +740,263 @@ func (_c *AuditEventCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *AuditEventCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.AuditEvent.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.AuditEventUpsert) {
+//			SetEventType(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *AuditEventCreateBulk) OnConflict(opts ...sql.ConflictOption) *AuditEventUpsertBulk {
+	_c.conflict = opts
+	return &AuditEventUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.AuditEvent.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *AuditEventCreateBulk) OnConflictColumns(columns ...string) *AuditEventUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &AuditEventUpsertBulk{
+		create: _c,
+	}
+}
+
+// AuditEventUpsertBulk is the builder for "upsert"-ing
+// a bulk of AuditEvent nodes.
+type AuditEventUpsertBulk struct {
+	create *AuditEventCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.AuditEvent.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(auditevent.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *AuditEventUpsertBulk) UpdateNewValues() *AuditEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(auditevent.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(auditevent.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.AuditEvent.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *AuditEventUpsertBulk) Ignore() *AuditEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *AuditEventUpsertBulk) DoNothing() *AuditEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the AuditEventCreateBulk.OnConflict
+// documentation for more info.
+func (u *AuditEventUpsertBulk) Update(set func(*AuditEventUpsert)) *AuditEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&AuditEventUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetEventType sets the "event_type" field.
+func (u *AuditEventUpsertBulk) SetEventType(v string) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetEventType(v)
+	})
+}
+
+// UpdateEventType sets the "event_type" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateEventType() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateEventType()
+	})
+}
+
+// SetActorType sets the "actor_type" field.
+func (u *AuditEventUpsertBulk) SetActorType(v string) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetActorType(v)
+	})
+}
+
+// UpdateActorType sets the "actor_type" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateActorType() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateActorType()
+	})
+}
+
+// SetActorID sets the "actor_id" field.
+func (u *AuditEventUpsertBulk) SetActorID(v string) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetActorID(v)
+	})
+}
+
+// UpdateActorID sets the "actor_id" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateActorID() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateActorID()
+	})
+}
+
+// ClearActorID clears the value of the "actor_id" field.
+func (u *AuditEventUpsertBulk) ClearActorID() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearActorID()
+	})
+}
+
+// SetEntityType sets the "entity_type" field.
+func (u *AuditEventUpsertBulk) SetEntityType(v string) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetEntityType(v)
+	})
+}
+
+// UpdateEntityType sets the "entity_type" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateEntityType() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateEntityType()
+	})
+}
+
+// SetEntityID sets the "entity_id" field.
+func (u *AuditEventUpsertBulk) SetEntityID(v string) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetEntityID(v)
+	})
+}
+
+// UpdateEntityID sets the "entity_id" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateEntityID() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateEntityID()
+	})
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *AuditEventUpsertBulk) SetMailboxID(v string) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateMailboxID() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// ClearMailboxID clears the value of the "mailbox_id" field.
+func (u *AuditEventUpsertBulk) ClearMailboxID() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearMailboxID()
+	})
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *AuditEventUpsertBulk) SetTraceID(v string) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateTraceID() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *AuditEventUpsertBulk) ClearTraceID() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearTraceID()
+	})
+}
+
+// SetDetails sets the "details" field.
+func (u *AuditEventUpsertBulk) SetDetails(v map[string]interface{}) *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.SetDetails(v)
+	})
+}
+
+// UpdateDetails sets the "details" field to the value that was provided on create.
+func (u *AuditEventUpsertBulk) UpdateDetails() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.UpdateDetails()
+	})
+}
+
+// ClearDetails clears the value of the "details" field.
+func (u *AuditEventUpsertBulk) ClearDetails() *AuditEventUpsertBulk {
+	return u.Update(func(s *AuditEventUpsert) {
+		s.ClearDetails()
+	})
+}
+
+// Exec executes the query.
+func (u *AuditEventUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the AuditEventCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for AuditEventCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *AuditEventUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

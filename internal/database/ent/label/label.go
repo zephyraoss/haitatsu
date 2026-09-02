@@ -17,6 +17,10 @@ const (
 	FieldMailboxID = "mailbox_id"
 	// FieldName holds the string denoting the name field in the database.
 	FieldName = "name"
+	// FieldUIDValidity holds the string denoting the uid_validity field in the database.
+	FieldUIDValidity = "uid_validity"
+	// FieldUIDNext holds the string denoting the uid_next field in the database.
+	FieldUIDNext = "uid_next"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -30,6 +34,8 @@ var Columns = []string{
 	FieldID,
 	FieldMailboxID,
 	FieldName,
+	FieldUIDValidity,
+	FieldUIDNext,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -45,6 +51,10 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultUIDValidity holds the default value on creation for the "uid_validity" field.
+	DefaultUIDValidity uint32
+	// DefaultUIDNext holds the default value on creation for the "uid_next" field.
+	DefaultUIDNext uint32
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -71,6 +81,16 @@ func ByMailboxID(opts ...sql.OrderTermOption) OrderOption {
 // ByName orders the results by the name field.
 func ByName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldName, opts...).ToFunc()
+}
+
+// ByUIDValidity orders the results by the uid_validity field.
+func ByUIDValidity(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUIDValidity, opts...).ToFunc()
+}
+
+// ByUIDNext orders the results by the uid_next field.
+func ByUIDNext(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUIDNext, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

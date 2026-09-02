@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
@@ -29,6 +30,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/schemamigration"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
 )
 
@@ -92,6 +94,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			apppassword.Table:         apppassword.ValidColumn,
 			auditevent.Table:          auditevent.ValidColumn,
+			authlockout.Table:         authlockout.ValidColumn,
 			bounceevent.Table:         bounceevent.ValidColumn,
 			dkimkey.Table:             dkimkey.ValidColumn,
 			eventlog.Table:            eventlog.ValidColumn,
@@ -107,6 +110,7 @@ func checkColumn(t, c string) error {
 			outboundjob.Table:         outboundjob.ValidColumn,
 			route.Table:               route.ValidColumn,
 			routingrule.Table:         routingrule.ValidColumn,
+			schemamigration.Table:     schemamigration.ValidColumn,
 			senderrule.Table:          senderrule.ValidColumn,
 		})
 	})

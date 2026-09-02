@@ -56,6 +56,48 @@ func (_u *LabelUpdate) SetNillableName(v *string) *LabelUpdate {
 	return _u
 }
 
+// SetUIDValidity sets the "uid_validity" field.
+func (_u *LabelUpdate) SetUIDValidity(v uint32) *LabelUpdate {
+	_u.mutation.ResetUIDValidity()
+	_u.mutation.SetUIDValidity(v)
+	return _u
+}
+
+// SetNillableUIDValidity sets the "uid_validity" field if the given value is not nil.
+func (_u *LabelUpdate) SetNillableUIDValidity(v *uint32) *LabelUpdate {
+	if v != nil {
+		_u.SetUIDValidity(*v)
+	}
+	return _u
+}
+
+// AddUIDValidity adds value to the "uid_validity" field.
+func (_u *LabelUpdate) AddUIDValidity(v int32) *LabelUpdate {
+	_u.mutation.AddUIDValidity(v)
+	return _u
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (_u *LabelUpdate) SetUIDNext(v uint32) *LabelUpdate {
+	_u.mutation.ResetUIDNext()
+	_u.mutation.SetUIDNext(v)
+	return _u
+}
+
+// SetNillableUIDNext sets the "uid_next" field if the given value is not nil.
+func (_u *LabelUpdate) SetNillableUIDNext(v *uint32) *LabelUpdate {
+	if v != nil {
+		_u.SetUIDNext(*v)
+	}
+	return _u
+}
+
+// AddUIDNext adds value to the "uid_next" field.
+func (_u *LabelUpdate) AddUIDNext(v int32) *LabelUpdate {
+	_u.mutation.AddUIDNext(v)
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *LabelUpdate) SetUpdatedAt(v time.Time) *LabelUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -118,6 +160,18 @@ func (_u *LabelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(label.FieldName, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.UIDValidity(); ok {
+		_spec.SetField(label.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDValidity(); ok {
+		_spec.AddField(label.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.UIDNext(); ok {
+		_spec.SetField(label.FieldUIDNext, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDNext(); ok {
+		_spec.AddField(label.FieldUIDNext, field.TypeUint32, value)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(label.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -166,6 +220,48 @@ func (_u *LabelUpdateOne) SetNillableName(v *string) *LabelUpdateOne {
 	if v != nil {
 		_u.SetName(*v)
 	}
+	return _u
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (_u *LabelUpdateOne) SetUIDValidity(v uint32) *LabelUpdateOne {
+	_u.mutation.ResetUIDValidity()
+	_u.mutation.SetUIDValidity(v)
+	return _u
+}
+
+// SetNillableUIDValidity sets the "uid_validity" field if the given value is not nil.
+func (_u *LabelUpdateOne) SetNillableUIDValidity(v *uint32) *LabelUpdateOne {
+	if v != nil {
+		_u.SetUIDValidity(*v)
+	}
+	return _u
+}
+
+// AddUIDValidity adds value to the "uid_validity" field.
+func (_u *LabelUpdateOne) AddUIDValidity(v int32) *LabelUpdateOne {
+	_u.mutation.AddUIDValidity(v)
+	return _u
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (_u *LabelUpdateOne) SetUIDNext(v uint32) *LabelUpdateOne {
+	_u.mutation.ResetUIDNext()
+	_u.mutation.SetUIDNext(v)
+	return _u
+}
+
+// SetNillableUIDNext sets the "uid_next" field if the given value is not nil.
+func (_u *LabelUpdateOne) SetNillableUIDNext(v *uint32) *LabelUpdateOne {
+	if v != nil {
+		_u.SetUIDNext(*v)
+	}
+	return _u
+}
+
+// AddUIDNext adds value to the "uid_next" field.
+func (_u *LabelUpdateOne) AddUIDNext(v int32) *LabelUpdateOne {
+	_u.mutation.AddUIDNext(v)
 	return _u
 }
 
@@ -260,6 +356,18 @@ func (_u *LabelUpdateOne) sqlSave(ctx context.Context) (_node *Label, err error)
 	}
 	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(label.FieldName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UIDValidity(); ok {
+		_spec.SetField(label.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDValidity(); ok {
+		_spec.AddField(label.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.UIDNext(); ok {
+		_spec.SetField(label.FieldUIDNext, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDNext(); ok {
+		_spec.AddField(label.FieldUIDNext, field.TypeUint32, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(label.FieldUpdatedAt, field.TypeTime, value)

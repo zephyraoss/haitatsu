@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
@@ -18,6 +20,7 @@ type OutboundJobCreate struct {
 	config
 	mutation *OutboundJobMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetMailboxID sets the "mailbox_id" field.
@@ -276,6 +279,7 @@ func (_c *OutboundJobCreate) createSpec() (*OutboundJob, *sqlgraph.CreateSpec) {
 		_node = &OutboundJob{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(outboundjob.Table, sqlgraph.NewFieldSpec(outboundjob.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -331,11 +335,501 @@ func (_c *OutboundJobCreate) createSpec() (*OutboundJob, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.OutboundJob.Create().
+//		SetMailboxID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.OutboundJobUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *OutboundJobCreate) OnConflict(opts ...sql.ConflictOption) *OutboundJobUpsertOne {
+	_c.conflict = opts
+	return &OutboundJobUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.OutboundJob.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *OutboundJobCreate) OnConflictColumns(columns ...string) *OutboundJobUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &OutboundJobUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// OutboundJobUpsertOne is the builder for "upsert"-ing
+	//  one OutboundJob node.
+	OutboundJobUpsertOne struct {
+		create *OutboundJobCreate
+	}
+
+	// OutboundJobUpsert is the "OnConflict" setter.
+	OutboundJobUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *OutboundJobUpsert) SetMailboxID(v string) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateMailboxID() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldMailboxID)
+	return u
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *OutboundJobUpsert) SetMessageID(v string) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldMessageID, v)
+	return u
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateMessageID() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldMessageID)
+	return u
+}
+
+// SetReturnPath sets the "return_path" field.
+func (u *OutboundJobUpsert) SetReturnPath(v string) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldReturnPath, v)
+	return u
+}
+
+// UpdateReturnPath sets the "return_path" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateReturnPath() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldReturnPath)
+	return u
+}
+
+// SetRecipients sets the "recipients" field.
+func (u *OutboundJobUpsert) SetRecipients(v []string) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldRecipients, v)
+	return u
+}
+
+// UpdateRecipients sets the "recipients" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateRecipients() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldRecipients)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *OutboundJobUpsert) SetStatus(v string) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateStatus() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldStatus)
+	return u
+}
+
+// SetAttempts sets the "attempts" field.
+func (u *OutboundJobUpsert) SetAttempts(v int) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldAttempts, v)
+	return u
+}
+
+// UpdateAttempts sets the "attempts" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateAttempts() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldAttempts)
+	return u
+}
+
+// AddAttempts adds v to the "attempts" field.
+func (u *OutboundJobUpsert) AddAttempts(v int) *OutboundJobUpsert {
+	u.Add(outboundjob.FieldAttempts, v)
+	return u
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *OutboundJobUpsert) SetLockedBy(v string) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldLockedBy, v)
+	return u
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateLockedBy() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldLockedBy)
+	return u
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *OutboundJobUpsert) ClearLockedBy() *OutboundJobUpsert {
+	u.SetNull(outboundjob.FieldLockedBy)
+	return u
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *OutboundJobUpsert) SetLockedUntil(v time.Time) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldLockedUntil, v)
+	return u
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateLockedUntil() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldLockedUntil)
+	return u
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *OutboundJobUpsert) ClearLockedUntil() *OutboundJobUpsert {
+	u.SetNull(outboundjob.FieldLockedUntil)
+	return u
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *OutboundJobUpsert) SetNextAttemptAt(v time.Time) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldNextAttemptAt, v)
+	return u
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateNextAttemptAt() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldNextAttemptAt)
+	return u
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *OutboundJobUpsert) ClearNextAttemptAt() *OutboundJobUpsert {
+	u.SetNull(outboundjob.FieldNextAttemptAt)
+	return u
+}
+
+// SetLastError sets the "last_error" field.
+func (u *OutboundJobUpsert) SetLastError(v map[string]interface{}) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldLastError, v)
+	return u
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateLastError() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldLastError)
+	return u
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *OutboundJobUpsert) ClearLastError() *OutboundJobUpsert {
+	u.SetNull(outboundjob.FieldLastError)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *OutboundJobUpsert) SetUpdatedAt(v time.Time) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateUpdatedAt() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.OutboundJob.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(outboundjob.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *OutboundJobUpsertOne) UpdateNewValues() *OutboundJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(outboundjob.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(outboundjob.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.OutboundJob.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *OutboundJobUpsertOne) Ignore() *OutboundJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *OutboundJobUpsertOne) DoNothing() *OutboundJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the OutboundJobCreate.OnConflict
+// documentation for more info.
+func (u *OutboundJobUpsertOne) Update(set func(*OutboundJobUpsert)) *OutboundJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&OutboundJobUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *OutboundJobUpsertOne) SetMailboxID(v string) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateMailboxID() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *OutboundJobUpsertOne) SetMessageID(v string) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateMessageID() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// SetReturnPath sets the "return_path" field.
+func (u *OutboundJobUpsertOne) SetReturnPath(v string) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetReturnPath(v)
+	})
+}
+
+// UpdateReturnPath sets the "return_path" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateReturnPath() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateReturnPath()
+	})
+}
+
+// SetRecipients sets the "recipients" field.
+func (u *OutboundJobUpsertOne) SetRecipients(v []string) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetRecipients(v)
+	})
+}
+
+// UpdateRecipients sets the "recipients" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateRecipients() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateRecipients()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *OutboundJobUpsertOne) SetStatus(v string) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateStatus() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetAttempts sets the "attempts" field.
+func (u *OutboundJobUpsertOne) SetAttempts(v int) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetAttempts(v)
+	})
+}
+
+// AddAttempts adds v to the "attempts" field.
+func (u *OutboundJobUpsertOne) AddAttempts(v int) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.AddAttempts(v)
+	})
+}
+
+// UpdateAttempts sets the "attempts" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateAttempts() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateAttempts()
+	})
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *OutboundJobUpsertOne) SetLockedBy(v string) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetLockedBy(v)
+	})
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateLockedBy() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateLockedBy()
+	})
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *OutboundJobUpsertOne) ClearLockedBy() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearLockedBy()
+	})
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *OutboundJobUpsertOne) SetLockedUntil(v time.Time) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetLockedUntil(v)
+	})
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateLockedUntil() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateLockedUntil()
+	})
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *OutboundJobUpsertOne) ClearLockedUntil() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearLockedUntil()
+	})
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *OutboundJobUpsertOne) SetNextAttemptAt(v time.Time) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetNextAttemptAt(v)
+	})
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateNextAttemptAt() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateNextAttemptAt()
+	})
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *OutboundJobUpsertOne) ClearNextAttemptAt() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearNextAttemptAt()
+	})
+}
+
+// SetLastError sets the "last_error" field.
+func (u *OutboundJobUpsertOne) SetLastError(v map[string]interface{}) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetLastError(v)
+	})
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateLastError() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateLastError()
+	})
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *OutboundJobUpsertOne) ClearLastError() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearLastError()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *OutboundJobUpsertOne) SetUpdatedAt(v time.Time) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateUpdatedAt() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *OutboundJobUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for OutboundJobCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *OutboundJobUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *OutboundJobUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: OutboundJobUpsertOne.ID is not supported by MySQL driver. Use OutboundJobUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *OutboundJobUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // OutboundJobCreateBulk is the builder for creating many OutboundJob entities in bulk.
 type OutboundJobCreateBulk struct {
 	config
 	err      error
 	builders []*OutboundJobCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the OutboundJob entities in the database.
@@ -365,6 +859,7 @@ func (_c *OutboundJobCreateBulk) Save(ctx context.Context) ([]*OutboundJob, erro
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -411,6 +906,312 @@ func (_c *OutboundJobCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *OutboundJobCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.OutboundJob.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.OutboundJobUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *OutboundJobCreateBulk) OnConflict(opts ...sql.ConflictOption) *OutboundJobUpsertBulk {
+	_c.conflict = opts
+	return &OutboundJobUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.OutboundJob.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *OutboundJobCreateBulk) OnConflictColumns(columns ...string) *OutboundJobUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &OutboundJobUpsertBulk{
+		create: _c,
+	}
+}
+
+// OutboundJobUpsertBulk is the builder for "upsert"-ing
+// a bulk of OutboundJob nodes.
+type OutboundJobUpsertBulk struct {
+	create *OutboundJobCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.OutboundJob.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(outboundjob.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *OutboundJobUpsertBulk) UpdateNewValues() *OutboundJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(outboundjob.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(outboundjob.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.OutboundJob.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *OutboundJobUpsertBulk) Ignore() *OutboundJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *OutboundJobUpsertBulk) DoNothing() *OutboundJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the OutboundJobCreateBulk.OnConflict
+// documentation for more info.
+func (u *OutboundJobUpsertBulk) Update(set func(*OutboundJobUpsert)) *OutboundJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&OutboundJobUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *OutboundJobUpsertBulk) SetMailboxID(v string) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateMailboxID() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *OutboundJobUpsertBulk) SetMessageID(v string) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateMessageID() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// SetReturnPath sets the "return_path" field.
+func (u *OutboundJobUpsertBulk) SetReturnPath(v string) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetReturnPath(v)
+	})
+}
+
+// UpdateReturnPath sets the "return_path" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateReturnPath() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateReturnPath()
+	})
+}
+
+// SetRecipients sets the "recipients" field.
+func (u *OutboundJobUpsertBulk) SetRecipients(v []string) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetRecipients(v)
+	})
+}
+
+// UpdateRecipients sets the "recipients" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateRecipients() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateRecipients()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *OutboundJobUpsertBulk) SetStatus(v string) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateStatus() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetAttempts sets the "attempts" field.
+func (u *OutboundJobUpsertBulk) SetAttempts(v int) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetAttempts(v)
+	})
+}
+
+// AddAttempts adds v to the "attempts" field.
+func (u *OutboundJobUpsertBulk) AddAttempts(v int) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.AddAttempts(v)
+	})
+}
+
+// UpdateAttempts sets the "attempts" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateAttempts() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateAttempts()
+	})
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *OutboundJobUpsertBulk) SetLockedBy(v string) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetLockedBy(v)
+	})
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateLockedBy() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateLockedBy()
+	})
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *OutboundJobUpsertBulk) ClearLockedBy() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearLockedBy()
+	})
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *OutboundJobUpsertBulk) SetLockedUntil(v time.Time) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetLockedUntil(v)
+	})
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateLockedUntil() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateLockedUntil()
+	})
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *OutboundJobUpsertBulk) ClearLockedUntil() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearLockedUntil()
+	})
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *OutboundJobUpsertBulk) SetNextAttemptAt(v time.Time) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetNextAttemptAt(v)
+	})
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateNextAttemptAt() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateNextAttemptAt()
+	})
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *OutboundJobUpsertBulk) ClearNextAttemptAt() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearNextAttemptAt()
+	})
+}
+
+// SetLastError sets the "last_error" field.
+func (u *OutboundJobUpsertBulk) SetLastError(v map[string]interface{}) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetLastError(v)
+	})
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateLastError() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateLastError()
+	})
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *OutboundJobUpsertBulk) ClearLastError() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.ClearLastError()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *OutboundJobUpsertBulk) SetUpdatedAt(v time.Time) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateUpdatedAt() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *OutboundJobUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the OutboundJobCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for OutboundJobCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *OutboundJobUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

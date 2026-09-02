@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
@@ -18,6 +20,7 @@ type SenderRuleCreate struct {
 	config
 	mutation *SenderRuleMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetScope sets the "scope" field.
@@ -221,6 +224,7 @@ func (_c *SenderRuleCreate) createSpec() (*SenderRule, *sqlgraph.CreateSpec) {
 		_node = &SenderRule{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(senderrule.Table, sqlgraph.NewFieldSpec(senderrule.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -260,11 +264,345 @@ func (_c *SenderRuleCreate) createSpec() (*SenderRule, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.SenderRule.Create().
+//		SetScope(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.SenderRuleUpsert) {
+//			SetScope(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *SenderRuleCreate) OnConflict(opts ...sql.ConflictOption) *SenderRuleUpsertOne {
+	_c.conflict = opts
+	return &SenderRuleUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.SenderRule.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *SenderRuleCreate) OnConflictColumns(columns ...string) *SenderRuleUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &SenderRuleUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// SenderRuleUpsertOne is the builder for "upsert"-ing
+	//  one SenderRule node.
+	SenderRuleUpsertOne struct {
+		create *SenderRuleCreate
+	}
+
+	// SenderRuleUpsert is the "OnConflict" setter.
+	SenderRuleUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetScope sets the "scope" field.
+func (u *SenderRuleUpsert) SetScope(v string) *SenderRuleUpsert {
+	u.Set(senderrule.FieldScope, v)
+	return u
+}
+
+// UpdateScope sets the "scope" field to the value that was provided on create.
+func (u *SenderRuleUpsert) UpdateScope() *SenderRuleUpsert {
+	u.SetExcluded(senderrule.FieldScope)
+	return u
+}
+
+// SetScopeRef sets the "scope_ref" field.
+func (u *SenderRuleUpsert) SetScopeRef(v string) *SenderRuleUpsert {
+	u.Set(senderrule.FieldScopeRef, v)
+	return u
+}
+
+// UpdateScopeRef sets the "scope_ref" field to the value that was provided on create.
+func (u *SenderRuleUpsert) UpdateScopeRef() *SenderRuleUpsert {
+	u.SetExcluded(senderrule.FieldScopeRef)
+	return u
+}
+
+// ClearScopeRef clears the value of the "scope_ref" field.
+func (u *SenderRuleUpsert) ClearScopeRef() *SenderRuleUpsert {
+	u.SetNull(senderrule.FieldScopeRef)
+	return u
+}
+
+// SetKind sets the "kind" field.
+func (u *SenderRuleUpsert) SetKind(v string) *SenderRuleUpsert {
+	u.Set(senderrule.FieldKind, v)
+	return u
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *SenderRuleUpsert) UpdateKind() *SenderRuleUpsert {
+	u.SetExcluded(senderrule.FieldKind)
+	return u
+}
+
+// SetMatchType sets the "match_type" field.
+func (u *SenderRuleUpsert) SetMatchType(v string) *SenderRuleUpsert {
+	u.Set(senderrule.FieldMatchType, v)
+	return u
+}
+
+// UpdateMatchType sets the "match_type" field to the value that was provided on create.
+func (u *SenderRuleUpsert) UpdateMatchType() *SenderRuleUpsert {
+	u.SetExcluded(senderrule.FieldMatchType)
+	return u
+}
+
+// SetValue sets the "value" field.
+func (u *SenderRuleUpsert) SetValue(v string) *SenderRuleUpsert {
+	u.Set(senderrule.FieldValue, v)
+	return u
+}
+
+// UpdateValue sets the "value" field to the value that was provided on create.
+func (u *SenderRuleUpsert) UpdateValue() *SenderRuleUpsert {
+	u.SetExcluded(senderrule.FieldValue)
+	return u
+}
+
+// SetAction sets the "action" field.
+func (u *SenderRuleUpsert) SetAction(v string) *SenderRuleUpsert {
+	u.Set(senderrule.FieldAction, v)
+	return u
+}
+
+// UpdateAction sets the "action" field to the value that was provided on create.
+func (u *SenderRuleUpsert) UpdateAction() *SenderRuleUpsert {
+	u.SetExcluded(senderrule.FieldAction)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *SenderRuleUpsert) SetUpdatedAt(v time.Time) *SenderRuleUpsert {
+	u.Set(senderrule.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *SenderRuleUpsert) UpdateUpdatedAt() *SenderRuleUpsert {
+	u.SetExcluded(senderrule.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.SenderRule.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(senderrule.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *SenderRuleUpsertOne) UpdateNewValues() *SenderRuleUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(senderrule.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(senderrule.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.SenderRule.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *SenderRuleUpsertOne) Ignore() *SenderRuleUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *SenderRuleUpsertOne) DoNothing() *SenderRuleUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the SenderRuleCreate.OnConflict
+// documentation for more info.
+func (u *SenderRuleUpsertOne) Update(set func(*SenderRuleUpsert)) *SenderRuleUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&SenderRuleUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetScope sets the "scope" field.
+func (u *SenderRuleUpsertOne) SetScope(v string) *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetScope(v)
+	})
+}
+
+// UpdateScope sets the "scope" field to the value that was provided on create.
+func (u *SenderRuleUpsertOne) UpdateScope() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateScope()
+	})
+}
+
+// SetScopeRef sets the "scope_ref" field.
+func (u *SenderRuleUpsertOne) SetScopeRef(v string) *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetScopeRef(v)
+	})
+}
+
+// UpdateScopeRef sets the "scope_ref" field to the value that was provided on create.
+func (u *SenderRuleUpsertOne) UpdateScopeRef() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateScopeRef()
+	})
+}
+
+// ClearScopeRef clears the value of the "scope_ref" field.
+func (u *SenderRuleUpsertOne) ClearScopeRef() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.ClearScopeRef()
+	})
+}
+
+// SetKind sets the "kind" field.
+func (u *SenderRuleUpsertOne) SetKind(v string) *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetKind(v)
+	})
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *SenderRuleUpsertOne) UpdateKind() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateKind()
+	})
+}
+
+// SetMatchType sets the "match_type" field.
+func (u *SenderRuleUpsertOne) SetMatchType(v string) *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetMatchType(v)
+	})
+}
+
+// UpdateMatchType sets the "match_type" field to the value that was provided on create.
+func (u *SenderRuleUpsertOne) UpdateMatchType() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateMatchType()
+	})
+}
+
+// SetValue sets the "value" field.
+func (u *SenderRuleUpsertOne) SetValue(v string) *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetValue(v)
+	})
+}
+
+// UpdateValue sets the "value" field to the value that was provided on create.
+func (u *SenderRuleUpsertOne) UpdateValue() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateValue()
+	})
+}
+
+// SetAction sets the "action" field.
+func (u *SenderRuleUpsertOne) SetAction(v string) *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetAction(v)
+	})
+}
+
+// UpdateAction sets the "action" field to the value that was provided on create.
+func (u *SenderRuleUpsertOne) UpdateAction() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateAction()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *SenderRuleUpsertOne) SetUpdatedAt(v time.Time) *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *SenderRuleUpsertOne) UpdateUpdatedAt() *SenderRuleUpsertOne {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *SenderRuleUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for SenderRuleCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *SenderRuleUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *SenderRuleUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: SenderRuleUpsertOne.ID is not supported by MySQL driver. Use SenderRuleUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *SenderRuleUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // SenderRuleCreateBulk is the builder for creating many SenderRule entities in bulk.
 type SenderRuleCreateBulk struct {
 	config
 	err      error
 	builders []*SenderRuleCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the SenderRule entities in the database.
@@ -294,6 +632,7 @@ func (_c *SenderRuleCreateBulk) Save(ctx context.Context) ([]*SenderRule, error)
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -340,6 +679,228 @@ func (_c *SenderRuleCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *SenderRuleCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.SenderRule.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.SenderRuleUpsert) {
+//			SetScope(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *SenderRuleCreateBulk) OnConflict(opts ...sql.ConflictOption) *SenderRuleUpsertBulk {
+	_c.conflict = opts
+	return &SenderRuleUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.SenderRule.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *SenderRuleCreateBulk) OnConflictColumns(columns ...string) *SenderRuleUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &SenderRuleUpsertBulk{
+		create: _c,
+	}
+}
+
+// SenderRuleUpsertBulk is the builder for "upsert"-ing
+// a bulk of SenderRule nodes.
+type SenderRuleUpsertBulk struct {
+	create *SenderRuleCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.SenderRule.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(senderrule.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *SenderRuleUpsertBulk) UpdateNewValues() *SenderRuleUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(senderrule.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(senderrule.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.SenderRule.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *SenderRuleUpsertBulk) Ignore() *SenderRuleUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *SenderRuleUpsertBulk) DoNothing() *SenderRuleUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the SenderRuleCreateBulk.OnConflict
+// documentation for more info.
+func (u *SenderRuleUpsertBulk) Update(set func(*SenderRuleUpsert)) *SenderRuleUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&SenderRuleUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetScope sets the "scope" field.
+func (u *SenderRuleUpsertBulk) SetScope(v string) *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetScope(v)
+	})
+}
+
+// UpdateScope sets the "scope" field to the value that was provided on create.
+func (u *SenderRuleUpsertBulk) UpdateScope() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateScope()
+	})
+}
+
+// SetScopeRef sets the "scope_ref" field.
+func (u *SenderRuleUpsertBulk) SetScopeRef(v string) *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetScopeRef(v)
+	})
+}
+
+// UpdateScopeRef sets the "scope_ref" field to the value that was provided on create.
+func (u *SenderRuleUpsertBulk) UpdateScopeRef() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateScopeRef()
+	})
+}
+
+// ClearScopeRef clears the value of the "scope_ref" field.
+func (u *SenderRuleUpsertBulk) ClearScopeRef() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.ClearScopeRef()
+	})
+}
+
+// SetKind sets the "kind" field.
+func (u *SenderRuleUpsertBulk) SetKind(v string) *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetKind(v)
+	})
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *SenderRuleUpsertBulk) UpdateKind() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateKind()
+	})
+}
+
+// SetMatchType sets the "match_type" field.
+func (u *SenderRuleUpsertBulk) SetMatchType(v string) *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetMatchType(v)
+	})
+}
+
+// UpdateMatchType sets the "match_type" field to the value that was provided on create.
+func (u *SenderRuleUpsertBulk) UpdateMatchType() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateMatchType()
+	})
+}
+
+// SetValue sets the "value" field.
+func (u *SenderRuleUpsertBulk) SetValue(v string) *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetValue(v)
+	})
+}
+
+// UpdateValue sets the "value" field to the value that was provided on create.
+func (u *SenderRuleUpsertBulk) UpdateValue() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateValue()
+	})
+}
+
+// SetAction sets the "action" field.
+func (u *SenderRuleUpsertBulk) SetAction(v string) *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetAction(v)
+	})
+}
+
+// UpdateAction sets the "action" field to the value that was provided on create.
+func (u *SenderRuleUpsertBulk) UpdateAction() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateAction()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *SenderRuleUpsertBulk) SetUpdatedAt(v time.Time) *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *SenderRuleUpsertBulk) UpdateUpdatedAt() *SenderRuleUpsertBulk {
+	return u.Update(func(s *SenderRuleUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *SenderRuleUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the SenderRuleCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for SenderRuleCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *SenderRuleUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

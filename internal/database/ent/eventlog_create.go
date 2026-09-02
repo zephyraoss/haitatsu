@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
@@ -18,6 +20,7 @@ type EventLogCreate struct {
 	config
 	mutation *EventLogMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetEventType sets the "event_type" field.
@@ -300,6 +303,7 @@ func (_c *EventLogCreate) createSpec() (*EventLog, *sqlgraph.CreateSpec) {
 		_node = &EventLog{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(eventlog.Table, sqlgraph.NewFieldSpec(eventlog.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -359,11 +363,566 @@ func (_c *EventLogCreate) createSpec() (*EventLog, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.EventLog.Create().
+//		SetEventType(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.EventLogUpsert) {
+//			SetEventType(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *EventLogCreate) OnConflict(opts ...sql.ConflictOption) *EventLogUpsertOne {
+	_c.conflict = opts
+	return &EventLogUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.EventLog.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *EventLogCreate) OnConflictColumns(columns ...string) *EventLogUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &EventLogUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// EventLogUpsertOne is the builder for "upsert"-ing
+	//  one EventLog node.
+	EventLogUpsertOne struct {
+		create *EventLogCreate
+	}
+
+	// EventLogUpsert is the "OnConflict" setter.
+	EventLogUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetEventType sets the "event_type" field.
+func (u *EventLogUpsert) SetEventType(v string) *EventLogUpsert {
+	u.Set(eventlog.FieldEventType, v)
+	return u
+}
+
+// UpdateEventType sets the "event_type" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateEventType() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldEventType)
+	return u
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *EventLogUpsert) SetTraceID(v string) *EventLogUpsert {
+	u.Set(eventlog.FieldTraceID, v)
+	return u
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateTraceID() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldTraceID)
+	return u
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *EventLogUpsert) ClearTraceID() *EventLogUpsert {
+	u.SetNull(eventlog.FieldTraceID)
+	return u
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *EventLogUpsert) SetMessageID(v string) *EventLogUpsert {
+	u.Set(eventlog.FieldMessageID, v)
+	return u
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateMessageID() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldMessageID)
+	return u
+}
+
+// ClearMessageID clears the value of the "message_id" field.
+func (u *EventLogUpsert) ClearMessageID() *EventLogUpsert {
+	u.SetNull(eventlog.FieldMessageID)
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *EventLogUpsert) SetMailboxID(v string) *EventLogUpsert {
+	u.Set(eventlog.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateMailboxID() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldMailboxID)
+	return u
+}
+
+// ClearMailboxID clears the value of the "mailbox_id" field.
+func (u *EventLogUpsert) ClearMailboxID() *EventLogUpsert {
+	u.SetNull(eventlog.FieldMailboxID)
+	return u
+}
+
+// SetPayload sets the "payload" field.
+func (u *EventLogUpsert) SetPayload(v map[string]interface{}) *EventLogUpsert {
+	u.Set(eventlog.FieldPayload, v)
+	return u
+}
+
+// UpdatePayload sets the "payload" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdatePayload() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldPayload)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *EventLogUpsert) SetStatus(v string) *EventLogUpsert {
+	u.Set(eventlog.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateStatus() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldStatus)
+	return u
+}
+
+// SetAttempts sets the "attempts" field.
+func (u *EventLogUpsert) SetAttempts(v int) *EventLogUpsert {
+	u.Set(eventlog.FieldAttempts, v)
+	return u
+}
+
+// UpdateAttempts sets the "attempts" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateAttempts() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldAttempts)
+	return u
+}
+
+// AddAttempts adds v to the "attempts" field.
+func (u *EventLogUpsert) AddAttempts(v int) *EventLogUpsert {
+	u.Add(eventlog.FieldAttempts, v)
+	return u
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *EventLogUpsert) SetLockedBy(v string) *EventLogUpsert {
+	u.Set(eventlog.FieldLockedBy, v)
+	return u
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateLockedBy() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldLockedBy)
+	return u
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *EventLogUpsert) ClearLockedBy() *EventLogUpsert {
+	u.SetNull(eventlog.FieldLockedBy)
+	return u
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *EventLogUpsert) SetLockedUntil(v time.Time) *EventLogUpsert {
+	u.Set(eventlog.FieldLockedUntil, v)
+	return u
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateLockedUntil() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldLockedUntil)
+	return u
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *EventLogUpsert) ClearLockedUntil() *EventLogUpsert {
+	u.SetNull(eventlog.FieldLockedUntil)
+	return u
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *EventLogUpsert) SetNextAttemptAt(v time.Time) *EventLogUpsert {
+	u.Set(eventlog.FieldNextAttemptAt, v)
+	return u
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateNextAttemptAt() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldNextAttemptAt)
+	return u
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *EventLogUpsert) ClearNextAttemptAt() *EventLogUpsert {
+	u.SetNull(eventlog.FieldNextAttemptAt)
+	return u
+}
+
+// SetLastError sets the "last_error" field.
+func (u *EventLogUpsert) SetLastError(v map[string]interface{}) *EventLogUpsert {
+	u.Set(eventlog.FieldLastError, v)
+	return u
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateLastError() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldLastError)
+	return u
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *EventLogUpsert) ClearLastError() *EventLogUpsert {
+	u.SetNull(eventlog.FieldLastError)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *EventLogUpsert) SetUpdatedAt(v time.Time) *EventLogUpsert {
+	u.Set(eventlog.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *EventLogUpsert) UpdateUpdatedAt() *EventLogUpsert {
+	u.SetExcluded(eventlog.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.EventLog.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(eventlog.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *EventLogUpsertOne) UpdateNewValues() *EventLogUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(eventlog.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(eventlog.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.EventLog.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *EventLogUpsertOne) Ignore() *EventLogUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *EventLogUpsertOne) DoNothing() *EventLogUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the EventLogCreate.OnConflict
+// documentation for more info.
+func (u *EventLogUpsertOne) Update(set func(*EventLogUpsert)) *EventLogUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&EventLogUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetEventType sets the "event_type" field.
+func (u *EventLogUpsertOne) SetEventType(v string) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetEventType(v)
+	})
+}
+
+// UpdateEventType sets the "event_type" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateEventType() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateEventType()
+	})
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *EventLogUpsertOne) SetTraceID(v string) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateTraceID() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *EventLogUpsertOne) ClearTraceID() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearTraceID()
+	})
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *EventLogUpsertOne) SetMessageID(v string) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateMessageID() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// ClearMessageID clears the value of the "message_id" field.
+func (u *EventLogUpsertOne) ClearMessageID() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearMessageID()
+	})
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *EventLogUpsertOne) SetMailboxID(v string) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateMailboxID() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// ClearMailboxID clears the value of the "mailbox_id" field.
+func (u *EventLogUpsertOne) ClearMailboxID() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearMailboxID()
+	})
+}
+
+// SetPayload sets the "payload" field.
+func (u *EventLogUpsertOne) SetPayload(v map[string]interface{}) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetPayload(v)
+	})
+}
+
+// UpdatePayload sets the "payload" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdatePayload() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdatePayload()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *EventLogUpsertOne) SetStatus(v string) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateStatus() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetAttempts sets the "attempts" field.
+func (u *EventLogUpsertOne) SetAttempts(v int) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetAttempts(v)
+	})
+}
+
+// AddAttempts adds v to the "attempts" field.
+func (u *EventLogUpsertOne) AddAttempts(v int) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.AddAttempts(v)
+	})
+}
+
+// UpdateAttempts sets the "attempts" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateAttempts() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateAttempts()
+	})
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *EventLogUpsertOne) SetLockedBy(v string) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetLockedBy(v)
+	})
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateLockedBy() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateLockedBy()
+	})
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *EventLogUpsertOne) ClearLockedBy() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearLockedBy()
+	})
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *EventLogUpsertOne) SetLockedUntil(v time.Time) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetLockedUntil(v)
+	})
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateLockedUntil() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateLockedUntil()
+	})
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *EventLogUpsertOne) ClearLockedUntil() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearLockedUntil()
+	})
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *EventLogUpsertOne) SetNextAttemptAt(v time.Time) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetNextAttemptAt(v)
+	})
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateNextAttemptAt() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateNextAttemptAt()
+	})
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *EventLogUpsertOne) ClearNextAttemptAt() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearNextAttemptAt()
+	})
+}
+
+// SetLastError sets the "last_error" field.
+func (u *EventLogUpsertOne) SetLastError(v map[string]interface{}) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetLastError(v)
+	})
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateLastError() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateLastError()
+	})
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *EventLogUpsertOne) ClearLastError() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearLastError()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *EventLogUpsertOne) SetUpdatedAt(v time.Time) *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *EventLogUpsertOne) UpdateUpdatedAt() *EventLogUpsertOne {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *EventLogUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for EventLogCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *EventLogUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *EventLogUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: EventLogUpsertOne.ID is not supported by MySQL driver. Use EventLogUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *EventLogUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // EventLogCreateBulk is the builder for creating many EventLog entities in bulk.
 type EventLogCreateBulk struct {
 	config
 	err      error
 	builders []*EventLogCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the EventLog entities in the database.
@@ -393,6 +952,7 @@ func (_c *EventLogCreateBulk) Save(ctx context.Context) ([]*EventLog, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -439,6 +999,347 @@ func (_c *EventLogCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *EventLogCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.EventLog.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.EventLogUpsert) {
+//			SetEventType(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *EventLogCreateBulk) OnConflict(opts ...sql.ConflictOption) *EventLogUpsertBulk {
+	_c.conflict = opts
+	return &EventLogUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.EventLog.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *EventLogCreateBulk) OnConflictColumns(columns ...string) *EventLogUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &EventLogUpsertBulk{
+		create: _c,
+	}
+}
+
+// EventLogUpsertBulk is the builder for "upsert"-ing
+// a bulk of EventLog nodes.
+type EventLogUpsertBulk struct {
+	create *EventLogCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.EventLog.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(eventlog.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *EventLogUpsertBulk) UpdateNewValues() *EventLogUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(eventlog.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(eventlog.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.EventLog.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *EventLogUpsertBulk) Ignore() *EventLogUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *EventLogUpsertBulk) DoNothing() *EventLogUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the EventLogCreateBulk.OnConflict
+// documentation for more info.
+func (u *EventLogUpsertBulk) Update(set func(*EventLogUpsert)) *EventLogUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&EventLogUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetEventType sets the "event_type" field.
+func (u *EventLogUpsertBulk) SetEventType(v string) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetEventType(v)
+	})
+}
+
+// UpdateEventType sets the "event_type" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateEventType() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateEventType()
+	})
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *EventLogUpsertBulk) SetTraceID(v string) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateTraceID() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// ClearTraceID clears the value of the "trace_id" field.
+func (u *EventLogUpsertBulk) ClearTraceID() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearTraceID()
+	})
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *EventLogUpsertBulk) SetMessageID(v string) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateMessageID() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// ClearMessageID clears the value of the "message_id" field.
+func (u *EventLogUpsertBulk) ClearMessageID() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearMessageID()
+	})
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *EventLogUpsertBulk) SetMailboxID(v string) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateMailboxID() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// ClearMailboxID clears the value of the "mailbox_id" field.
+func (u *EventLogUpsertBulk) ClearMailboxID() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearMailboxID()
+	})
+}
+
+// SetPayload sets the "payload" field.
+func (u *EventLogUpsertBulk) SetPayload(v map[string]interface{}) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetPayload(v)
+	})
+}
+
+// UpdatePayload sets the "payload" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdatePayload() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdatePayload()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *EventLogUpsertBulk) SetStatus(v string) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateStatus() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetAttempts sets the "attempts" field.
+func (u *EventLogUpsertBulk) SetAttempts(v int) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetAttempts(v)
+	})
+}
+
+// AddAttempts adds v to the "attempts" field.
+func (u *EventLogUpsertBulk) AddAttempts(v int) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.AddAttempts(v)
+	})
+}
+
+// UpdateAttempts sets the "attempts" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateAttempts() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateAttempts()
+	})
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *EventLogUpsertBulk) SetLockedBy(v string) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetLockedBy(v)
+	})
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateLockedBy() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateLockedBy()
+	})
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *EventLogUpsertBulk) ClearLockedBy() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearLockedBy()
+	})
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *EventLogUpsertBulk) SetLockedUntil(v time.Time) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetLockedUntil(v)
+	})
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateLockedUntil() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateLockedUntil()
+	})
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *EventLogUpsertBulk) ClearLockedUntil() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearLockedUntil()
+	})
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *EventLogUpsertBulk) SetNextAttemptAt(v time.Time) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetNextAttemptAt(v)
+	})
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateNextAttemptAt() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateNextAttemptAt()
+	})
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *EventLogUpsertBulk) ClearNextAttemptAt() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearNextAttemptAt()
+	})
+}
+
+// SetLastError sets the "last_error" field.
+func (u *EventLogUpsertBulk) SetLastError(v map[string]interface{}) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetLastError(v)
+	})
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateLastError() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateLastError()
+	})
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *EventLogUpsertBulk) ClearLastError() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.ClearLastError()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *EventLogUpsertBulk) SetUpdatedAt(v time.Time) *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *EventLogUpsertBulk) UpdateUpdatedAt() *EventLogUpsertBulk {
+	return u.Update(func(s *EventLogUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *EventLogUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the EventLogCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for EventLogCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *EventLogUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

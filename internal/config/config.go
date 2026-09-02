@@ -45,7 +45,8 @@ type SMTPConfig struct {
 }
 
 type IMAPConfig struct {
-	Addr string `pkl:"addr" json:"addr"`
+	Addr                string `pkl:"addr" json:"addr"`
+	MaxConnectionsPerIP int    `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
 }
 
 type SubmissionConfig struct {
@@ -54,10 +55,46 @@ type SubmissionConfig struct {
 }
 
 type RelayConfig struct {
-	Addr     string `pkl:"addr" json:"addr"`
-	Username string `pkl:"username" json:"username"`
-	Password string `pkl:"password" json:"password"`
-	FromHost string `pkl:"from_host" json:"from_host"`
+	Addr            string `pkl:"addr" json:"addr"`
+	Username        string `pkl:"username" json:"username"`
+	Password        string `pkl:"password" json:"password"`
+	FromHost        string `pkl:"from_host" json:"from_host"`
+	MaxAttempts     int    `pkl:"max_attempts" json:"max_attempts"`
+	MaxRetryMinutes int    `pkl:"max_retry_minutes" json:"max_retry_minutes"`
+}
+
+func (c RelayConfig) RetryPolicy() RetryPolicy {
+	policy := RetryPolicy{MaxAttempts: c.MaxAttempts, MaxDelay: time.Duration(c.MaxRetryMinutes) * time.Minute}
+	if policy.MaxAttempts <= 0 {
+		policy.MaxAttempts = 30
+	}
+	if policy.MaxDelay <= 0 {
+		policy.MaxDelay = 4 * time.Hour
+	}
+	return policy
+}
+
+type RetryPolicy struct {
+	MaxAttempts int
+	MaxDelay    time.Duration
+}
+
+func (p RetryPolicy) Delay(attempt int) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	delay := time.Minute
+	for range attempt {
+		delay *= 2
+		if delay >= p.MaxDelay {
+			return p.MaxDelay
+		}
+	}
+	return delay
+}
+
+func (p RetryPolicy) Exhausted(attempts int) bool {
+	return attempts >= p.MaxAttempts
 }
 
 func (c ServerConfig) ShutdownTimeout() time.Duration {
@@ -120,6 +157,15 @@ type WebhookConfig struct {
 	DefaultTimeoutSeconds int               `pkl:"default_timeout_seconds" json:"default_timeout_seconds"`
 	Secret                string            `pkl:"secret" json:"secret"`
 	Endpoints             map[string]string `pkl:"endpoints" json:"endpoints"`
+	MaxAttempts           int               `pkl:"max_attempts" json:"max_attempts"`
+}
+
+func (c WebhookConfig) RetryPolicy() RetryPolicy {
+	policy := RetryPolicy{MaxAttempts: c.MaxAttempts, MaxDelay: time.Hour}
+	if policy.MaxAttempts <= 0 {
+		policy.MaxAttempts = 10
+	}
+	return policy
 }
 
 type NotificationConfig struct {
@@ -131,13 +177,70 @@ type NotificationConfig struct {
 }
 
 type SpamConfig struct {
-	JunkThreshold   float64 `pkl:"junk_threshold" json:"junk_threshold"`
-	RejectThreshold float64 `pkl:"reject_threshold" json:"reject_threshold"`
+	JunkThreshold   float64  `pkl:"junk_threshold" json:"junk_threshold"`
+	RejectThreshold float64  `pkl:"reject_threshold" json:"reject_threshold"`
+	DNSBLZones      []string `pkl:"dnsbl_zones" json:"dnsbl_zones"`
+	DNSBLScore      float64  `pkl:"dnsbl_score" json:"dnsbl_score"`
+	RequireHELO     bool     `pkl:"require_helo" json:"require_helo"`
 }
 
 type LimitsConfig struct {
-	MaxMessageSizeBytes  int64 `pkl:"max_message_size_bytes" json:"max_message_size_bytes"`
-	MaxInboundRecipients int   `pkl:"max_inbound_recipients" json:"max_inbound_recipients"`
+	MaxMessageSizeBytes           int64 `pkl:"max_message_size_bytes" json:"max_message_size_bytes"`
+	MaxInboundRecipients          int   `pkl:"max_inbound_recipients" json:"max_inbound_recipients"`
+	MaxSubmissionRecipients       int   `pkl:"max_submission_recipients" json:"max_submission_recipients"`
+	MaxConnectionsPerIP           int   `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
+	InboundMessagesPerMinutePerIP int   `pkl:"inbound_messages_per_minute_per_ip" json:"inbound_messages_per_minute_per_ip"`
+	DefaultOutboundPerHour        int64 `pkl:"default_outbound_per_hour" json:"default_outbound_per_hour"`
+	DefaultOutboundPerDay         int64 `pkl:"default_outbound_per_day" json:"default_outbound_per_day"`
+	DefaultOutboundRecipients     int64 `pkl:"default_outbound_recipients_per_message" json:"default_outbound_recipients_per_message"`
+}
+
+func (c Config) InboundMessageSize() int64 {
+	if c.Limits.MaxMessageSizeBytes > 0 {
+		return c.Limits.MaxMessageSizeBytes
+	}
+	if c.SMTP.MaxMessageSizeBytes > 0 {
+		return c.SMTP.MaxMessageSizeBytes
+	}
+	return 50 * 1024 * 1024
+}
+
+func (c Config) InboundRecipients() int {
+	if c.Limits.MaxInboundRecipients > 0 {
+		return c.Limits.MaxInboundRecipients
+	}
+	if c.SMTP.MaxInboundRecipients > 0 {
+		return c.SMTP.MaxInboundRecipients
+	}
+	return 100
+}
+
+func (c Config) SubmissionRecipients() int {
+	if c.Limits.MaxSubmissionRecipients > 0 {
+		return c.Limits.MaxSubmissionRecipients
+	}
+	return 100
+}
+
+func (c Config) ConnectionsPerIP() int {
+	if c.Limits.MaxConnectionsPerIP > 0 {
+		return c.Limits.MaxConnectionsPerIP
+	}
+	return 20
+}
+
+func (c Config) IMAPConnectionsPerIP() int {
+	if c.IMAP.MaxConnectionsPerIP > 0 {
+		return c.IMAP.MaxConnectionsPerIP
+	}
+	return 30
+}
+
+func (c Config) InboundMessagesPerMinute() int {
+	if c.Limits.InboundMessagesPerMinutePerIP > 0 {
+		return c.Limits.InboundMessagesPerMinutePerIP
+	}
+	return 120
 }
 
 type ReloadImpact struct {
@@ -246,6 +349,24 @@ func (c Config) Validate() error {
 	if c.Limits.MaxInboundRecipients < 0 {
 		problems = append(problems, "limits.max_inbound_recipients must be >= 0")
 	}
+	if c.Limits.MaxSubmissionRecipients < 0 || c.Limits.MaxConnectionsPerIP < 0 || c.Limits.InboundMessagesPerMinutePerIP < 0 {
+		problems = append(problems, "limits values must be >= 0")
+	}
+	if c.Limits.DefaultOutboundPerHour < 0 || c.Limits.DefaultOutboundPerDay < 0 || c.Limits.DefaultOutboundRecipients < 0 {
+		problems = append(problems, "limits.default_outbound_* must be >= 0")
+	}
+	if c.IMAP.MaxConnectionsPerIP < 0 {
+		problems = append(problems, "imap.max_connections_per_ip must be >= 0")
+	}
+	if c.Relay.MaxAttempts < 0 || c.Relay.MaxRetryMinutes < 0 {
+		problems = append(problems, "relay.max_attempts and relay.max_retry_minutes must be >= 0")
+	}
+	if c.Webhooks.MaxAttempts < 0 {
+		problems = append(problems, "webhooks.max_attempts must be >= 0")
+	}
+	if c.Spam.DNSBLScore < 0 {
+		problems = append(problems, "spam.dnsbl_score must be >= 0")
+	}
 	if len(c.Webhooks.Endpoints) > 0 && strings.TrimSpace(c.Webhooks.Secret) == "" {
 		problems = append(problems, "webhooks.secret is required when webhook endpoints are configured")
 	}
@@ -296,11 +417,11 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	if c.Submission != next.Submission {
 		changes = append(changes, "submission listeners")
 	}
-	if c.Relay != next.Relay {
-		changes = append(changes, "relay")
-	}
 	if c.TLS != next.TLS {
 		changes = append(changes, "tls")
+	}
+	if c.Workers.Enabled != next.Workers.Enabled {
+		changes = append(changes, "workers.enabled")
 	}
 
 	return ReloadImpact{StructuralChanges: changes}

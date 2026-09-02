@@ -16,6 +16,8 @@ func (Folder) Fields() []ent.Field {
 		field.String("mailbox_id"),
 		field.String("name"),
 		field.Bool("system").Default(false),
+		field.Uint32("uid_validity").Default(1),
+		field.Uint32("uid_next").Default(1),
 		createdAtField(),
 		updatedAtField(),
 	}

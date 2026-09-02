@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
@@ -18,6 +20,7 @@ type LabelCreate struct {
 	config
 	mutation *LabelMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetMailboxID sets the "mailbox_id" field.
@@ -29,6 +32,34 @@ func (_c *LabelCreate) SetMailboxID(v string) *LabelCreate {
 // SetName sets the "name" field.
 func (_c *LabelCreate) SetName(v string) *LabelCreate {
 	_c.mutation.SetName(v)
+	return _c
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (_c *LabelCreate) SetUIDValidity(v uint32) *LabelCreate {
+	_c.mutation.SetUIDValidity(v)
+	return _c
+}
+
+// SetNillableUIDValidity sets the "uid_validity" field if the given value is not nil.
+func (_c *LabelCreate) SetNillableUIDValidity(v *uint32) *LabelCreate {
+	if v != nil {
+		_c.SetUIDValidity(*v)
+	}
+	return _c
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (_c *LabelCreate) SetUIDNext(v uint32) *LabelCreate {
+	_c.mutation.SetUIDNext(v)
+	return _c
+}
+
+// SetNillableUIDNext sets the "uid_next" field if the given value is not nil.
+func (_c *LabelCreate) SetNillableUIDNext(v *uint32) *LabelCreate {
+	if v != nil {
+		_c.SetUIDNext(*v)
+	}
 	return _c
 }
 
@@ -109,6 +140,14 @@ func (_c *LabelCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *LabelCreate) defaults() {
+	if _, ok := _c.mutation.UIDValidity(); !ok {
+		v := label.DefaultUIDValidity
+		_c.mutation.SetUIDValidity(v)
+	}
+	if _, ok := _c.mutation.UIDNext(); !ok {
+		v := label.DefaultUIDNext
+		_c.mutation.SetUIDNext(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := label.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -130,6 +169,12 @@ func (_c *LabelCreate) check() error {
 	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "Label.name"`)}
+	}
+	if _, ok := _c.mutation.UIDValidity(); !ok {
+		return &ValidationError{Name: "uid_validity", err: errors.New(`ent: missing required field "Label.uid_validity"`)}
+	}
+	if _, ok := _c.mutation.UIDNext(); !ok {
+		return &ValidationError{Name: "uid_next", err: errors.New(`ent: missing required field "Label.uid_next"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Label.created_at"`)}
@@ -168,6 +213,7 @@ func (_c *LabelCreate) createSpec() (*Label, *sqlgraph.CreateSpec) {
 		_node = &Label{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(label.Table, sqlgraph.NewFieldSpec(label.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -180,6 +226,14 @@ func (_c *LabelCreate) createSpec() (*Label, *sqlgraph.CreateSpec) {
 		_spec.SetField(label.FieldName, field.TypeString, value)
 		_node.Name = value
 	}
+	if value, ok := _c.mutation.UIDValidity(); ok {
+		_spec.SetField(label.FieldUIDValidity, field.TypeUint32, value)
+		_node.UIDValidity = value
+	}
+	if value, ok := _c.mutation.UIDNext(); ok {
+		_spec.SetField(label.FieldUIDNext, field.TypeUint32, value)
+		_node.UIDNext = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(label.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -191,11 +245,306 @@ func (_c *LabelCreate) createSpec() (*Label, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Label.Create().
+//		SetMailboxID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.LabelUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *LabelCreate) OnConflict(opts ...sql.ConflictOption) *LabelUpsertOne {
+	_c.conflict = opts
+	return &LabelUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Label.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *LabelCreate) OnConflictColumns(columns ...string) *LabelUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &LabelUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// LabelUpsertOne is the builder for "upsert"-ing
+	//  one Label node.
+	LabelUpsertOne struct {
+		create *LabelCreate
+	}
+
+	// LabelUpsert is the "OnConflict" setter.
+	LabelUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *LabelUpsert) SetMailboxID(v string) *LabelUpsert {
+	u.Set(label.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *LabelUpsert) UpdateMailboxID() *LabelUpsert {
+	u.SetExcluded(label.FieldMailboxID)
+	return u
+}
+
+// SetName sets the "name" field.
+func (u *LabelUpsert) SetName(v string) *LabelUpsert {
+	u.Set(label.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *LabelUpsert) UpdateName() *LabelUpsert {
+	u.SetExcluded(label.FieldName)
+	return u
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (u *LabelUpsert) SetUIDValidity(v uint32) *LabelUpsert {
+	u.Set(label.FieldUIDValidity, v)
+	return u
+}
+
+// UpdateUIDValidity sets the "uid_validity" field to the value that was provided on create.
+func (u *LabelUpsert) UpdateUIDValidity() *LabelUpsert {
+	u.SetExcluded(label.FieldUIDValidity)
+	return u
+}
+
+// AddUIDValidity adds v to the "uid_validity" field.
+func (u *LabelUpsert) AddUIDValidity(v uint32) *LabelUpsert {
+	u.Add(label.FieldUIDValidity, v)
+	return u
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (u *LabelUpsert) SetUIDNext(v uint32) *LabelUpsert {
+	u.Set(label.FieldUIDNext, v)
+	return u
+}
+
+// UpdateUIDNext sets the "uid_next" field to the value that was provided on create.
+func (u *LabelUpsert) UpdateUIDNext() *LabelUpsert {
+	u.SetExcluded(label.FieldUIDNext)
+	return u
+}
+
+// AddUIDNext adds v to the "uid_next" field.
+func (u *LabelUpsert) AddUIDNext(v uint32) *LabelUpsert {
+	u.Add(label.FieldUIDNext, v)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *LabelUpsert) SetUpdatedAt(v time.Time) *LabelUpsert {
+	u.Set(label.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *LabelUpsert) UpdateUpdatedAt() *LabelUpsert {
+	u.SetExcluded(label.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.Label.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(label.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *LabelUpsertOne) UpdateNewValues() *LabelUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(label.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(label.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Label.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *LabelUpsertOne) Ignore() *LabelUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *LabelUpsertOne) DoNothing() *LabelUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the LabelCreate.OnConflict
+// documentation for more info.
+func (u *LabelUpsertOne) Update(set func(*LabelUpsert)) *LabelUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&LabelUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *LabelUpsertOne) SetMailboxID(v string) *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *LabelUpsertOne) UpdateMailboxID() *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *LabelUpsertOne) SetName(v string) *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *LabelUpsertOne) UpdateName() *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (u *LabelUpsertOne) SetUIDValidity(v uint32) *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetUIDValidity(v)
+	})
+}
+
+// AddUIDValidity adds v to the "uid_validity" field.
+func (u *LabelUpsertOne) AddUIDValidity(v uint32) *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.AddUIDValidity(v)
+	})
+}
+
+// UpdateUIDValidity sets the "uid_validity" field to the value that was provided on create.
+func (u *LabelUpsertOne) UpdateUIDValidity() *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateUIDValidity()
+	})
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (u *LabelUpsertOne) SetUIDNext(v uint32) *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetUIDNext(v)
+	})
+}
+
+// AddUIDNext adds v to the "uid_next" field.
+func (u *LabelUpsertOne) AddUIDNext(v uint32) *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.AddUIDNext(v)
+	})
+}
+
+// UpdateUIDNext sets the "uid_next" field to the value that was provided on create.
+func (u *LabelUpsertOne) UpdateUIDNext() *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateUIDNext()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *LabelUpsertOne) SetUpdatedAt(v time.Time) *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *LabelUpsertOne) UpdateUpdatedAt() *LabelUpsertOne {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *LabelUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for LabelCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *LabelUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *LabelUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: LabelUpsertOne.ID is not supported by MySQL driver. Use LabelUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *LabelUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // LabelCreateBulk is the builder for creating many Label entities in bulk.
 type LabelCreateBulk struct {
 	config
 	err      error
 	builders []*LabelCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Label entities in the database.
@@ -225,6 +574,7 @@ func (_c *LabelCreateBulk) Save(ctx context.Context) ([]*Label, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -271,6 +621,207 @@ func (_c *LabelCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *LabelCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Label.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.LabelUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *LabelCreateBulk) OnConflict(opts ...sql.ConflictOption) *LabelUpsertBulk {
+	_c.conflict = opts
+	return &LabelUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Label.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *LabelCreateBulk) OnConflictColumns(columns ...string) *LabelUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &LabelUpsertBulk{
+		create: _c,
+	}
+}
+
+// LabelUpsertBulk is the builder for "upsert"-ing
+// a bulk of Label nodes.
+type LabelUpsertBulk struct {
+	create *LabelCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Label.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(label.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *LabelUpsertBulk) UpdateNewValues() *LabelUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(label.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(label.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Label.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *LabelUpsertBulk) Ignore() *LabelUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *LabelUpsertBulk) DoNothing() *LabelUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the LabelCreateBulk.OnConflict
+// documentation for more info.
+func (u *LabelUpsertBulk) Update(set func(*LabelUpsert)) *LabelUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&LabelUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *LabelUpsertBulk) SetMailboxID(v string) *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *LabelUpsertBulk) UpdateMailboxID() *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *LabelUpsertBulk) SetName(v string) *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *LabelUpsertBulk) UpdateName() *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (u *LabelUpsertBulk) SetUIDValidity(v uint32) *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetUIDValidity(v)
+	})
+}
+
+// AddUIDValidity adds v to the "uid_validity" field.
+func (u *LabelUpsertBulk) AddUIDValidity(v uint32) *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.AddUIDValidity(v)
+	})
+}
+
+// UpdateUIDValidity sets the "uid_validity" field to the value that was provided on create.
+func (u *LabelUpsertBulk) UpdateUIDValidity() *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateUIDValidity()
+	})
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (u *LabelUpsertBulk) SetUIDNext(v uint32) *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetUIDNext(v)
+	})
+}
+
+// AddUIDNext adds v to the "uid_next" field.
+func (u *LabelUpsertBulk) AddUIDNext(v uint32) *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.AddUIDNext(v)
+	})
+}
+
+// UpdateUIDNext sets the "uid_next" field to the value that was provided on create.
+func (u *LabelUpsertBulk) UpdateUIDNext() *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateUIDNext()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *LabelUpsertBulk) SetUpdatedAt(v time.Time) *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *LabelUpsertBulk) UpdateUpdatedAt() *LabelUpsertBulk {
+	return u.Update(func(s *LabelUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *LabelUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the LabelCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for LabelCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *LabelUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

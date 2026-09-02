@@ -2,9 +2,11 @@ package cleanup
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -14,6 +16,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
@@ -24,11 +27,12 @@ type Store interface {
 type Worker struct {
 	client  *ent.Client
 	store   Store
+	mail    *mailstore.Store
 	metrics *metrics.Metrics
 }
 
-func New(client *ent.Client, store Store, metrics *metrics.Metrics) *Worker {
-	return &Worker{client: client, store: store, metrics: metrics}
+func New(client *ent.Client, store Store, mail *mailstore.Store, metrics *metrics.Metrics) *Worker {
+	return &Worker{client: client, store: store, mail: mail, metrics: metrics}
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -36,16 +40,22 @@ func (w *Worker) Run(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
-		_ = w.Cleanup(ctx)
+		w.runOnce(ctx)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				_ = w.Cleanup(ctx)
+				w.runOnce(ctx)
 			}
 		}
 	}()
+}
+
+func (w *Worker) runOnce(ctx context.Context) {
+	if err := w.Cleanup(ctx); err != nil {
+		slog.Error("cleanup failed", "error", err)
+	}
 }
 
 func (w *Worker) Cleanup(ctx context.Context) error {
@@ -64,6 +74,9 @@ func (w *Worker) Cleanup(ctx context.Context) error {
 	if err := w.recoverStaleLeases(ctx); err != nil {
 		return err
 	}
+	if err := w.cleanupAuthLockouts(ctx); err != nil {
+		return err
+	}
 	return w.updateQueueDepth(ctx)
 }
 
@@ -74,11 +87,13 @@ func (w *Worker) cleanupTrash(ctx context.Context) error {
 		return err
 	}
 	for _, item := range folders {
-		_, err := w.client.MailboxMessage.Update().
+		expired, err := w.client.MailboxMessage.Query().
 			Where(mailboxmessage.FolderIDEQ(item.ID), mailboxmessage.DeletedAtIsNil(), mailboxmessage.UpdatedAtLT(cutoff)).
-			SetDeletedAt(time.Now()).
-			Save(ctx)
+			All(ctx)
 		if err != nil {
+			return err
+		}
+		if err := w.mail.SoftDeleteMany(ctx, expired); err != nil {
 			return err
 		}
 	}
@@ -87,8 +102,16 @@ func (w *Worker) cleanupTrash(ctx context.Context) error {
 
 func (w *Worker) cleanupDeletedMailboxes(ctx context.Context) error {
 	cutoff := time.Now().Add(-30 * 24 * time.Hour)
-	_, err := w.client.Mailbox.Delete().Where(mailbox.StatusEQ("deleted"), mailbox.DeletedAtLTE(cutoff)).Exec(ctx)
-	return err
+	mailboxes, err := w.client.Mailbox.Query().Where(mailbox.StatusEQ("deleted"), mailbox.DeletedAtLTE(cutoff)).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, mbox := range mailboxes {
+		if err := w.mail.PurgeMailbox(ctx, mbox.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (w *Worker) cleanupExpiredExports(ctx context.Context) error {
@@ -109,30 +132,47 @@ func (w *Worker) cleanupExpiredExports(ctx context.Context) error {
 
 func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 	cutoff := time.Now().Add(-24 * time.Hour)
-	messages, err := w.client.Message.Query().Where(message.CreatedAtLT(cutoff)).Limit(100).All(ctx)
+	var lastID string
+	for {
+		query := w.client.Message.Query().Where(message.CreatedAtLT(cutoff)).Order(message.ByID()).Limit(200)
+		if lastID != "" {
+			query.Where(message.IDGT(lastID))
+		}
+		messages, err := query.All(ctx)
+		if err != nil {
+			return err
+		}
+		if len(messages) == 0 {
+			return nil
+		}
+		for _, msg := range messages {
+			lastID = msg.ID
+			if err := w.maybeDeleteMessage(ctx, msg); err != nil {
+				return err
+			}
+		}
+		if len(messages) < 200 {
+			return nil
+		}
+	}
+}
+
+func (w *Worker) maybeDeleteMessage(ctx context.Context, msg *ent.Message) error {
+	active, err := w.client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(msg.ID), mailboxmessage.DeletedAtIsNil()).Count(ctx)
 	if err != nil {
 		return err
 	}
-	for _, msg := range messages {
-		active, err := w.client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(msg.ID), mailboxmessage.DeletedAtIsNil()).Count(ctx)
-		if err != nil {
-			return err
-		}
-		if active > 0 {
-			continue
-		}
-		pending, err := w.client.OutboundJob.Query().Where(outboundjob.MessageIDEQ(msg.ID), outboundjob.StatusIn("queued", "retry", "processing")).Count(ctx)
-		if err != nil {
-			return err
-		}
-		if pending > 0 {
-			continue
-		}
-		if err := w.deleteMessageRows(ctx, msg); err != nil {
-			return err
-		}
+	if active > 0 {
+		return nil
 	}
-	return nil
+	pending, err := w.client.OutboundJob.Query().Where(outboundjob.MessageIDEQ(msg.ID), outboundjob.StatusIn("queued", "retry", "processing")).Count(ctx)
+	if err != nil {
+		return err
+	}
+	if pending > 0 {
+		return nil
+	}
+	return w.deleteMessageRows(ctx, msg)
 }
 
 func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message) error {
@@ -174,6 +214,11 @@ func (w *Worker) recoverStaleLeases(ctx context.Context) error {
 		return err
 	}
 	_, err := w.client.ImportJob.Update().Where(importjob.StatusEQ("processing"), importjob.LockedUntilLTE(now)).SetStatus("queued").ClearLockedBy().ClearLockedUntil().Save(ctx)
+	return err
+}
+
+func (w *Worker) cleanupAuthLockouts(ctx context.Context) error {
+	_, err := w.client.AuthLockout.Delete().Where(authlockout.WindowStartLT(time.Now().Add(-24 * time.Hour))).Exec(ctx)
 	return err
 }
 

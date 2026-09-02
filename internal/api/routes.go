@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
 	passwordauth "github.com/zephyraoss/haitatsu/internal/auth"
@@ -15,7 +17,13 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/mailaddr"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 )
 
@@ -23,8 +31,9 @@ type Handler struct {
 	client   *ent.Client
 	db       *sql.DB
 	store    MessageStore
+	mail     *mailstore.Store
 	outbound *outbound.Submission
-	config   config.Config
+	config   *config.Holder
 	reloader Reloader
 }
 
@@ -36,13 +45,14 @@ type MessageStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 }
 
-func Register(router fiber.Router, client *ent.Client, db *sql.DB, store MessageStore, outboundService *outbound.Submission, cfg config.Config, reloader Reloader) {
-	h := &Handler{client: client, db: db, store: store, outbound: outboundService, config: cfg, reloader: reloader}
-	v1 := router.Group("/api/v1", ServiceTokenMiddleware(cfg.API))
+func Register(router fiber.Router, client *ent.Client, db *sql.DB, store MessageStore, mail *mailstore.Store, outboundService *outbound.Submission, cfg *config.Holder, reloader Reloader) {
+	h := &Handler{client: client, db: db, store: store, mail: mail, outbound: outboundService, config: cfg, reloader: reloader}
+	v1 := router.Group("/api/v1", ServiceTokenMiddleware(func() string { return cfg.Get().API.ServiceToken }))
 
 	v1.Get("/mailboxes", h.listMailboxes)
 	v1.Post("/mailboxes", h.createMailbox)
 	v1.Get("/mailboxes/:id", h.getMailbox)
+	v1.Post("/mailboxes/:id/recompute-usage", h.recomputeMailboxUsage)
 	v1.Patch("/mailboxes/:id", h.updateMailbox)
 	v1.Delete("/mailboxes/:id", h.deleteMailbox)
 	v1.Post("/mailboxes/:id/restore", h.restoreMailbox)
@@ -159,11 +169,31 @@ type appPasswordResponse struct {
 
 func (h *Handler) listMailboxes(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	items, err := h.client.Mailbox.Query().Limit(limit).All(c.Context())
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.Mailbox.Query().Order(mailbox.ByCreatedAt(entsql.OrderDesc()), mailbox.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if status := c.Query("status"); status != "" {
+		query.Where(mailbox.StatusEQ(status))
+	}
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.Mailbox](mailbox.FieldCreatedAt, mailbox.FieldID, cur))
+	}
+	items, err := query.All(c.Context())
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "mailbox_list_failed", "Failed to list mailboxes")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(m *ent.Mailbox) (string, string) { return cursorTime(m.CreatedAt), m.ID })
+	return list(c, page, limit, next)
+}
+
+func (h *Handler) recomputeMailboxUsage(c fiber.Ctx) error {
+	total, err := h.mail.RecomputeUsedBytes(c.Context(), c.Params("id"))
+	if err != nil {
+		return entProblem(c, err, "mailbox_recompute_failed", "Failed to recompute mailbox usage")
+	}
+	return data(c, fiber.Map{"mailbox_id": c.Params("id"), "used_bytes": total})
 }
 
 func (h *Handler) createMailbox(c fiber.Ctx) error {
@@ -183,6 +213,9 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 		create.SetQuotaBytes(*req.QuotaBytes)
 	}
 	if req.OutboundLimits != nil {
+		if err := validateOutboundLimits(req.OutboundLimits); err != nil {
+			return problem(c, fiber.StatusBadRequest, "invalid_outbound_limits", err.Error())
+		}
 		create.SetOutboundLimits(req.OutboundLimits)
 	}
 	if req.Status != "" {
@@ -193,7 +226,7 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if err != nil {
 		return entProblem(c, err, "mailbox_create_failed", "Failed to create mailbox")
 	}
-	if err := h.createDefaultFolders(c, mbox.ID); err != nil {
+	if err := h.mail.CreateDefaultFolders(c.Context(), mbox.ID); err != nil {
 		return problem(c, fiber.StatusInternalServerError, "default_folders_failed", "Failed to create default folders")
 	}
 	if err := h.audit(c, "mailbox.created", "mailbox", mbox.ID, mbox.ID, nil); err != nil {
@@ -230,6 +263,9 @@ func (h *Handler) updateMailbox(c fiber.Ctx) error {
 		update.SetQuotaBytes(*req.QuotaBytes)
 	}
 	if req.OutboundLimits != nil {
+		if err := validateOutboundLimits(req.OutboundLimits); err != nil {
+			return problem(c, fiber.StatusBadRequest, "invalid_outbound_limits", err.Error())
+		}
 		update.SetOutboundLimits(req.OutboundLimits)
 	}
 
@@ -272,7 +308,10 @@ func (h *Handler) restoreMailbox(c fiber.Ctx) error {
 
 func (h *Handler) hardDeleteMailbox(c fiber.Ctx) error {
 	id := c.Params("id")
-	if err := h.client.Mailbox.DeleteOneID(id).Exec(c.Context()); err != nil {
+	if _, err := h.client.Mailbox.Get(c.Context(), id); err != nil {
+		return entProblem(c, err, "mailbox_not_found", "Mailbox not found")
+	}
+	if err := h.mail.PurgeMailbox(c.Context(), id); err != nil {
 		return entProblem(c, err, "mailbox_hard_delete_failed", "Failed to hard delete mailbox")
 	}
 	if err := h.audit(c, "mailbox.hard_deleted", "mailbox", id, id, nil); err != nil {
@@ -283,11 +322,20 @@ func (h *Handler) hardDeleteMailbox(c fiber.Ctx) error {
 
 func (h *Handler) listAppPasswords(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	items, err := h.client.AppPassword.Query().Where(apppassword.MailboxIDEQ(c.Params("mailbox_id"))).Limit(limit).All(c.Context())
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.AppPassword.Query().Where(apppassword.MailboxIDEQ(c.Params("mailbox_id"))).Order(apppassword.ByCreatedAt(entsql.OrderDesc()), apppassword.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.AppPassword](apppassword.FieldCreatedAt, apppassword.FieldID, cur))
+	}
+	items, err := query.All(c.Context())
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "app_password_list_failed", "Failed to list app passwords")
 	}
-	return list(c, appPasswordList(items), limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.AppPassword) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, appPasswordList(page), limit, next)
 }
 
 func (h *Handler) createAppPassword(c fiber.Ctx) error {
@@ -337,11 +385,20 @@ func (h *Handler) revokeAppPassword(c fiber.Ctx) error {
 
 func (h *Handler) listRoutes(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	items, err := h.client.Route.Query().Limit(limit).All(c.Context())
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.Route.Query().Order(route.ByCreatedAt(entsql.OrderDesc()), route.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.Route](route.FieldCreatedAt, route.FieldID, cur))
+	}
+	items, err := query.All(c.Context())
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "route_list_failed", "Failed to list routes")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.Route) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }
 
 func (h *Handler) createRoute(c fiber.Ctx) error {
@@ -422,11 +479,20 @@ func (h *Handler) deleteRoute(c fiber.Ctx) error {
 
 func (h *Handler) listRoutingRules(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	items, err := h.client.RoutingRule.Query().Limit(limit).All(c.Context())
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.RoutingRule.Query().Order(routingrule.ByCreatedAt(entsql.OrderDesc()), routingrule.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.RoutingRule](routingrule.FieldCreatedAt, routingrule.FieldID, cur))
+	}
+	items, err := query.All(c.Context())
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "routing_rule_list_failed", "Failed to list routing rules")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.RoutingRule) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }
 
 func (h *Handler) createRoutingRule(c fiber.Ctx) error {
@@ -508,11 +574,20 @@ func (h *Handler) deleteRoutingRule(c fiber.Ctx) error {
 
 func (h *Handler) listFolders(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	items, err := h.client.Folder.Query().Where(folder.MailboxIDEQ(c.Params("mailbox_id"))).Limit(limit).All(c.Context())
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.Folder.Query().Where(folder.MailboxIDEQ(c.Params("mailbox_id"))).Order(folder.ByCreatedAt(entsql.OrderDesc()), folder.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.Folder](folder.FieldCreatedAt, folder.FieldID, cur))
+	}
+	items, err := query.All(c.Context())
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "folder_list_failed", "Failed to list folders")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.Folder) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }
 
 func (h *Handler) createFolder(c fiber.Ctx) error {
@@ -523,11 +598,7 @@ func (h *Handler) createFolder(c fiber.Ctx) error {
 	if req.Name == "" {
 		return problem(c, fiber.StatusBadRequest, "folder_name_required", "Folder name is required")
 	}
-	create := h.client.Folder.Create().SetMailboxID(c.Params("mailbox_id")).SetName(req.Name)
-	if req.System != nil {
-		create.SetSystem(*req.System)
-	}
-	item, err := create.Save(c.Context())
+	item, err := h.mail.CreateFolder(c.Context(), c.Params("mailbox_id"), req.Name, req.System != nil && *req.System)
 	if err != nil {
 		return entProblem(c, err, "folder_create_failed", "Failed to create folder")
 	}
@@ -573,6 +644,13 @@ func (h *Handler) deleteFolder(c fiber.Ctx) error {
 	if item.System {
 		return problem(c, fiber.StatusConflict, "system_folder", "System folders cannot be deleted")
 	}
+	active, err := h.mail.ActiveMessagesInFolder(c.Context(), item.ID)
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "folder_delete_failed", "Failed to delete folder")
+	}
+	if err := h.mail.SoftDeleteMany(c.Context(), active); err != nil {
+		return problem(c, fiber.StatusInternalServerError, "folder_delete_failed", "Failed to delete folder")
+	}
 	if err := h.client.Folder.DeleteOneID(id).Exec(c.Context()); err != nil {
 		return entProblem(c, err, "folder_delete_failed", "Failed to delete folder")
 	}
@@ -584,11 +662,20 @@ func (h *Handler) deleteFolder(c fiber.Ctx) error {
 
 func (h *Handler) listLabels(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	items, err := h.client.Label.Query().Where(label.MailboxIDEQ(c.Params("mailbox_id"))).Limit(limit).All(c.Context())
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.Label.Query().Where(label.MailboxIDEQ(c.Params("mailbox_id"))).Order(label.ByCreatedAt(entsql.OrderDesc()), label.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.Label](label.FieldCreatedAt, label.FieldID, cur))
+	}
+	items, err := query.All(c.Context())
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "label_list_failed", "Failed to list labels")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.Label) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }
 
 func (h *Handler) createLabel(c fiber.Ctx) error {
@@ -599,7 +686,7 @@ func (h *Handler) createLabel(c fiber.Ctx) error {
 	if req.Name == "" {
 		return problem(c, fiber.StatusBadRequest, "label_name_required", "Label name is required")
 	}
-	item, err := h.client.Label.Create().SetMailboxID(c.Params("mailbox_id")).SetName(req.Name).Save(c.Context())
+	item, err := h.mail.CreateLabel(c.Context(), c.Params("mailbox_id"), req.Name)
 	if err != nil {
 		return entProblem(c, err, "label_create_failed", "Failed to create label")
 	}
@@ -637,6 +724,9 @@ func (h *Handler) deleteLabel(c fiber.Ctx) error {
 	if err != nil {
 		return entProblem(c, err, "label_not_found", "Label not found")
 	}
+	if _, err := h.client.MailboxMessageLabel.Delete().Where(mailboxmessagelabel.LabelIDEQ(id)).Exec(c.Context()); err != nil {
+		return problem(c, fiber.StatusInternalServerError, "label_delete_failed", "Failed to delete label")
+	}
 	if err := h.client.Label.DeleteOneID(id).Exec(c.Context()); err != nil {
 		return entProblem(c, err, "label_delete_failed", "Failed to delete label")
 	}
@@ -648,7 +738,14 @@ func (h *Handler) deleteLabel(c fiber.Ctx) error {
 
 func (h *Handler) listAuditEvents(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	query := h.client.AuditEvent.Query().Limit(limit)
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.AuditEvent.Query().Order(auditevent.ByCreatedAt(entsql.OrderDesc()), auditevent.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.AuditEvent](auditevent.FieldCreatedAt, auditevent.FieldID, cur))
+	}
 	if mailboxID := c.Query("mailbox_id"); mailboxID != "" {
 		query.Where(auditevent.MailboxIDEQ(mailboxID))
 	}
@@ -677,16 +774,25 @@ func (h *Handler) listAuditEvents(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "audit_event_list_failed", "Failed to list audit events")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.AuditEvent) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }
 
-func (h *Handler) createDefaultFolders(c fiber.Ctx, mailboxID string) error {
-	for _, name := range []string{"INBOX", "Sent", "Drafts", "Trash", "Junk", "Archive"} {
-		if _, err := h.client.Folder.Create().SetMailboxID(mailboxID).SetName(name).SetSystem(true).Save(c.Context()); err != nil {
-			return err
-		}
+func cursorTime(t time.Time) string {
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+func cursorPredicate[P ~func(*entsql.Selector)](createdAtField string, idField string, cur cursor) P {
+	createdAt, err := time.Parse(time.RFC3339Nano, cur.CreatedAt)
+	if err != nil {
+		createdAt = time.Time{}
 	}
-	return nil
+	return P(func(s *entsql.Selector) {
+		s.Where(entsql.Or(
+			entsql.LT(s.C(createdAtField), createdAt),
+			entsql.And(entsql.EQ(s.C(createdAtField), createdAt), entsql.LT(s.C(idField), cur.ID)),
+		))
+	})
 }
 
 func (h *Handler) audit(c fiber.Ctx, eventType string, entityType string, entityID string, mailboxID string, details map[string]any) error {
@@ -726,6 +832,20 @@ func entProblem(c fiber.Ctx, err error, code string, message string) error {
 		return problem(c, fiber.StatusConflict, "constraint_violation", "Resource conflicts with existing data")
 	}
 	return problem(c, fiber.StatusInternalServerError, code, message)
+}
+
+func validateOutboundLimits(limits map[string]int64) error {
+	for key, value := range limits {
+		switch key {
+		case "per_hour", "per_day", "recipients_per_message":
+		default:
+			return fmt.Errorf("unknown outbound limit %q (expected per_hour, per_day, recipients_per_message)", key)
+		}
+		if value < 0 {
+			return fmt.Errorf("outbound limit %q must be >= 0", key)
+		}
+	}
+	return nil
 }
 
 func validProtocolScopes(scopes []string) bool {

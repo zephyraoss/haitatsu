@@ -21,6 +21,10 @@ type Label struct {
 	MailboxID string `json:"mailbox_id,omitempty"`
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
+	// UIDValidity holds the value of the "uid_validity" field.
+	UIDValidity uint32 `json:"uid_validity,omitempty"`
+	// UIDNext holds the value of the "uid_next" field.
+	UIDNext uint32 `json:"uid_next,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -33,6 +37,8 @@ func (*Label) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case label.FieldUIDValidity, label.FieldUIDNext:
+			values[i] = new(sql.NullInt64)
 		case label.FieldID, label.FieldMailboxID, label.FieldName:
 			values[i] = new(sql.NullString)
 		case label.FieldCreatedAt, label.FieldUpdatedAt:
@@ -69,6 +75,18 @@ func (_m *Label) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
 				_m.Name = value.String
+			}
+		case label.FieldUIDValidity:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field uid_validity", values[i])
+			} else if value.Valid {
+				_m.UIDValidity = uint32(value.Int64)
+			}
+		case label.FieldUIDNext:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field uid_next", values[i])
+			} else if value.Valid {
+				_m.UIDNext = uint32(value.Int64)
 			}
 		case label.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -123,6 +141,12 @@ func (_m *Label) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
+	builder.WriteString(", ")
+	builder.WriteString("uid_validity=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UIDValidity))
+	builder.WriteString(", ")
+	builder.WriteString("uid_next=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UIDNext))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

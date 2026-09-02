@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"net"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
@@ -11,6 +12,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/health"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 )
@@ -28,8 +30,8 @@ type Reloader interface {
 	Reload(ctx context.Context) error
 }
 
-func New(cfg *config.Config, entClient *ent.Client, db *sql.DB, store MessageStore, submission *outbound.Submission, checker *health.Checker, m *metrics.Metrics, reloader Reloader) *Server {
-	app := fiber.New(fiber.Config{AppName: "Haitatsu"})
+func New(cfg *config.Holder, entClient *ent.Client, db *sql.DB, store MessageStore, mail *mailstore.Store, submission *outbound.Submission, checker *health.Checker, m *metrics.Metrics, reloader Reloader) *Server {
+	app := fiber.New(fiber.Config{AppName: "Haitatsu", BodyLimit: 64 * 1024 * 1024})
 	app.Use(m.Middleware)
 
 	app.Get("/health", func(c fiber.Ctx) error {
@@ -46,14 +48,23 @@ func New(cfg *config.Config, entClient *ent.Client, db *sql.DB, store MessageSto
 		return c.JSON(fiber.Map{"status": "ready"})
 	})
 
-	app.Get("/metrics", api.ServiceTokenMiddleware(cfg.API), adaptor.HTTPHandler(m.Handler()))
-	api.Register(app, entClient, db, store, submission, *cfg, reloader)
+	token := func() string { return cfg.Get().API.ServiceToken }
+	app.Get("/metrics", api.ServiceTokenMiddleware(token), adaptor.HTTPHandler(m.Handler()))
+	api.Register(app, entClient, db, store, mail, submission, cfg, reloader)
 
-	return &Server{app: app, addr: cfg.Server.APIAddr}
+	return &Server{app: app, addr: cfg.Get().Server.APIAddr}
 }
 
 func (s *Server) Listen() error {
-	return s.app.Listen(s.addr)
+	return s.app.Listen(s.addr, fiber.ListenConfig{DisableStartupMessage: true})
+}
+
+func (s *Server) Serve(listener net.Listener) error {
+	return s.app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
+}
+
+func (s *Server) Handler() *fiber.App {
+	return s.app
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {

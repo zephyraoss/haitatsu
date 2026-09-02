@@ -20,6 +20,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/imapserver"
 	"github.com/zephyraoss/haitatsu/internal/importexport"
 	"github.com/zephyraoss/haitatsu/internal/logging"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/notifications"
@@ -39,10 +40,11 @@ type Options struct {
 
 type App struct {
 	configPath string
-	config     *config.Config
+	config     *config.Holder
 	logger     *slog.Logger
 	database   *database.Client
 	storage    *storage.Client
+	notifier   *mailstore.Notifier
 	server     *httpapi.Server
 	smtp       *inboundsmtp.Server
 	imap       *imapserver.Server
@@ -86,23 +88,29 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		return nil, fmt.Errorf("configure storage: %w", err)
 	}
 
-	runtime := &App{configPath: opts.ConfigPath, config: cfg, logger: logger, database: db, storage: blobStore}
+	holder := config.NewHolder(cfg)
+	notifier := mailstore.NewNotifier(cfg.Server.InstanceName, database.NewChangeBus(db.SQL()))
+	mail := mailstore.New(db.Ent(), notifier)
+	runtime := &App{configPath: opts.ConfigPath, config: holder, logger: logger, database: db, storage: blobStore, notifier: notifier}
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
-	submissionService := outbound.NewSubmission(db.Ent(), blobStore, cfg.Server.PublicHostname, cfg.Server.InstanceName)
-	server := httpapi.New(cfg, db.Ent(), db.SQL(), blobStore, submissionService, checker, m, runtime)
-	cleanupWorker := cleanup.New(db.Ent(), blobStore, m)
+	submissionService := outbound.NewSubmission(db.Ent(), blobStore, mail, cfg.Server.PublicHostname, cfg.Server.InstanceName, func() outbound.Limits {
+		limits := holder.Get().Limits
+		return outbound.Limits{PerHour: limits.DefaultOutboundPerHour, PerDay: limits.DefaultOutboundPerDay, RecipientsPerMessage: limits.DefaultOutboundRecipients}
+	})
+	server := httpapi.New(holder, db.Ent(), db.SQL(), blobStore, mail, submissionService, checker, m, runtime)
+	cleanupWorker := cleanup.New(db.Ent(), blobStore, mail, m)
 	eventService := events.New(db.Ent())
 	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
-	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
-	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), cfg.Webhooks, m, cfg.Server.InstanceName)
+	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, mail, eventService, cfg.Server.InstanceName)
+	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), func() config.WebhookConfig { return holder.Get().Webhooks }, m, cfg.Server.InstanceName)
 	resolver := routing.NewResolver(db.Ent())
-	ruleEngine := rules.New(db.Ent(), eventService)
-	messageService := messages.NewService(db.Ent(), blobStore, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
-	notificationService := notifications.New(db.Ent(), messageService, cfg.Notifications, cfg.Server.PublicHostname)
-	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, cfg.Relay, m, notificationService, cfg.Server.InstanceName)
+	ruleEngine := rules.New(db.Ent(), mail, eventService)
+	messageService := messages.NewService(db.Ent(), blobStore, mail, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	notificationService := notifications.New(db.Ent(), messageService, func() config.NotificationConfig { return holder.Get().Notifications }, cfg.Server.PublicHostname)
+	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
-	spamChecker := spam.NewChecker(db.Ent(), cfg.Spam, cfg.Server.PublicHostname)
+	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname)
 	tlsConfig, err := certs.TLSConfig(ctx, cfg.TLS, cfg.Server.PublicHostname)
 	if err != nil {
 		db.Close()
@@ -111,9 +119,21 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	if strings.EqualFold(strings.TrimSpace(cfg.TLS.Mode), "acme") {
 		logger.Info("acme certificate provisioning started in background", "hostname", cfg.Server.PublicHostname)
 	}
-	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler, spamChecker, m)
-	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore, m)
-	submissionServer := submissionsmtp.New(cfg.Submission, cfg.Server.PublicHostname, tlsConfig, db.Ent(), submissionService)
+	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler, spamChecker, m, inboundsmtp.Options{
+		MaxMessageBytes:     cfg.InboundMessageSize(),
+		MaxRecipients:       cfg.InboundRecipients(),
+		MaxConnectionsPerIP: cfg.ConnectionsPerIP(),
+		MessagesPerMinute:   cfg.InboundMessagesPerMinute(),
+	})
+	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore, mail, m, imapserver.Options{
+		MaxConnectionsPerIP: cfg.IMAPConnectionsPerIP(),
+		AppendLimit:         cfg.InboundMessageSize(),
+	})
+	submissionServer := submissionsmtp.New(cfg.Submission, cfg.Server.PublicHostname, tlsConfig, db.Ent(), submissionService, submissionsmtp.Options{
+		MaxMessageBytes:     cfg.InboundMessageSize(),
+		MaxRecipients:       cfg.SubmissionRecipients(),
+		MaxConnectionsPerIP: cfg.ConnectionsPerIP(),
+	})
 
 	runtime.server = server
 	runtime.smtp = smtpServer
@@ -128,33 +148,35 @@ func New(ctx context.Context, opts Options) (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
+	cfg := a.config.Get()
+	a.notifier.Start(ctx)
 	errCh := make(chan error, 4)
 	go func() {
-		a.logger.Info("starting http api", "addr", a.config.Server.APIAddr)
+		a.logger.Info("starting http api", "addr", cfg.Server.APIAddr)
 		errCh <- a.server.Listen()
 	}()
 	go func() {
-		a.logger.Info("starting smtp inbound", "addr", a.config.SMTP.InboundAddr)
+		a.logger.Info("starting smtp inbound", "addr", cfg.SMTP.InboundAddr)
 		errCh <- a.smtp.Listen()
 	}()
 	go func() {
-		a.logger.Info("starting imap", "addr", a.config.IMAP.Addr)
+		a.logger.Info("starting imap", "addr", cfg.IMAP.Addr)
 		errCh <- a.imap.Listen()
 	}()
 	go func() {
-		a.logger.Info("starting smtp submission", "starttls_addr", a.config.Submission.StartTLSAddr, "tls_addr", a.config.Submission.TLSAddr)
+		a.logger.Info("starting smtp submission", "starttls_addr", cfg.Submission.StartTLSAddr, "tls_addr", cfg.Submission.TLSAddr)
 		errCh <- a.submission.Listen()
 	}()
-	if a.config.Workers.Enabled {
-		a.logger.Info("starting outbound relay workers", "concurrency", a.config.Workers.Concurrency)
-		a.relay.Run(ctx, a.config.Workers.Concurrency)
-		a.logger.Info("starting webhook workers", "concurrency", a.config.Workers.Concurrency)
-		a.webhooks.Run(ctx, a.config.Workers.Concurrency)
+	if cfg.Workers.Enabled {
+		a.logger.Info("starting outbound relay workers", "concurrency", cfg.Workers.Concurrency)
+		a.relay.Run(ctx, cfg.Workers.Concurrency)
+		a.logger.Info("starting webhook workers", "concurrency", cfg.Workers.Concurrency)
+		a.webhooks.Run(ctx, cfg.Workers.Concurrency)
 		a.logger.Info("starting cleanup worker")
 		a.cleanup.Run(ctx)
-		a.logger.Info("starting import export workers", "concurrency", a.config.Workers.Concurrency)
-		a.exports.Run(ctx, a.config.Workers.Concurrency)
-		a.imports.Run(ctx, a.config.Workers.Concurrency)
+		a.logger.Info("starting import export workers", "concurrency", cfg.Workers.Concurrency)
+		a.exports.Run(ctx, cfg.Workers.Concurrency)
+		a.imports.Run(ctx, cfg.Workers.Concurrency)
 	}
 
 	select {
@@ -170,7 +192,7 @@ func (a *App) Run(ctx context.Context) error {
 }
 
 func (a *App) shutdown() error {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.config.Server.ShutdownTimeout())
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.config.Get().Server.ShutdownTimeout())
 	defer cancel()
 	if err := a.server.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("shutdown http server: %w", err)
@@ -206,7 +228,8 @@ func (a *App) Reload(ctx context.Context) error {
 		return fmt.Errorf("load reload config: %w", err)
 	}
 
-	impact := a.config.ReloadImpact(next)
+	current := a.config.Get()
+	impact := current.ReloadImpact(next)
 	if impact.RequiresRestart() {
 		return fmt.Errorf("reload requires restart: %v", impact.StructuralChanges)
 	}
@@ -216,9 +239,12 @@ func (a *App) Reload(ctx context.Context) error {
 		return fmt.Errorf("configure reloaded logging: %w", err)
 	}
 
-	a.config = next
+	a.config.Set(next)
 	a.logger = logger
 	slog.SetDefault(logger)
+	if next.Workers.Concurrency != current.Workers.Concurrency {
+		a.logger.Warn("workers.concurrency changed; new value applies after restart", "current", current.Workers.Concurrency, "next", next.Workers.Concurrency)
+	}
 	a.logger.Info("config reloaded")
 	return nil
 }

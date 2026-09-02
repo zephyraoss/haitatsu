@@ -45,11 +45,22 @@ func Open(ctx context.Context, cfg config.PostgresConfig) (*Client, error) {
 	return &Client{db: db, ent: ent.NewClient(ent.Driver(driver))}, nil
 }
 
+const migrationLockKey = 7250316
+
 func (c *Client) RunMigrations(ctx context.Context) error {
+	lockConn, err := c.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer lockConn.Close()
+	if _, err := lockConn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrationLockKey); err != nil {
+		return err
+	}
+	defer lockConn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationLockKey)
 	if err := c.ent.Schema.Create(ctx); err != nil {
 		return err
 	}
-	if _, err := c.db.ExecContext(ctx, messageSearchIndexSQL); err != nil {
+	if err := c.runVersionedMigrations(ctx, versionedMigrations()); err != nil {
 		return err
 	}
 	c.migrationsDone.Store(true)

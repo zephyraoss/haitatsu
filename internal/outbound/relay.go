@@ -18,8 +18,6 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
-const maxRelayAttempts = 5
-
 type RelayStore interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 }
@@ -28,14 +26,17 @@ type Notifier interface {
 	OutboundFailure(ctx context.Context, mailboxID string, messageID string, data map[string]any) error
 }
 
+type Sender func(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error
+
 type Worker struct {
 	db       *sql.DB
 	client   *ent.Client
 	store    RelayStore
-	cfg      config.RelayConfig
+	cfg      func() config.RelayConfig
 	metrics  *metrics.Metrics
 	notifier Notifier
 	workerID string
+	send     Sender
 }
 
 type claimedJob struct {
@@ -54,8 +55,13 @@ type deliveryResult struct {
 	Response           string
 }
 
-func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg config.RelayConfig, metrics *metrics.Metrics, notifier Notifier, workerID string) *Worker {
-	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID}
+func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg func() config.RelayConfig, metrics *metrics.Metrics, notifier Notifier, workerID string) *Worker {
+	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID, send: sendViaRelay}
+}
+
+func (w *Worker) WithSender(send Sender) *Worker {
+	w.send = send
+	return w
 }
 
 func (w *Worker) Run(ctx context.Context, concurrency int) {
@@ -75,15 +81,20 @@ func (w *Worker) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = w.processOne(ctx)
+			for {
+				processed, err := w.ProcessOne(ctx)
+				if err != nil || !processed || ctx.Err() != nil {
+					break
+				}
+			}
 		}
 	}
 }
 
-func (w *Worker) processOne(ctx context.Context) error {
+func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	job, ok, err := w.claim(ctx)
 	if err != nil || !ok {
-		return err
+		return false, err
 	}
 	result := w.deliver(ctx, job)
 	w.metrics.WorkerJob("outbound", result.Classification)
@@ -98,9 +109,9 @@ func (w *Worker) processOne(ctx context.Context) error {
 		SetNillableSMTPCode(codePtr(result.Code)).
 		SetEnhancedStatusCode(result.EnhancedStatusCode).
 		Save(ctx); err != nil {
-		return err
+		return true, err
 	}
-	return w.finish(ctx, job, result)
+	return true, w.finish(ctx, job, result)
 }
 
 func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
@@ -144,6 +155,9 @@ RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 func (w *Worker) deliver(ctx context.Context, job claimedJob) deliveryResult {
 	msg, err := w.client.Message.Query().Where(message.IDEQ(job.MessageID)).Only(ctx)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return permanentFailure(550, "5.1.0", "message no longer exists")
+		}
 		return localFailure(err)
 	}
 	raw, err := w.store.GetMessage(ctx, msg.BlobKey)
@@ -155,31 +169,36 @@ func (w *Worker) deliver(ctx context.Context, job claimedJob) deliveryResult {
 		from = msg.FromAddresses[0]
 	}
 	if _, err := mail.ParseAddress(from); err != nil {
-		return permanentFailure(553, "", err.Error())
+		return permanentFailure(553, "5.1.7", err.Error())
 	}
 	if len(job.Recipients) == 0 {
-		return permanentFailure(553, "", "no recipients")
+		return permanentFailure(553, "5.1.3", "no recipients")
 	}
 
-	err = smtp.SendMail(w.cfg.Addr, w.auth(), from, job.Recipients, raw)
+	err = w.send(ctx, w.cfg(), from, job.Recipients, raw)
 	if err == nil {
 		return deliveryResult{Code: 250, Classification: "success", Response: "sent"}
 	}
 	return classifySMTPError(err)
 }
 
+func sendViaRelay(_ context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
+	return smtp.SendMail(cfg.Addr, relayAuth(cfg), from, recipients, raw)
+}
+
 func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResult) error {
+	policy := w.cfg().RetryPolicy()
 	update := w.client.OutboundJob.UpdateOneID(job.ID).ClearLockedBy().ClearLockedUntil()
 	failed := false
 	switch result.Classification {
 	case "success":
 		update.SetStatus("sent").ClearNextAttemptAt()
 	case "temporary":
-		if job.Attempts+1 >= maxRelayAttempts {
+		if policy.Exhausted(job.Attempts + 1) {
 			update.SetStatus("failed")
 			failed = true
 		} else {
-			update.SetStatus("retry").SetNextAttemptAt(time.Now().Add(time.Duration(job.Attempts+1) * time.Minute))
+			update.SetStatus("retry").SetNextAttemptAt(time.Now().Add(policy.Delay(job.Attempts)))
 		}
 		update.AddAttempts(1).SetLastError(result.errorMap())
 	default:
@@ -193,15 +212,15 @@ func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResu
 	return err
 }
 
-func (w *Worker) auth() smtp.Auth {
-	if w.cfg.Username == "" {
+func relayAuth(cfg config.RelayConfig) smtp.Auth {
+	if cfg.Username == "" {
 		return nil
 	}
-	host := w.cfg.FromHost
+	host := cfg.FromHost
 	if host == "" {
-		host, _, _ = strings.Cut(w.cfg.Addr, ":")
+		host, _, _ = strings.Cut(cfg.Addr, ":")
 	}
-	return smtp.PlainAuth("", w.cfg.Username, w.cfg.Password, host)
+	return smtp.PlainAuth("", cfg.Username, cfg.Password, host)
 }
 
 func classifySMTPError(err error) deliveryResult {
@@ -210,9 +229,6 @@ func classifySMTPError(err error) deliveryResult {
 	enhanced := enhancedStatusCode(message)
 	if code >= 500 {
 		return permanentFailure(code, enhanced, message)
-	}
-	if code >= 400 {
-		return deliveryResult{Code: code, EnhancedStatusCode: enhanced, Classification: "temporary", Response: message}
 	}
 	return deliveryResult{Code: code, EnhancedStatusCode: enhanced, Classification: "temporary", Response: message}
 }
@@ -225,8 +241,11 @@ func permanentFailure(code int, enhanced string, response string) deliveryResult
 	return deliveryResult{Code: code, EnhancedStatusCode: enhanced, Classification: "permanent", Response: response}
 }
 
+var smtpCodePattern = regexp.MustCompile(`\b([245][0-9]{2})\b`)
+var enhancedCodePattern = regexp.MustCompile(`\b[245]\.\d+\.\d+\b`)
+
 func smtpCode(message string) int {
-	match := regexp.MustCompile(`\b([245][0-9]{2})\b`).FindStringSubmatch(message)
+	match := smtpCodePattern.FindStringSubmatch(message)
 	if len(match) != 2 {
 		return 0
 	}
@@ -235,8 +254,7 @@ func smtpCode(message string) int {
 }
 
 func enhancedStatusCode(message string) string {
-	match := regexp.MustCompile(`\b[245]\.\d+\.\d+\b`).FindString(message)
-	return match
+	return enhancedCodePattern.FindString(message)
 }
 
 func codePtr(code int) *int {

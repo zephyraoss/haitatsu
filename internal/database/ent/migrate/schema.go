@@ -85,6 +85,32 @@ var (
 			},
 		},
 	}
+	// AuthLockoutsColumns holds the columns for the "auth_lockouts" table.
+	AuthLockoutsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "failures", Type: field.TypeInt, Default: 0},
+		{Name: "window_start", Type: field.TypeTime},
+		{Name: "locked_until", Type: field.TypeTime, Nullable: true},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AuthLockoutsTable holds the schema information for the "auth_lockouts" table.
+	AuthLockoutsTable = &schema.Table{
+		Name:       "auth_lockouts",
+		Columns:    AuthLockoutsColumns,
+		PrimaryKey: []*schema.Column{AuthLockoutsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "authlockout_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{AuthLockoutsColumns[3]},
+			},
+			{
+				Name:    "authlockout_window_start",
+				Unique:  false,
+				Columns: []*schema.Column{AuthLockoutsColumns[2]},
+			},
+		},
+	}
 	// BounceEventsColumns holds the columns for the "bounce_events" table.
 	BounceEventsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -245,6 +271,8 @@ var (
 		{Name: "mailbox_id", Type: field.TypeString},
 		{Name: "name", Type: field.TypeString},
 		{Name: "system", Type: field.TypeBool, Default: false},
+		{Name: "uid_validity", Type: field.TypeUint32, Default: 1},
+		{Name: "uid_next", Type: field.TypeUint32, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -308,6 +336,8 @@ var (
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "mailbox_id", Type: field.TypeString},
 		{Name: "name", Type: field.TypeString},
+		{Name: "uid_validity", Type: field.TypeUint32, Default: 1},
+		{Name: "uid_next", Type: field.TypeUint32, Default: 1},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -360,13 +390,17 @@ var (
 		{Name: "mailbox_id", Type: field.TypeString},
 		{Name: "message_id", Type: field.TypeString},
 		{Name: "folder_id", Type: field.TypeString},
+		{Name: "uid", Type: field.TypeUint32, Default: 0},
 		{Name: "original_rcpt", Type: field.TypeString},
 		{Name: "base_rcpt", Type: field.TypeString},
 		{Name: "plus_tag", Type: field.TypeString, Nullable: true},
 		{Name: "resolved_route_id", Type: field.TypeString, Nullable: true},
 		{Name: "read", Type: field.TypeBool, Default: false},
 		{Name: "flagged", Type: field.TypeBool, Default: false},
+		{Name: "answered", Type: field.TypeBool, Default: false},
+		{Name: "draft", Type: field.TypeBool, Default: false},
 		{Name: "imap_deleted", Type: field.TypeBool, Default: false},
+		{Name: "keywords", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
@@ -388,6 +422,11 @@ var (
 				Columns: []*schema.Column{MailboxMessagesColumns[1], MailboxMessagesColumns[3]},
 			},
 			{
+				Name:    "mailboxmessage_folder_id_uid",
+				Unique:  false,
+				Columns: []*schema.Column{MailboxMessagesColumns[3], MailboxMessagesColumns[4]},
+			},
+			{
 				Name:    "mailboxmessage_message_id",
 				Unique:  false,
 				Columns: []*schema.Column{MailboxMessagesColumns[2]},
@@ -395,7 +434,7 @@ var (
 			{
 				Name:    "mailboxmessage_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{MailboxMessagesColumns[13]},
+				Columns: []*schema.Column{MailboxMessagesColumns[17]},
 			},
 		},
 	}
@@ -404,6 +443,7 @@ var (
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "mailbox_message_id", Type: field.TypeString},
 		{Name: "label_id", Type: field.TypeString},
+		{Name: "uid", Type: field.TypeUint32, Default: 0},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// MailboxMessageLabelsTable holds the schema information for the "mailbox_message_labels" table.
@@ -416,6 +456,11 @@ var (
 				Name:    "mailboxmessagelabel_mailbox_message_id_label_id",
 				Unique:  true,
 				Columns: []*schema.Column{MailboxMessageLabelsColumns[1], MailboxMessageLabelsColumns[2]},
+			},
+			{
+				Name:    "mailboxmessagelabel_label_id_uid",
+				Unique:  false,
+				Columns: []*schema.Column{MailboxMessageLabelsColumns[2], MailboxMessageLabelsColumns[3]},
 			},
 			{
 				Name:    "mailboxmessagelabel_label_id",
@@ -614,6 +659,17 @@ var (
 			},
 		},
 	}
+	// SchemaMigrationsColumns holds the columns for the "schema_migrations" table.
+	SchemaMigrationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "applied_at", Type: field.TypeTime},
+	}
+	// SchemaMigrationsTable holds the schema information for the "schema_migrations" table.
+	SchemaMigrationsTable = &schema.Table{
+		Name:       "schema_migrations",
+		Columns:    SchemaMigrationsColumns,
+		PrimaryKey: []*schema.Column{SchemaMigrationsColumns[0]},
+	}
 	// SenderRulesColumns holds the columns for the "sender_rules" table.
 	SenderRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -648,6 +704,7 @@ var (
 	Tables = []*schema.Table{
 		AppPasswordsTable,
 		AuditEventsTable,
+		AuthLockoutsTable,
 		BounceEventsTable,
 		DkimKeysTable,
 		EventLogsTable,
@@ -663,6 +720,7 @@ var (
 		OutboundJobsTable,
 		RoutesTable,
 		RoutingRulesTable,
+		SchemaMigrationsTable,
 		SenderRulesTable,
 	}
 )

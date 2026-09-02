@@ -26,10 +26,8 @@ import (
 type Service struct {
 	client   *ent.Client
 	messages *messages.Service
-	cfg      config.NotificationConfig
-	from     string
+	cfg      func() config.NotificationConfig
 	domain   string
-	maxBytes int64
 	http     *http.Client
 }
 
@@ -46,20 +44,30 @@ type renderedMessage struct {
 	HTML    string `json:"html"`
 }
 
-func New(client *ent.Client, messages *messages.Service, cfg config.NotificationConfig, publicHostname string) *Service {
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
-	from := strings.TrimSpace(cfg.FromAddress)
+func New(client *ent.Client, messages *messages.Service, cfg func() config.NotificationConfig, publicHostname string) *Service {
+	return &Service{client: client, messages: messages, cfg: cfg, domain: publicHostname, http: &http.Client{}}
+}
+
+func (s *Service) from() string {
+	from := strings.TrimSpace(s.cfg().FromAddress)
 	if from == "" {
-		from = "postmaster@" + publicHostname
+		return "postmaster@" + s.domain
 	}
-	maxBytes := cfg.MaxResponseBytes
-	if maxBytes <= 0 {
-		maxBytes = 64 * 1024
+	return from
+}
+
+func (s *Service) maxBytes() int64 {
+	if value := s.cfg().MaxResponseBytes; value > 0 {
+		return value
 	}
-	return &Service{client: client, messages: messages, cfg: cfg, from: from, domain: publicHostname, maxBytes: maxBytes, http: &http.Client{Timeout: timeout}}
+	return 64 * 1024
+}
+
+func (s *Service) timeout() time.Duration {
+	if value := s.cfg().TimeoutSeconds; value > 0 {
+		return time.Duration(value) * time.Second
+	}
+	return 10 * time.Second
 }
 
 func (s *Service) OutboundFailure(ctx context.Context, mailboxID string, messageID string, data map[string]any) error {
@@ -72,29 +80,32 @@ func (s *Service) deliver(ctx context.Context, typ string, mailboxID string, mes
 		return err
 	}
 	rendered := s.render(ctx, typ, mailboxID, messageID, data)
-	raw := buildMessage(s.from, mbox.PrimaryAddress, s.domain, rendered)
+	raw := buildMessage(s.from(), mbox.PrimaryAddress, s.domain, rendered)
 	_, err = s.messages.Deliver(ctx, raw, []routing.Result{{OriginalRecipient: mbox.PrimaryAddress, BaseRecipient: mbox.PrimaryAddress, Mailboxes: []*ent.Mailbox{mbox}}}, spam.Assessment{})
 	return err
 }
 
 func (s *Service) render(ctx context.Context, typ string, mailboxID string, messageID string, data map[string]any) renderedMessage {
-	if s.cfg.RenderURL == "" {
+	cfg := s.cfg()
+	if cfg.RenderURL == "" {
 		return fallback(typ, data)
 	}
 	body, err := json.Marshal(renderRequest{Type: typ, MailboxID: mailboxID, MessageID: messageID, Data: data})
 	if err != nil {
 		return fallback(typ, data)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.RenderURL, bytes.NewReader(body))
+	reqCtx, cancel := context.WithTimeout(ctx, s.timeout())
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, cfg.RenderURL, bytes.NewReader(body))
 	if err != nil {
 		return fallback(typ, data)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if s.cfg.RenderSecret != "" {
+	if cfg.RenderSecret != "" {
 		timestamp := time.Now().UTC().Format(time.RFC3339)
 		req.Header.Set("X-Haitatsu-Notification", typ)
 		req.Header.Set("X-Haitatsu-Timestamp", timestamp)
-		req.Header.Set("X-Haitatsu-Signature", signature(s.cfg.RenderSecret, timestamp, body))
+		req.Header.Set("X-Haitatsu-Signature", signature(cfg.RenderSecret, timestamp, body))
 	}
 	resp, err := s.http.Do(req)
 	if err != nil {
@@ -105,8 +116,9 @@ func (s *Service) render(ctx context.Context, typ string, mailboxID string, mess
 		return fallback(typ, data)
 	}
 	var rendered renderedMessage
-	response, err := io.ReadAll(io.LimitReader(resp.Body, s.maxBytes+1))
-	if err != nil || int64(len(response)) > s.maxBytes {
+	maxBytes := s.maxBytes()
+	response, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil || int64(len(response)) > maxBytes {
 		return fallback(typ, data)
 	}
 	if err := json.Unmarshal(response, &rendered); err != nil {

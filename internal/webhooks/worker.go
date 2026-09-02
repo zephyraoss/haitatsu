@@ -18,12 +18,10 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
-const maxAttempts = 3
-
 type Worker struct {
 	db       *sql.DB
 	client   *ent.Client
-	cfg      config.WebhookConfig
+	cfg      func() config.WebhookConfig
 	metrics  *metrics.Metrics
 	workerID string
 	http     *http.Client
@@ -37,12 +35,8 @@ type eventJob struct {
 	Attempts  int
 }
 
-func NewWorker(db *sql.DB, client *ent.Client, cfg config.WebhookConfig, metrics *metrics.Metrics, workerID string) *Worker {
-	timeout := time.Duration(cfg.DefaultTimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
-	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, http: &http.Client{Timeout: timeout}}
+func NewWorker(db *sql.DB, client *ent.Client, cfg func() config.WebhookConfig, metrics *metrics.Metrics, workerID string) *Worker {
+	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, http: &http.Client{}}
 }
 
 func (w *Worker) Run(ctx context.Context, concurrency int) {
@@ -62,32 +56,38 @@ func (w *Worker) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = w.processOne(ctx)
+			for {
+				processed, err := w.ProcessOne(ctx)
+				if err != nil || !processed || ctx.Err() != nil {
+					break
+				}
+			}
 		}
 	}
 }
 
-func (w *Worker) processOne(ctx context.Context) error {
+func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 	job, ok, err := w.claim(ctx)
 	if err != nil || !ok {
-		return err
+		return false, err
 	}
-	endpoint := w.cfg.Endpoints[job.EventType]
+	cfg := w.cfg()
+	endpoint := cfg.Endpoints[job.EventType]
 	if endpoint == "" {
 		_, err := w.client.EventLog.UpdateOneID(job.ID).SetStatus("no_endpoint").ClearLockedBy().ClearLockedUntil().Save(ctx)
-		return err
+		return true, err
 	}
 	body, err := json.Marshal(job.Payload)
 	if err != nil {
-		return w.fail(ctx, job, err)
+		return true, w.fail(ctx, cfg, job, err)
 	}
-	if err := w.post(ctx, endpoint, job, body); err != nil {
+	if err := w.post(ctx, cfg, endpoint, job, body); err != nil {
 		w.metrics.WebhookFailure()
-		return w.fail(ctx, job, err)
+		return true, w.fail(ctx, cfg, job, err)
 	}
 	w.metrics.WorkerJob("webhook", "delivered")
 	_, err = w.client.EventLog.UpdateOneID(job.ID).SetStatus("delivered").ClearLockedBy().ClearLockedUntil().ClearNextAttemptAt().Save(ctx)
-	return err
+	return true, err
 }
 
 func (w *Worker) claim(ctx context.Context) (eventJob, bool, error) {
@@ -128,17 +128,24 @@ RETURNING id, event_type, trace_id, payload, attempts
 	return job, true, nil
 }
 
-func (w *Worker) post(ctx context.Context, endpoint string, job eventJob, body []byte) error {
+func (w *Worker) post(ctx context.Context, cfg config.WebhookConfig, endpoint string, job eventJob, body []byte) error {
+	timeout := time.Duration(cfg.DefaultTimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	timestamp := time.Now().UTC().Format(time.RFC3339)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Haitatsu-Event", job.EventType)
 	req.Header.Set("X-Haitatsu-Timestamp", timestamp)
-	req.Header.Set("X-Haitatsu-Signature", signature(w.cfg.Secret, timestamp, body))
+	req.Header.Set("X-Haitatsu-Signature", signature(cfg.Secret, timestamp, body))
 	req.Header.Set("X-Haitatsu-Trace-ID", job.TraceID)
+	req.Header.Set("X-Haitatsu-Delivery", job.ID)
 
 	resp, err := w.http.Do(req)
 	if err != nil {
@@ -152,12 +159,13 @@ func (w *Worker) post(ctx context.Context, endpoint string, job eventJob, body [
 	return nil
 }
 
-func (w *Worker) fail(ctx context.Context, job eventJob, err error) error {
+func (w *Worker) fail(ctx context.Context, cfg config.WebhookConfig, job eventJob, err error) error {
+	policy := cfg.RetryPolicy()
 	update := w.client.EventLog.UpdateOneID(job.ID).ClearLockedBy().ClearLockedUntil().AddAttempts(1).SetLastError(map[string]any{"error": err.Error()})
-	if job.Attempts+1 >= maxAttempts {
+	if policy.Exhausted(job.Attempts + 1) {
 		update.SetStatus("failed")
 	} else {
-		update.SetStatus("retry").SetNextAttemptAt(time.Now().Add(time.Duration(job.Attempts+1) * time.Minute))
+		update.SetStatus("retry").SetNextAttemptAt(time.Now().Add(policy.Delay(job.Attempts)))
 	}
 	_, saveErr := update.Save(ctx)
 	return saveErr

@@ -55,6 +55,27 @@ func (_u *MailboxMessageLabelUpdate) SetNillableLabelID(v *string) *MailboxMessa
 	return _u
 }
 
+// SetUID sets the "uid" field.
+func (_u *MailboxMessageLabelUpdate) SetUID(v uint32) *MailboxMessageLabelUpdate {
+	_u.mutation.ResetUID()
+	_u.mutation.SetUID(v)
+	return _u
+}
+
+// SetNillableUID sets the "uid" field if the given value is not nil.
+func (_u *MailboxMessageLabelUpdate) SetNillableUID(v *uint32) *MailboxMessageLabelUpdate {
+	if v != nil {
+		_u.SetUID(*v)
+	}
+	return _u
+}
+
+// AddUID adds value to the "uid" field.
+func (_u *MailboxMessageLabelUpdate) AddUID(v int32) *MailboxMessageLabelUpdate {
+	_u.mutation.AddUID(v)
+	return _u
+}
+
 // Mutation returns the MailboxMessageLabelMutation object of the builder.
 func (_u *MailboxMessageLabelUpdate) Mutation() *MailboxMessageLabelMutation {
 	return _u.mutation
@@ -102,6 +123,12 @@ func (_u *MailboxMessageLabelUpdate) sqlSave(ctx context.Context) (_node int, er
 	if value, ok := _u.mutation.LabelID(); ok {
 		_spec.SetField(mailboxmessagelabel.FieldLabelID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.UID(); ok {
+		_spec.SetField(mailboxmessagelabel.FieldUID, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUID(); ok {
+		_spec.AddField(mailboxmessagelabel.FieldUID, field.TypeUint32, value)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{mailboxmessagelabel.Label}
@@ -147,6 +174,27 @@ func (_u *MailboxMessageLabelUpdateOne) SetNillableLabelID(v *string) *MailboxMe
 	if v != nil {
 		_u.SetLabelID(*v)
 	}
+	return _u
+}
+
+// SetUID sets the "uid" field.
+func (_u *MailboxMessageLabelUpdateOne) SetUID(v uint32) *MailboxMessageLabelUpdateOne {
+	_u.mutation.ResetUID()
+	_u.mutation.SetUID(v)
+	return _u
+}
+
+// SetNillableUID sets the "uid" field if the given value is not nil.
+func (_u *MailboxMessageLabelUpdateOne) SetNillableUID(v *uint32) *MailboxMessageLabelUpdateOne {
+	if v != nil {
+		_u.SetUID(*v)
+	}
+	return _u
+}
+
+// AddUID adds value to the "uid" field.
+func (_u *MailboxMessageLabelUpdateOne) AddUID(v int32) *MailboxMessageLabelUpdateOne {
+	_u.mutation.AddUID(v)
 	return _u
 }
 
@@ -226,6 +274,12 @@ func (_u *MailboxMessageLabelUpdateOne) sqlSave(ctx context.Context) (_node *Mai
 	}
 	if value, ok := _u.mutation.LabelID(); ok {
 		_spec.SetField(mailboxmessagelabel.FieldLabelID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.UID(); ok {
+		_spec.SetField(mailboxmessagelabel.FieldUID, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUID(); ok {
+		_spec.AddField(mailboxmessagelabel.FieldUID, field.TypeUint32, value)
 	}
 	_node = &MailboxMessageLabel{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -74,6 +74,11 @@ func LabelID(v string) predicate.MailboxMessageLabel {
 	return predicate.MailboxMessageLabel(sql.FieldEQ(FieldLabelID, v))
 }
 
+// UID applies equality check predicate on the "uid" field. It's identical to UIDEQ.
+func UID(v uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldEQ(FieldUID, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.MailboxMessageLabel {
 	return predicate.MailboxMessageLabel(sql.FieldEQ(FieldCreatedAt, v))
@@ -207,6 +212,46 @@ func LabelIDEqualFold(v string) predicate.MailboxMessageLabel {
 // LabelIDContainsFold applies the ContainsFold predicate on the "label_id" field.
 func LabelIDContainsFold(v string) predicate.MailboxMessageLabel {
 	return predicate.MailboxMessageLabel(sql.FieldContainsFold(FieldLabelID, v))
+}
+
+// UIDEQ applies the EQ predicate on the "uid" field.
+func UIDEQ(v uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldEQ(FieldUID, v))
+}
+
+// UIDNEQ applies the NEQ predicate on the "uid" field.
+func UIDNEQ(v uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldNEQ(FieldUID, v))
+}
+
+// UIDIn applies the In predicate on the "uid" field.
+func UIDIn(vs ...uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldIn(FieldUID, vs...))
+}
+
+// UIDNotIn applies the NotIn predicate on the "uid" field.
+func UIDNotIn(vs ...uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldNotIn(FieldUID, vs...))
+}
+
+// UIDGT applies the GT predicate on the "uid" field.
+func UIDGT(v uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldGT(FieldUID, v))
+}
+
+// UIDGTE applies the GTE predicate on the "uid" field.
+func UIDGTE(v uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldGTE(FieldUID, v))
+}
+
+// UIDLT applies the LT predicate on the "uid" field.
+func UIDLT(v uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldLT(FieldUID, v))
+}
+
+// UIDLTE applies the LTE predicate on the "uid" field.
+func UIDLTE(v uint32) predicate.MailboxMessageLabel {
+	return predicate.MailboxMessageLabel(sql.FieldLTE(FieldUID, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -21,6 +21,8 @@ type MailboxMessageLabel struct {
 	MailboxMessageID string `json:"mailbox_message_id,omitempty"`
 	// LabelID holds the value of the "label_id" field.
 	LabelID string `json:"label_id,omitempty"`
+	// UID holds the value of the "uid" field.
+	UID uint32 `json:"uid,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	selectValues sql.SelectValues
@@ -31,6 +33,8 @@ func (*MailboxMessageLabel) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case mailboxmessagelabel.FieldUID:
+			values[i] = new(sql.NullInt64)
 		case mailboxmessagelabel.FieldID, mailboxmessagelabel.FieldMailboxMessageID, mailboxmessagelabel.FieldLabelID:
 			values[i] = new(sql.NullString)
 		case mailboxmessagelabel.FieldCreatedAt:
@@ -67,6 +71,12 @@ func (_m *MailboxMessageLabel) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field label_id", values[i])
 			} else if value.Valid {
 				_m.LabelID = value.String
+			}
+		case mailboxmessagelabel.FieldUID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field uid", values[i])
+			} else if value.Valid {
+				_m.UID = uint32(value.Int64)
 			}
 		case mailboxmessagelabel.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -115,6 +125,9 @@ func (_m *MailboxMessageLabel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("label_id=")
 	builder.WriteString(_m.LabelID)
+	builder.WriteString(", ")
+	builder.WriteString("uid=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UID))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

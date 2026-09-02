@@ -8,9 +8,12 @@ import (
 	"encoding/pem"
 	"strings"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 )
 
 type dkimKeyRequest struct {
@@ -33,15 +36,24 @@ type dkimKeyResponse struct {
 
 func (h *Handler) listDKIMKeys(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	items, err := h.client.DKIMKey.Query().Limit(limit).All(c.Context())
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.DKIMKey.Query().Order(dkimkey.ByCreatedAt(entsql.OrderDesc()), dkimkey.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.DKIMKey](dkimkey.FieldCreatedAt, dkimkey.FieldID, cur))
+	}
+	items, err := query.All(c.Context())
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "dkim_key_list_failed", "Failed to list DKIM keys")
 	}
-	responses := make([]dkimKeyResponse, 0, len(items))
-	for _, item := range items {
+	page, next := nextCursor(items, limit, func(item *ent.DKIMKey) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	responses := make([]dkimKeyResponse, 0, len(page))
+	for _, item := range page {
 		responses = append(responses, dkimResponse(item))
 	}
-	return list(c, responses, limit, "")
+	return list(c, responses, limit, next)
 }
 
 func (h *Handler) createDKIMKey(c fiber.Ctx) error {

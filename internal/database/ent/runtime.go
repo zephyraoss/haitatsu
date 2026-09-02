@@ -7,6 +7,7 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
@@ -56,6 +57,18 @@ func init() {
 	auditeventDescID := auditeventFields[0].Descriptor()
 	// auditevent.DefaultID holds the default value on creation for the id field.
 	auditevent.DefaultID = auditeventDescID.Default.(func() string)
+	authlockoutFields := schema.AuthLockout{}.Fields()
+	_ = authlockoutFields
+	// authlockoutDescFailures is the schema descriptor for failures field.
+	authlockoutDescFailures := authlockoutFields[1].Descriptor()
+	// authlockout.DefaultFailures holds the default value on creation for the failures field.
+	authlockout.DefaultFailures = authlockoutDescFailures.Default.(int)
+	// authlockoutDescUpdatedAt is the schema descriptor for updated_at field.
+	authlockoutDescUpdatedAt := authlockoutFields[4].Descriptor()
+	// authlockout.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	authlockout.DefaultUpdatedAt = authlockoutDescUpdatedAt.Default.(func() time.Time)
+	// authlockout.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	authlockout.UpdateDefaultUpdatedAt = authlockoutDescUpdatedAt.UpdateDefault.(func() time.Time)
 	bounceeventFields := schema.BounceEvent{}.Fields()
 	_ = bounceeventFields
 	// bounceeventDescCreatedAt is the schema descriptor for created_at field.
@@ -140,12 +153,20 @@ func init() {
 	folderDescSystem := folderFields[3].Descriptor()
 	// folder.DefaultSystem holds the default value on creation for the system field.
 	folder.DefaultSystem = folderDescSystem.Default.(bool)
+	// folderDescUIDValidity is the schema descriptor for uid_validity field.
+	folderDescUIDValidity := folderFields[4].Descriptor()
+	// folder.DefaultUIDValidity holds the default value on creation for the uid_validity field.
+	folder.DefaultUIDValidity = folderDescUIDValidity.Default.(uint32)
+	// folderDescUIDNext is the schema descriptor for uid_next field.
+	folderDescUIDNext := folderFields[5].Descriptor()
+	// folder.DefaultUIDNext holds the default value on creation for the uid_next field.
+	folder.DefaultUIDNext = folderDescUIDNext.Default.(uint32)
 	// folderDescCreatedAt is the schema descriptor for created_at field.
-	folderDescCreatedAt := folderFields[4].Descriptor()
+	folderDescCreatedAt := folderFields[6].Descriptor()
 	// folder.DefaultCreatedAt holds the default value on creation for the created_at field.
 	folder.DefaultCreatedAt = folderDescCreatedAt.Default.(func() time.Time)
 	// folderDescUpdatedAt is the schema descriptor for updated_at field.
-	folderDescUpdatedAt := folderFields[5].Descriptor()
+	folderDescUpdatedAt := folderFields[7].Descriptor()
 	// folder.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	folder.DefaultUpdatedAt = folderDescUpdatedAt.Default.(func() time.Time)
 	// folder.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -180,12 +201,20 @@ func init() {
 	importjob.DefaultID = importjobDescID.Default.(func() string)
 	labelFields := schema.Label{}.Fields()
 	_ = labelFields
+	// labelDescUIDValidity is the schema descriptor for uid_validity field.
+	labelDescUIDValidity := labelFields[3].Descriptor()
+	// label.DefaultUIDValidity holds the default value on creation for the uid_validity field.
+	label.DefaultUIDValidity = labelDescUIDValidity.Default.(uint32)
+	// labelDescUIDNext is the schema descriptor for uid_next field.
+	labelDescUIDNext := labelFields[4].Descriptor()
+	// label.DefaultUIDNext holds the default value on creation for the uid_next field.
+	label.DefaultUIDNext = labelDescUIDNext.Default.(uint32)
 	// labelDescCreatedAt is the schema descriptor for created_at field.
-	labelDescCreatedAt := labelFields[3].Descriptor()
+	labelDescCreatedAt := labelFields[5].Descriptor()
 	// label.DefaultCreatedAt holds the default value on creation for the created_at field.
 	label.DefaultCreatedAt = labelDescCreatedAt.Default.(func() time.Time)
 	// labelDescUpdatedAt is the schema descriptor for updated_at field.
-	labelDescUpdatedAt := labelFields[4].Descriptor()
+	labelDescUpdatedAt := labelFields[6].Descriptor()
 	// label.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	label.DefaultUpdatedAt = labelDescUpdatedAt.Default.(func() time.Time)
 	// label.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -224,24 +253,36 @@ func init() {
 	mailbox.DefaultID = mailboxDescID.Default.(func() string)
 	mailboxmessageFields := schema.MailboxMessage{}.Fields()
 	_ = mailboxmessageFields
+	// mailboxmessageDescUID is the schema descriptor for uid field.
+	mailboxmessageDescUID := mailboxmessageFields[4].Descriptor()
+	// mailboxmessage.DefaultUID holds the default value on creation for the uid field.
+	mailboxmessage.DefaultUID = mailboxmessageDescUID.Default.(uint32)
 	// mailboxmessageDescRead is the schema descriptor for read field.
-	mailboxmessageDescRead := mailboxmessageFields[8].Descriptor()
+	mailboxmessageDescRead := mailboxmessageFields[9].Descriptor()
 	// mailboxmessage.DefaultRead holds the default value on creation for the read field.
 	mailboxmessage.DefaultRead = mailboxmessageDescRead.Default.(bool)
 	// mailboxmessageDescFlagged is the schema descriptor for flagged field.
-	mailboxmessageDescFlagged := mailboxmessageFields[9].Descriptor()
+	mailboxmessageDescFlagged := mailboxmessageFields[10].Descriptor()
 	// mailboxmessage.DefaultFlagged holds the default value on creation for the flagged field.
 	mailboxmessage.DefaultFlagged = mailboxmessageDescFlagged.Default.(bool)
+	// mailboxmessageDescAnswered is the schema descriptor for answered field.
+	mailboxmessageDescAnswered := mailboxmessageFields[11].Descriptor()
+	// mailboxmessage.DefaultAnswered holds the default value on creation for the answered field.
+	mailboxmessage.DefaultAnswered = mailboxmessageDescAnswered.Default.(bool)
+	// mailboxmessageDescDraft is the schema descriptor for draft field.
+	mailboxmessageDescDraft := mailboxmessageFields[12].Descriptor()
+	// mailboxmessage.DefaultDraft holds the default value on creation for the draft field.
+	mailboxmessage.DefaultDraft = mailboxmessageDescDraft.Default.(bool)
 	// mailboxmessageDescImapDeleted is the schema descriptor for imap_deleted field.
-	mailboxmessageDescImapDeleted := mailboxmessageFields[10].Descriptor()
+	mailboxmessageDescImapDeleted := mailboxmessageFields[13].Descriptor()
 	// mailboxmessage.DefaultImapDeleted holds the default value on creation for the imap_deleted field.
 	mailboxmessage.DefaultImapDeleted = mailboxmessageDescImapDeleted.Default.(bool)
 	// mailboxmessageDescCreatedAt is the schema descriptor for created_at field.
-	mailboxmessageDescCreatedAt := mailboxmessageFields[11].Descriptor()
+	mailboxmessageDescCreatedAt := mailboxmessageFields[15].Descriptor()
 	// mailboxmessage.DefaultCreatedAt holds the default value on creation for the created_at field.
 	mailboxmessage.DefaultCreatedAt = mailboxmessageDescCreatedAt.Default.(func() time.Time)
 	// mailboxmessageDescUpdatedAt is the schema descriptor for updated_at field.
-	mailboxmessageDescUpdatedAt := mailboxmessageFields[12].Descriptor()
+	mailboxmessageDescUpdatedAt := mailboxmessageFields[16].Descriptor()
 	// mailboxmessage.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	mailboxmessage.DefaultUpdatedAt = mailboxmessageDescUpdatedAt.Default.(func() time.Time)
 	// mailboxmessage.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -252,8 +293,12 @@ func init() {
 	mailboxmessage.DefaultID = mailboxmessageDescID.Default.(func() string)
 	mailboxmessagelabelFields := schema.MailboxMessageLabel{}.Fields()
 	_ = mailboxmessagelabelFields
+	// mailboxmessagelabelDescUID is the schema descriptor for uid field.
+	mailboxmessagelabelDescUID := mailboxmessagelabelFields[3].Descriptor()
+	// mailboxmessagelabel.DefaultUID holds the default value on creation for the uid field.
+	mailboxmessagelabel.DefaultUID = mailboxmessagelabelDescUID.Default.(uint32)
 	// mailboxmessagelabelDescCreatedAt is the schema descriptor for created_at field.
-	mailboxmessagelabelDescCreatedAt := mailboxmessagelabelFields[3].Descriptor()
+	mailboxmessagelabelDescCreatedAt := mailboxmessagelabelFields[4].Descriptor()
 	// mailboxmessagelabel.DefaultCreatedAt holds the default value on creation for the created_at field.
 	mailboxmessagelabel.DefaultCreatedAt = mailboxmessagelabelDescCreatedAt.Default.(func() time.Time)
 	// mailboxmessagelabelDescID is the schema descriptor for id field.

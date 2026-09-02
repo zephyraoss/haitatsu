@@ -79,6 +79,11 @@ func FolderID(v string) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldEQ(FieldFolderID, v))
 }
 
+// UID applies equality check predicate on the "uid" field. It's identical to UIDEQ.
+func UID(v uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldUID, v))
+}
+
 // OriginalRcpt applies equality check predicate on the "original_rcpt" field. It's identical to OriginalRcptEQ.
 func OriginalRcpt(v string) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldEQ(FieldOriginalRcpt, v))
@@ -107,6 +112,16 @@ func Read(v bool) predicate.MailboxMessage {
 // Flagged applies equality check predicate on the "flagged" field. It's identical to FlaggedEQ.
 func Flagged(v bool) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldEQ(FieldFlagged, v))
+}
+
+// Answered applies equality check predicate on the "answered" field. It's identical to AnsweredEQ.
+func Answered(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldAnswered, v))
+}
+
+// Draft applies equality check predicate on the "draft" field. It's identical to DraftEQ.
+func Draft(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldDraft, v))
 }
 
 // ImapDeleted applies equality check predicate on the "imap_deleted" field. It's identical to ImapDeletedEQ.
@@ -322,6 +337,46 @@ func FolderIDEqualFold(v string) predicate.MailboxMessage {
 // FolderIDContainsFold applies the ContainsFold predicate on the "folder_id" field.
 func FolderIDContainsFold(v string) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldContainsFold(FieldFolderID, v))
+}
+
+// UIDEQ applies the EQ predicate on the "uid" field.
+func UIDEQ(v uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldUID, v))
+}
+
+// UIDNEQ applies the NEQ predicate on the "uid" field.
+func UIDNEQ(v uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldNEQ(FieldUID, v))
+}
+
+// UIDIn applies the In predicate on the "uid" field.
+func UIDIn(vs ...uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldIn(FieldUID, vs...))
+}
+
+// UIDNotIn applies the NotIn predicate on the "uid" field.
+func UIDNotIn(vs ...uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldNotIn(FieldUID, vs...))
+}
+
+// UIDGT applies the GT predicate on the "uid" field.
+func UIDGT(v uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldGT(FieldUID, v))
+}
+
+// UIDGTE applies the GTE predicate on the "uid" field.
+func UIDGTE(v uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldGTE(FieldUID, v))
+}
+
+// UIDLT applies the LT predicate on the "uid" field.
+func UIDLT(v uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldLT(FieldUID, v))
+}
+
+// UIDLTE applies the LTE predicate on the "uid" field.
+func UIDLTE(v uint32) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldLTE(FieldUID, v))
 }
 
 // OriginalRcptEQ applies the EQ predicate on the "original_rcpt" field.
@@ -624,6 +679,26 @@ func FlaggedNEQ(v bool) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldNEQ(FieldFlagged, v))
 }
 
+// AnsweredEQ applies the EQ predicate on the "answered" field.
+func AnsweredEQ(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldAnswered, v))
+}
+
+// AnsweredNEQ applies the NEQ predicate on the "answered" field.
+func AnsweredNEQ(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldNEQ(FieldAnswered, v))
+}
+
+// DraftEQ applies the EQ predicate on the "draft" field.
+func DraftEQ(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldEQ(FieldDraft, v))
+}
+
+// DraftNEQ applies the NEQ predicate on the "draft" field.
+func DraftNEQ(v bool) predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldNEQ(FieldDraft, v))
+}
+
 // ImapDeletedEQ applies the EQ predicate on the "imap_deleted" field.
 func ImapDeletedEQ(v bool) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldEQ(FieldImapDeleted, v))
@@ -632,6 +707,16 @@ func ImapDeletedEQ(v bool) predicate.MailboxMessage {
 // ImapDeletedNEQ applies the NEQ predicate on the "imap_deleted" field.
 func ImapDeletedNEQ(v bool) predicate.MailboxMessage {
 	return predicate.MailboxMessage(sql.FieldNEQ(FieldImapDeleted, v))
+}
+
+// KeywordsIsNil applies the IsNil predicate on the "keywords" field.
+func KeywordsIsNil() predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldIsNull(FieldKeywords))
+}
+
+// KeywordsNotNil applies the NotNil predicate on the "keywords" field.
+func KeywordsNotNil() predicate.MailboxMessage {
+	return predicate.MailboxMessage(sql.FieldNotNull(FieldKeywords))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

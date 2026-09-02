@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"strings"
 )
 
 func NormalizeMessage(raw []byte) []byte {
@@ -237,4 +238,27 @@ func isHeaderKeyByte(b byte) bool {
 	default:
 		return b == '-'
 	}
+}
+
+func RemoveHeaderField(header []byte, key string) []byte {
+	prefix := []byte(strings.ToLower(key) + ":")
+	lines := bytes.Split(header, []byte("\n"))
+	kept := make([][]byte, 0, len(lines))
+	skipping := false
+	for _, line := range lines {
+		trimmed := bytes.TrimRight(line, "\r")
+		if len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\t') {
+			if skipping {
+				continue
+			}
+			kept = append(kept, line)
+			continue
+		}
+		skipping = bytes.HasPrefix(bytes.ToLower(trimmed), prefix)
+		if skipping {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return bytes.Join(kept, []byte("\n"))
 }

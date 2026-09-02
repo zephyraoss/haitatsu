@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
@@ -18,6 +20,7 @@ type AppPasswordCreate struct {
 	config
 	mutation *AppPasswordMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetMailboxID sets the "mailbox_id" field.
@@ -228,6 +231,7 @@ func (_c *AppPasswordCreate) createSpec() (*AppPassword, *sqlgraph.CreateSpec) {
 		_node = &AppPassword{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(apppassword.Table, sqlgraph.NewFieldSpec(apppassword.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -271,11 +275,397 @@ func (_c *AppPasswordCreate) createSpec() (*AppPassword, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.AppPassword.Create().
+//		SetMailboxID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.AppPasswordUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *AppPasswordCreate) OnConflict(opts ...sql.ConflictOption) *AppPasswordUpsertOne {
+	_c.conflict = opts
+	return &AppPasswordUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.AppPassword.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *AppPasswordCreate) OnConflictColumns(columns ...string) *AppPasswordUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &AppPasswordUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// AppPasswordUpsertOne is the builder for "upsert"-ing
+	//  one AppPassword node.
+	AppPasswordUpsertOne struct {
+		create *AppPasswordCreate
+	}
+
+	// AppPasswordUpsert is the "OnConflict" setter.
+	AppPasswordUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *AppPasswordUpsert) SetMailboxID(v string) *AppPasswordUpsert {
+	u.Set(apppassword.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateMailboxID() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldMailboxID)
+	return u
+}
+
+// SetName sets the "name" field.
+func (u *AppPasswordUpsert) SetName(v string) *AppPasswordUpsert {
+	u.Set(apppassword.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateName() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldName)
+	return u
+}
+
+// SetHash sets the "hash" field.
+func (u *AppPasswordUpsert) SetHash(v string) *AppPasswordUpsert {
+	u.Set(apppassword.FieldHash, v)
+	return u
+}
+
+// UpdateHash sets the "hash" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateHash() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldHash)
+	return u
+}
+
+// SetScopes sets the "scopes" field.
+func (u *AppPasswordUpsert) SetScopes(v []string) *AppPasswordUpsert {
+	u.Set(apppassword.FieldScopes, v)
+	return u
+}
+
+// UpdateScopes sets the "scopes" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateScopes() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldScopes)
+	return u
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (u *AppPasswordUpsert) SetLastUsedAt(v time.Time) *AppPasswordUpsert {
+	u.Set(apppassword.FieldLastUsedAt, v)
+	return u
+}
+
+// UpdateLastUsedAt sets the "last_used_at" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateLastUsedAt() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldLastUsedAt)
+	return u
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (u *AppPasswordUpsert) ClearLastUsedAt() *AppPasswordUpsert {
+	u.SetNull(apppassword.FieldLastUsedAt)
+	return u
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (u *AppPasswordUpsert) SetRevokedAt(v time.Time) *AppPasswordUpsert {
+	u.Set(apppassword.FieldRevokedAt, v)
+	return u
+}
+
+// UpdateRevokedAt sets the "revoked_at" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateRevokedAt() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldRevokedAt)
+	return u
+}
+
+// ClearRevokedAt clears the value of the "revoked_at" field.
+func (u *AppPasswordUpsert) ClearRevokedAt() *AppPasswordUpsert {
+	u.SetNull(apppassword.FieldRevokedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *AppPasswordUpsert) SetUpdatedAt(v time.Time) *AppPasswordUpsert {
+	u.Set(apppassword.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateUpdatedAt() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldUpdatedAt)
+	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *AppPasswordUpsert) SetDeletedAt(v time.Time) *AppPasswordUpsert {
+	u.Set(apppassword.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *AppPasswordUpsert) UpdateDeletedAt() *AppPasswordUpsert {
+	u.SetExcluded(apppassword.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *AppPasswordUpsert) ClearDeletedAt() *AppPasswordUpsert {
+	u.SetNull(apppassword.FieldDeletedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.AppPassword.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(apppassword.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *AppPasswordUpsertOne) UpdateNewValues() *AppPasswordUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(apppassword.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(apppassword.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.AppPassword.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *AppPasswordUpsertOne) Ignore() *AppPasswordUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *AppPasswordUpsertOne) DoNothing() *AppPasswordUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the AppPasswordCreate.OnConflict
+// documentation for more info.
+func (u *AppPasswordUpsertOne) Update(set func(*AppPasswordUpsert)) *AppPasswordUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&AppPasswordUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *AppPasswordUpsertOne) SetMailboxID(v string) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateMailboxID() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *AppPasswordUpsertOne) SetName(v string) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateName() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetHash sets the "hash" field.
+func (u *AppPasswordUpsertOne) SetHash(v string) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetHash(v)
+	})
+}
+
+// UpdateHash sets the "hash" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateHash() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateHash()
+	})
+}
+
+// SetScopes sets the "scopes" field.
+func (u *AppPasswordUpsertOne) SetScopes(v []string) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetScopes(v)
+	})
+}
+
+// UpdateScopes sets the "scopes" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateScopes() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateScopes()
+	})
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (u *AppPasswordUpsertOne) SetLastUsedAt(v time.Time) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetLastUsedAt(v)
+	})
+}
+
+// UpdateLastUsedAt sets the "last_used_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateLastUsedAt() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateLastUsedAt()
+	})
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (u *AppPasswordUpsertOne) ClearLastUsedAt() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.ClearLastUsedAt()
+	})
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (u *AppPasswordUpsertOne) SetRevokedAt(v time.Time) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetRevokedAt(v)
+	})
+}
+
+// UpdateRevokedAt sets the "revoked_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateRevokedAt() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateRevokedAt()
+	})
+}
+
+// ClearRevokedAt clears the value of the "revoked_at" field.
+func (u *AppPasswordUpsertOne) ClearRevokedAt() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.ClearRevokedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *AppPasswordUpsertOne) SetUpdatedAt(v time.Time) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateUpdatedAt() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *AppPasswordUpsertOne) SetDeletedAt(v time.Time) *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertOne) UpdateDeletedAt() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *AppPasswordUpsertOne) ClearDeletedAt() *AppPasswordUpsertOne {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *AppPasswordUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for AppPasswordCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *AppPasswordUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *AppPasswordUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: AppPasswordUpsertOne.ID is not supported by MySQL driver. Use AppPasswordUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *AppPasswordUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // AppPasswordCreateBulk is the builder for creating many AppPassword entities in bulk.
 type AppPasswordCreateBulk struct {
 	config
 	err      error
 	builders []*AppPasswordCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the AppPassword entities in the database.
@@ -305,6 +695,7 @@ func (_c *AppPasswordCreateBulk) Save(ctx context.Context) ([]*AppPassword, erro
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -351,6 +742,256 @@ func (_c *AppPasswordCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *AppPasswordCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.AppPassword.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.AppPasswordUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *AppPasswordCreateBulk) OnConflict(opts ...sql.ConflictOption) *AppPasswordUpsertBulk {
+	_c.conflict = opts
+	return &AppPasswordUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.AppPassword.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *AppPasswordCreateBulk) OnConflictColumns(columns ...string) *AppPasswordUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &AppPasswordUpsertBulk{
+		create: _c,
+	}
+}
+
+// AppPasswordUpsertBulk is the builder for "upsert"-ing
+// a bulk of AppPassword nodes.
+type AppPasswordUpsertBulk struct {
+	create *AppPasswordCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.AppPassword.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(apppassword.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *AppPasswordUpsertBulk) UpdateNewValues() *AppPasswordUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(apppassword.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(apppassword.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.AppPassword.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *AppPasswordUpsertBulk) Ignore() *AppPasswordUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *AppPasswordUpsertBulk) DoNothing() *AppPasswordUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the AppPasswordCreateBulk.OnConflict
+// documentation for more info.
+func (u *AppPasswordUpsertBulk) Update(set func(*AppPasswordUpsert)) *AppPasswordUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&AppPasswordUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *AppPasswordUpsertBulk) SetMailboxID(v string) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateMailboxID() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *AppPasswordUpsertBulk) SetName(v string) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateName() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetHash sets the "hash" field.
+func (u *AppPasswordUpsertBulk) SetHash(v string) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetHash(v)
+	})
+}
+
+// UpdateHash sets the "hash" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateHash() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateHash()
+	})
+}
+
+// SetScopes sets the "scopes" field.
+func (u *AppPasswordUpsertBulk) SetScopes(v []string) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetScopes(v)
+	})
+}
+
+// UpdateScopes sets the "scopes" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateScopes() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateScopes()
+	})
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (u *AppPasswordUpsertBulk) SetLastUsedAt(v time.Time) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetLastUsedAt(v)
+	})
+}
+
+// UpdateLastUsedAt sets the "last_used_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateLastUsedAt() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateLastUsedAt()
+	})
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (u *AppPasswordUpsertBulk) ClearLastUsedAt() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.ClearLastUsedAt()
+	})
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (u *AppPasswordUpsertBulk) SetRevokedAt(v time.Time) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetRevokedAt(v)
+	})
+}
+
+// UpdateRevokedAt sets the "revoked_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateRevokedAt() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateRevokedAt()
+	})
+}
+
+// ClearRevokedAt clears the value of the "revoked_at" field.
+func (u *AppPasswordUpsertBulk) ClearRevokedAt() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.ClearRevokedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *AppPasswordUpsertBulk) SetUpdatedAt(v time.Time) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateUpdatedAt() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *AppPasswordUpsertBulk) SetDeletedAt(v time.Time) *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *AppPasswordUpsertBulk) UpdateDeletedAt() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *AppPasswordUpsertBulk) ClearDeletedAt() *AppPasswordUpsertBulk {
+	return u.Update(func(s *AppPasswordUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *AppPasswordUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the AppPasswordCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for AppPasswordCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *AppPasswordUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

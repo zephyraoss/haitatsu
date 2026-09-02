@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,48 +13,150 @@ import (
 	"github.com/emersion/go-imap/v2"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
-	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 )
 
-func (s *session) appendMessage(mailboxName string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
-	if strings.HasPrefix(mailboxName, labelPrefix) {
-		return nil, unsupported("append to labels")
-	}
+var errOverQuota = &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeOverQuota, Text: "Mailbox is over quota"}
+var errTooBig = &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeTooBig, Text: "Message exceeds append limit"}
+
+func (s *session) Append(mailboxName string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
 	ctx := context.Background()
-	target, err := s.client.Folder.Query().Where(folder.MailboxIDEQ(s.mailboxID), folder.NameEQ(mailboxName)).Only(ctx)
+	c, err := s.resolve(ctx, mailboxName)
 	if err != nil {
 		return nil, err
 	}
-
+	if s.appendLimit > 0 && r.Size() > s.appendLimit {
+		_, _ = io.Copy(io.Discard, r)
+		return nil, errTooBig
+	}
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 	raw = mailparse.NormalizeMessage(raw)
-	metadata := mailparse.Parse(raw)
-
-	if metadata.RFCMessageID != "" {
-		if uid, ok, err := s.appendUIDForExisting(ctx, target.ID, metadata.RFCMessageID); err != nil {
-			return nil, err
-		} else if ok {
-			return &imap.AppendData{UID: uid, UIDValidity: uidValidity(s.mailboxID)}, nil
-		}
+	flags := mailstore.Flags{}
+	var createdAt time.Time
+	if options != nil {
+		flags = mailstore.ParseFlags(storeFlagStrings(options.Flags))
+		createdAt = options.Time
 	}
-
-	messageID := ids.New().String()
-	traceID := ids.New().String()
-	key := appendObjectKey(time.Now().UTC(), messageID)
-	if err := s.store.PutMessage(ctx, key, raw); err != nil {
+	if c.isLabel() {
+		return s.appendToLabel(ctx, c, raw, flags, createdAt)
+	}
+	if strings.EqualFold(c.folder.Name, "Drafts") {
+		flags.Draft = true
+	}
+	if over, err := s.store.MailboxOverQuota(ctx, s.mailboxID, int64(len(raw))); err != nil {
+		return nil, err
+	} else if over {
+		return nil, errOverQuota
+	}
+	metadata := mailparse.Parse(raw)
+	if existing, ok, err := s.existingAppend(ctx, c.folder.ID, metadata.RFCMessageID, sha256Hex(raw)); err != nil {
+		return nil, err
+	} else if ok {
+		return &imap.AppendData{UID: imap.UID(existing.UID), UIDValidity: c.uidValidity}, nil
+	}
+	msg, err := s.storeMessage(ctx, raw, metadata)
+	if err != nil {
 		return nil, err
 	}
+	item, err := s.store.Attach(ctx, mailstore.Attach{
+		MailboxID: s.mailboxID,
+		MessageID: msg.ID,
+		FolderID:  c.folder.ID,
+		SizeBytes: int64(len(raw)),
+		Flags:     flags,
+		CreatedAt: createdAt,
+	})
+	if err != nil {
+		if errors.Is(err, mailstore.ErrOverQuota) {
+			return nil, errOverQuota
+		}
+		return nil, err
+	}
+	return &imap.AppendData{UID: imap.UID(item.UID), UIDValidity: c.uidValidity}, nil
+}
 
+func (s *session) appendToLabel(ctx context.Context, c container, raw []byte, flags mailstore.Flags, createdAt time.Time) (*imap.AppendData, error) {
+	sha := sha256Hex(raw)
+	metadata := mailparse.Parse(raw)
+	existing, err := s.findMailboxMessage(ctx, metadata.RFCMessageID, sha)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		inbox, err := s.store.FolderByName(ctx, s.mailboxID, "INBOX")
+		if err != nil {
+			return nil, err
+		}
+		msg, err := s.storeMessage(ctx, raw, metadata)
+		if err != nil {
+			return nil, err
+		}
+		existing, err = s.store.Attach(ctx, mailstore.Attach{MailboxID: s.mailboxID, MessageID: msg.ID, FolderID: inbox.ID, SizeBytes: int64(len(raw)), Flags: flags, CreatedAt: createdAt, EnforceQuota: true})
+		if err != nil {
+			if errors.Is(err, mailstore.ErrOverQuota) {
+				return nil, errOverQuota
+			}
+			return nil, err
+		}
+	}
+	link, err := s.store.AddLabel(ctx, existing, c.label.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &imap.AppendData{UID: imap.UID(link.UID), UIDValidity: c.uidValidity}, nil
+}
+
+func (s *session) findMailboxMessage(ctx context.Context, rfcMessageID string, sha string) (*ent.MailboxMessage, error) {
+	query := s.client.Message.Query().Where(message.Sha256EQ(sha))
+	if rfcMessageID != "" {
+		query = s.client.Message.Query().Where(message.Or(message.Sha256EQ(sha), message.RfcMessageIDEQ(rfcMessageID)))
+	}
+	messageIDs, err := query.IDs(ctx)
+	if err != nil || len(messageIDs) == 0 {
+		return nil, err
+	}
+	item, err := s.client.MailboxMessage.Query().Where(mailboxmessage.MailboxIDEQ(s.mailboxID), mailboxmessage.MessageIDIn(messageIDs...), mailboxmessage.DeletedAtIsNil()).First(ctx)
+	if ent.IsNotFound(err) {
+		return nil, nil
+	}
+	return item, err
+}
+
+func (s *session) existingAppend(ctx context.Context, folderID string, rfcMessageID string, sha string) (*ent.MailboxMessage, bool, error) {
+	query := s.client.Message.Query().Where(message.Sha256EQ(sha))
+	if rfcMessageID != "" {
+		query = s.client.Message.Query().Where(message.Or(message.Sha256EQ(sha), message.RfcMessageIDEQ(rfcMessageID)))
+	}
+	messageIDs, err := query.IDs(ctx)
+	if err != nil || len(messageIDs) == 0 {
+		return nil, false, err
+	}
+	item, err := s.client.MailboxMessage.Query().Where(mailboxmessage.MailboxIDEQ(s.mailboxID), mailboxmessage.MessageIDIn(messageIDs...), mailboxmessage.FolderIDEQ(folderID), mailboxmessage.DeletedAtIsNil()).First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return item, true, nil
+}
+
+func (s *session) storeMessage(ctx context.Context, raw []byte, metadata mailparse.Metadata) (*ent.Message, error) {
+	messageID := ids.New().String()
+	key := messageObjectKey(time.Now().UTC(), messageID)
+	if err := s.blobs.PutMessage(ctx, key, raw); err != nil {
+		return nil, err
+	}
 	create := s.client.Message.Create().
 		SetID(messageID).
-		SetTraceID(traceID).
+		SetTraceID(ids.New().String()).
 		SetBlobKey(key).
 		SetSha256(sha256Hex(raw)).
 		SetSizeBytes(int64(len(raw))).
@@ -73,92 +176,10 @@ func (s *session) appendMessage(mailboxName string, r imap.LiteralReader, option
 	if metadata.Date != nil {
 		create.SetDate(*metadata.Date)
 	}
-	if _, err := create.Save(ctx); err != nil {
-		return nil, err
-	}
-
-	mailboxMessageCreate := s.client.MailboxMessage.Create().
-		SetMailboxID(s.mailboxID).
-		SetMessageID(messageID).
-		SetFolderID(target.ID).
-		SetOriginalRcpt("").
-		SetBaseRcpt("")
-	if options != nil && !options.Time.IsZero() {
-		mailboxMessageCreate.SetCreatedAt(options.Time.UTC())
-	}
-	read, flagged := false, false
-	if options != nil {
-		for _, flag := range options.Flags {
-			switch flag {
-			case imap.FlagSeen:
-				read = true
-			case imap.FlagFlagged:
-				flagged = true
-			}
-		}
-	}
-	item, err := mailboxMessageCreate.SetRead(read).SetFlagged(flagged).Save(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.client.Mailbox.UpdateOneID(s.mailboxID).AddUsedBytes(int64(len(raw))).Save(ctx); err != nil {
-		return nil, err
-	}
-
-	uid, err := s.uidForMailboxMessage(mailboxName, item.ID)
-	if err != nil {
-		return nil, err
-	}
-	return &imap.AppendData{UID: uid, UIDValidity: uidValidity(s.mailboxID)}, nil
+	return create.Save(ctx)
 }
 
-func (s *session) appendUIDForExisting(ctx context.Context, folderID string, rfcMessageID string) (imap.UID, bool, error) {
-	msg, err := s.client.Message.Query().Where(message.RfcMessageIDEQ(rfcMessageID)).Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return 0, false, nil
-		}
-		return 0, false, err
-	}
-	item, err := s.client.MailboxMessage.Query().
-		Where(
-			mailboxmessage.MailboxIDEQ(s.mailboxID),
-			mailboxmessage.MessageIDEQ(msg.ID),
-			mailboxmessage.FolderIDEQ(folderID),
-			mailboxmessage.DeletedAtIsNil(),
-		).
-		Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return 0, false, nil
-		}
-		return 0, false, err
-	}
-	folderEntity, err := s.client.Folder.Get(ctx, folderID)
-	if err != nil {
-		return 0, false, err
-	}
-	uid, err := s.uidForMailboxMessage(folderEntity.Name, item.ID)
-	if err != nil {
-		return 0, false, err
-	}
-	return uid, true, nil
-}
-
-func (s *session) uidForMailboxMessage(mailboxName string, mailboxMessageID string) (imap.UID, error) {
-	items, err := s.messages(mailboxName)
-	if err != nil {
-		return 0, err
-	}
-	for index, item := range items {
-		if item.ID == mailboxMessageID {
-			return imap.UID(index + 1), nil
-		}
-	}
-	return 0, fmt.Errorf("appended message not found in %q", mailboxName)
-}
-
-func appendObjectKey(t time.Time, messageID string) string {
+func messageObjectKey(t time.Time, messageID string) string {
 	return fmt.Sprintf("messages/%04d/%02d/%02d/%s.eml", t.Year(), t.Month(), t.Day(), messageID)
 }
 

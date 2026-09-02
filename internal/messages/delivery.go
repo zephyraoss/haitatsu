@@ -4,18 +4,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
-	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/routing"
 	"github.com/zephyraoss/haitatsu/internal/rules"
 	"github.com/zephyraoss/haitatsu/internal/spam"
 )
+
+var ErrOverQuota = mailstore.ErrOverQuota
 
 type BlobStore interface {
 	PutMessage(ctx context.Context, key string, data []byte) error
@@ -27,7 +30,8 @@ type EventSink interface {
 
 type Service struct {
 	client         *ent.Client
-	store          BlobStore
+	blobs          BlobStore
+	store          *mailstore.Store
 	events         EventSink
 	rules          *rules.Engine
 	metrics        *metrics.Metrics
@@ -35,8 +39,8 @@ type Service struct {
 	instanceName   string
 }
 
-func NewService(client *ent.Client, store BlobStore, events EventSink, rules *rules.Engine, metrics *metrics.Metrics, publicHostname string, instanceName string) *Service {
-	return &Service{client: client, store: store, events: events, rules: rules, metrics: metrics, publicHostname: publicHostname, instanceName: instanceName}
+func NewService(client *ent.Client, blobs BlobStore, store *mailstore.Store, events EventSink, rules *rules.Engine, metrics *metrics.Metrics, publicHostname string, instanceName string) *Service {
+	return &Service{client: client, blobs: blobs, store: store, events: events, rules: rules, metrics: metrics, publicHostname: publicHostname, instanceName: instanceName}
 }
 
 func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
@@ -46,7 +50,7 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	stored := s.withTraceHeaders(mailparse.NormalizeMessage(raw), traceID, assessment.Header)
 	metadata := mailparse.Parse(stored)
 
-	if err := s.store.PutMessage(ctx, key, stored); err != nil {
+	if err := s.blobs.PutMessage(ctx, key, stored); err != nil {
 		return nil, err
 	}
 
@@ -78,7 +82,7 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	if err != nil {
 		return nil, err
 	}
-	deliveries, err := s.createMailboxMessages(ctx, message.ID, stored, recipients, assessment)
+	deliveries, err := s.createMailboxMessages(ctx, message.ID, int64(len(stored)), recipients, assessment)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +101,7 @@ func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.
 	return message, nil
 }
 
-func (s *Service) createMailboxMessages(ctx context.Context, messageID string, raw []byte, recipients []routing.Result, assessment spam.Assessment) ([]rules.Delivery, error) {
+func (s *Service) createMailboxMessages(ctx context.Context, messageID string, size int64, recipients []routing.Result, assessment spam.Assessment) ([]rules.Delivery, error) {
 	seen := map[string]struct{}{}
 	var deliveries []rules.Delivery
 	for _, recipient := range recipients {
@@ -111,31 +115,29 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, r
 			if assessment.Junk {
 				folderName = "Junk"
 			}
-			deliveryFolder, err := s.client.Folder.Query().Where(folder.MailboxIDEQ(mbox.ID), folder.NameEQ(folderName)).Only(ctx)
+			deliveryFolder, err := s.store.FolderByName(ctx, mbox.ID, folderName)
 			if err != nil {
 				return nil, err
 			}
-
-			create := s.client.MailboxMessage.Create().
-				SetMailboxID(mbox.ID).
-				SetMessageID(messageID).
-				SetFolderID(deliveryFolder.ID).
-				SetOriginalRcpt(recipient.OriginalRecipient).
-				SetBaseRcpt(recipient.BaseRecipient)
-			if recipient.PlusTag != "" {
-				create.SetPlusTag(recipient.PlusTag)
-			}
-			if recipient.RouteID != "" {
-				create.SetResolvedRouteID(recipient.RouteID)
-			}
-			item, err := create.Save(ctx)
+			item, err := s.store.Attach(ctx, mailstore.Attach{
+				MailboxID:       mbox.ID,
+				MessageID:       messageID,
+				FolderID:        deliveryFolder.ID,
+				SizeBytes:       size,
+				OriginalRcpt:    recipient.OriginalRecipient,
+				BaseRcpt:        recipient.BaseRecipient,
+				PlusTag:         recipient.PlusTag,
+				ResolvedRouteID: recipient.RouteID,
+				EnforceQuota:    true,
+			})
 			if err != nil {
+				if errors.Is(err, mailstore.ErrOverQuota) {
+					s.metrics.MailboxOverQuota()
+					continue
+				}
 				return nil, err
 			}
 			deliveries = append(deliveries, rules.Delivery{Message: item, Route: recipient})
-			if _, err := s.client.Mailbox.UpdateOneID(mbox.ID).AddUsedBytes(int64(len(raw))).Save(ctx); err != nil {
-				return nil, err
-			}
 		}
 	}
 	return deliveries, nil

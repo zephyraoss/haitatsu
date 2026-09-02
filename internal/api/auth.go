@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -8,18 +9,25 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/config"
 )
 
-func ServiceTokenMiddleware(cfg config.APIConfig) fiber.Handler {
+type TokenSource func() string
+
+func ServiceTokenMiddleware(token TokenSource) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		if !hasServiceToken(c.Get("Authorization"), cfg.ServiceToken) {
+		if !hasServiceToken(c.Get("Authorization"), token()) {
 			return problem(c, fiber.StatusUnauthorized, "unauthorized", "Authentication required")
 		}
 		return c.Next()
 	}
 }
 
+func StaticToken(cfg config.APIConfig) TokenSource {
+	return func() string { return cfg.ServiceToken }
+}
+
 func hasServiceToken(header string, serviceToken string) bool {
 	if serviceToken == "" || !strings.HasPrefix(header, "Bearer ") {
 		return false
 	}
-	return strings.TrimPrefix(header, "Bearer ") == serviceToken
+	presented := strings.TrimPrefix(header, "Bearer ")
+	return subtle.ConstantTimeCompare([]byte(presented), []byte(serviceToken)) == 1
 }

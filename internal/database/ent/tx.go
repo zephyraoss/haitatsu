@@ -4,6 +4,8 @@ package ent
 
 import (
 	"context"
+	stdsql "database/sql"
+	"fmt"
 	"sync"
 
 	"entgo.io/ent/dialect"
@@ -16,6 +18,8 @@ type Tx struct {
 	AppPassword *AppPasswordClient
 	// AuditEvent is the client for interacting with the AuditEvent builders.
 	AuditEvent *AuditEventClient
+	// AuthLockout is the client for interacting with the AuthLockout builders.
+	AuthLockout *AuthLockoutClient
 	// BounceEvent is the client for interacting with the BounceEvent builders.
 	BounceEvent *BounceEventClient
 	// DKIMKey is the client for interacting with the DKIMKey builders.
@@ -46,6 +50,8 @@ type Tx struct {
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
+	// SchemaMigration is the client for interacting with the SchemaMigration builders.
+	SchemaMigration *SchemaMigrationClient
 	// SenderRule is the client for interacting with the SenderRule builders.
 	SenderRule *SenderRuleClient
 
@@ -181,6 +187,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.AppPassword = NewAppPasswordClient(tx.config)
 	tx.AuditEvent = NewAuditEventClient(tx.config)
+	tx.AuthLockout = NewAuthLockoutClient(tx.config)
 	tx.BounceEvent = NewBounceEventClient(tx.config)
 	tx.DKIMKey = NewDKIMKeyClient(tx.config)
 	tx.EventLog = NewEventLogClient(tx.config)
@@ -196,6 +203,7 @@ func (tx *Tx) init() {
 	tx.OutboundJob = NewOutboundJobClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RoutingRule = NewRoutingRuleClient(tx.config)
+	tx.SchemaMigration = NewSchemaMigrationClient(tx.config)
 	tx.SenderRule = NewSenderRuleClient(tx.config)
 }
 
@@ -259,3 +267,27 @@ func (tx *txDriver) Query(ctx context.Context, query string, args, v any) error 
 }
 
 var _ dialect.Driver = (*txDriver)(nil)
+
+// ExecContext allows calling the underlying ExecContext method of the transaction if it is supported by it.
+// See, database/sql#Tx.ExecContext for more information.
+func (tx *txDriver) ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error) {
+	ex, ok := tx.tx.(interface {
+		ExecContext(context.Context, string, ...any) (stdsql.Result, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("Tx.ExecContext is not supported")
+	}
+	return ex.ExecContext(ctx, query, args...)
+}
+
+// QueryContext allows calling the underlying QueryContext method of the transaction if it is supported by it.
+// See, database/sql#Tx.QueryContext for more information.
+func (tx *txDriver) QueryContext(ctx context.Context, query string, args ...any) (*stdsql.Rows, error) {
+	q, ok := tx.tx.(interface {
+		QueryContext(context.Context, string, ...any) (*stdsql.Rows, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("Tx.QueryContext is not supported")
+	}
+	return q.QueryContext(ctx, query, args...)
+}

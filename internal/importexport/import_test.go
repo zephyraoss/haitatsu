@@ -38,8 +38,8 @@ func TestMaildirFlags(t *testing.T) {
 		{"1234567890.M1P2.host:2,", importFlags{}},
 		{"1234567890.M1P2.host:2,S", importFlags{read: true}},
 		{"1234567890.M1P2.host:2,FS", importFlags{read: true, flagged: true}},
-		{"1234567890.M1P2.host:2,RST", importFlags{read: true, deleted: true}},
-		{"1234567890.M1P2.host:2,DF", importFlags{flagged: true}},
+		{"1234567890.M1P2.host:2,RST", importFlags{read: true, deleted: true, answered: true}},
+		{"1234567890.M1P2.host:2,DF", importFlags{flagged: true, draft: true}},
 	}
 	for _, tc := range cases {
 		if got := maildirFlags(tc.name); got != tc.want {

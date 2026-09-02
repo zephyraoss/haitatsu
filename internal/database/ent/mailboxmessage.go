@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -23,6 +24,8 @@ type MailboxMessage struct {
 	MessageID string `json:"message_id,omitempty"`
 	// FolderID holds the value of the "folder_id" field.
 	FolderID string `json:"folder_id,omitempty"`
+	// UID holds the value of the "uid" field.
+	UID uint32 `json:"uid,omitempty"`
 	// OriginalRcpt holds the value of the "original_rcpt" field.
 	OriginalRcpt string `json:"original_rcpt,omitempty"`
 	// BaseRcpt holds the value of the "base_rcpt" field.
@@ -35,8 +38,14 @@ type MailboxMessage struct {
 	Read bool `json:"read,omitempty"`
 	// Flagged holds the value of the "flagged" field.
 	Flagged bool `json:"flagged,omitempty"`
+	// Answered holds the value of the "answered" field.
+	Answered bool `json:"answered,omitempty"`
+	// Draft holds the value of the "draft" field.
+	Draft bool `json:"draft,omitempty"`
 	// ImapDeleted holds the value of the "imap_deleted" field.
 	ImapDeleted bool `json:"imap_deleted,omitempty"`
+	// Keywords holds the value of the "keywords" field.
+	Keywords []string `json:"keywords,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -51,8 +60,12 @@ func (*MailboxMessage) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case mailboxmessage.FieldRead, mailboxmessage.FieldFlagged, mailboxmessage.FieldImapDeleted:
+		case mailboxmessage.FieldKeywords:
+			values[i] = new([]byte)
+		case mailboxmessage.FieldRead, mailboxmessage.FieldFlagged, mailboxmessage.FieldAnswered, mailboxmessage.FieldDraft, mailboxmessage.FieldImapDeleted:
 			values[i] = new(sql.NullBool)
+		case mailboxmessage.FieldUID:
+			values[i] = new(sql.NullInt64)
 		case mailboxmessage.FieldID, mailboxmessage.FieldMailboxID, mailboxmessage.FieldMessageID, mailboxmessage.FieldFolderID, mailboxmessage.FieldOriginalRcpt, mailboxmessage.FieldBaseRcpt, mailboxmessage.FieldPlusTag, mailboxmessage.FieldResolvedRouteID:
 			values[i] = new(sql.NullString)
 		case mailboxmessage.FieldCreatedAt, mailboxmessage.FieldUpdatedAt, mailboxmessage.FieldDeletedAt:
@@ -96,6 +109,12 @@ func (_m *MailboxMessage) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.FolderID = value.String
 			}
+		case mailboxmessage.FieldUID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field uid", values[i])
+			} else if value.Valid {
+				_m.UID = uint32(value.Int64)
+			}
 		case mailboxmessage.FieldOriginalRcpt:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field original_rcpt", values[i])
@@ -132,11 +151,31 @@ func (_m *MailboxMessage) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Flagged = value.Bool
 			}
+		case mailboxmessage.FieldAnswered:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field answered", values[i])
+			} else if value.Valid {
+				_m.Answered = value.Bool
+			}
+		case mailboxmessage.FieldDraft:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field draft", values[i])
+			} else if value.Valid {
+				_m.Draft = value.Bool
+			}
 		case mailboxmessage.FieldImapDeleted:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field imap_deleted", values[i])
 			} else if value.Valid {
 				_m.ImapDeleted = value.Bool
+			}
+		case mailboxmessage.FieldKeywords:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field keywords", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Keywords); err != nil {
+					return fmt.Errorf("unmarshal field keywords: %w", err)
+				}
 			}
 		case mailboxmessage.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -202,6 +241,9 @@ func (_m *MailboxMessage) String() string {
 	builder.WriteString("folder_id=")
 	builder.WriteString(_m.FolderID)
 	builder.WriteString(", ")
+	builder.WriteString("uid=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UID))
+	builder.WriteString(", ")
 	builder.WriteString("original_rcpt=")
 	builder.WriteString(_m.OriginalRcpt)
 	builder.WriteString(", ")
@@ -220,8 +262,17 @@ func (_m *MailboxMessage) String() string {
 	builder.WriteString("flagged=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Flagged))
 	builder.WriteString(", ")
+	builder.WriteString("answered=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Answered))
+	builder.WriteString(", ")
+	builder.WriteString("draft=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Draft))
+	builder.WriteString(", ")
 	builder.WriteString("imap_deleted=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImapDeleted))
+	builder.WriteString(", ")
+	builder.WriteString("keywords=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Keywords))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

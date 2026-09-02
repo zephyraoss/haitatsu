@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
@@ -29,6 +30,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/schemamigration"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
 )
 
@@ -43,6 +45,7 @@ const (
 	// Node types.
 	TypeAppPassword         = "AppPassword"
 	TypeAuditEvent          = "AuditEvent"
+	TypeAuthLockout         = "AuthLockout"
 	TypeBounceEvent         = "BounceEvent"
 	TypeDKIMKey             = "DKIMKey"
 	TypeEventLog            = "EventLog"
@@ -58,6 +61,7 @@ const (
 	TypeOutboundJob         = "OutboundJob"
 	TypeRoute               = "Route"
 	TypeRoutingRule         = "RoutingRule"
+	TypeSchemaMigration     = "SchemaMigration"
 	TypeSenderRule          = "SenderRule"
 )
 
@@ -1742,6 +1746,558 @@ func (m *AuditEventMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *AuditEventMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown AuditEvent edge %s", name)
+}
+
+// AuthLockoutMutation represents an operation that mutates the AuthLockout nodes in the graph.
+type AuthLockoutMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	failures      *int
+	addfailures   *int
+	window_start  *time.Time
+	locked_until  *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*AuthLockout, error)
+	predicates    []predicate.AuthLockout
+}
+
+var _ ent.Mutation = (*AuthLockoutMutation)(nil)
+
+// authlockoutOption allows management of the mutation configuration using functional options.
+type authlockoutOption func(*AuthLockoutMutation)
+
+// newAuthLockoutMutation creates new mutation for the AuthLockout entity.
+func newAuthLockoutMutation(c config, op Op, opts ...authlockoutOption) *AuthLockoutMutation {
+	m := &AuthLockoutMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAuthLockout,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAuthLockoutID sets the ID field of the mutation.
+func withAuthLockoutID(id string) authlockoutOption {
+	return func(m *AuthLockoutMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AuthLockout
+		)
+		m.oldValue = func(ctx context.Context) (*AuthLockout, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AuthLockout.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAuthLockout sets the old AuthLockout of the mutation.
+func withAuthLockout(node *AuthLockout) authlockoutOption {
+	return func(m *AuthLockoutMutation) {
+		m.oldValue = func(context.Context) (*AuthLockout, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AuthLockoutMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AuthLockoutMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of AuthLockout entities.
+func (m *AuthLockoutMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AuthLockoutMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AuthLockoutMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AuthLockout.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetFailures sets the "failures" field.
+func (m *AuthLockoutMutation) SetFailures(i int) {
+	m.failures = &i
+	m.addfailures = nil
+}
+
+// Failures returns the value of the "failures" field in the mutation.
+func (m *AuthLockoutMutation) Failures() (r int, exists bool) {
+	v := m.failures
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFailures returns the old "failures" field's value of the AuthLockout entity.
+// If the AuthLockout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuthLockoutMutation) OldFailures(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFailures is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFailures requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFailures: %w", err)
+	}
+	return oldValue.Failures, nil
+}
+
+// AddFailures adds i to the "failures" field.
+func (m *AuthLockoutMutation) AddFailures(i int) {
+	if m.addfailures != nil {
+		*m.addfailures += i
+	} else {
+		m.addfailures = &i
+	}
+}
+
+// AddedFailures returns the value that was added to the "failures" field in this mutation.
+func (m *AuthLockoutMutation) AddedFailures() (r int, exists bool) {
+	v := m.addfailures
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFailures resets all changes to the "failures" field.
+func (m *AuthLockoutMutation) ResetFailures() {
+	m.failures = nil
+	m.addfailures = nil
+}
+
+// SetWindowStart sets the "window_start" field.
+func (m *AuthLockoutMutation) SetWindowStart(t time.Time) {
+	m.window_start = &t
+}
+
+// WindowStart returns the value of the "window_start" field in the mutation.
+func (m *AuthLockoutMutation) WindowStart() (r time.Time, exists bool) {
+	v := m.window_start
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowStart returns the old "window_start" field's value of the AuthLockout entity.
+// If the AuthLockout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuthLockoutMutation) OldWindowStart(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowStart is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowStart requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowStart: %w", err)
+	}
+	return oldValue.WindowStart, nil
+}
+
+// ResetWindowStart resets all changes to the "window_start" field.
+func (m *AuthLockoutMutation) ResetWindowStart() {
+	m.window_start = nil
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (m *AuthLockoutMutation) SetLockedUntil(t time.Time) {
+	m.locked_until = &t
+}
+
+// LockedUntil returns the value of the "locked_until" field in the mutation.
+func (m *AuthLockoutMutation) LockedUntil() (r time.Time, exists bool) {
+	v := m.locked_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLockedUntil returns the old "locked_until" field's value of the AuthLockout entity.
+// If the AuthLockout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuthLockoutMutation) OldLockedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedUntil: %w", err)
+	}
+	return oldValue.LockedUntil, nil
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (m *AuthLockoutMutation) ClearLockedUntil() {
+	m.locked_until = nil
+	m.clearedFields[authlockout.FieldLockedUntil] = struct{}{}
+}
+
+// LockedUntilCleared returns if the "locked_until" field was cleared in this mutation.
+func (m *AuthLockoutMutation) LockedUntilCleared() bool {
+	_, ok := m.clearedFields[authlockout.FieldLockedUntil]
+	return ok
+}
+
+// ResetLockedUntil resets all changes to the "locked_until" field.
+func (m *AuthLockoutMutation) ResetLockedUntil() {
+	m.locked_until = nil
+	delete(m.clearedFields, authlockout.FieldLockedUntil)
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AuthLockoutMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AuthLockoutMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AuthLockout entity.
+// If the AuthLockout object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AuthLockoutMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AuthLockoutMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the AuthLockoutMutation builder.
+func (m *AuthLockoutMutation) Where(ps ...predicate.AuthLockout) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AuthLockoutMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AuthLockoutMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AuthLockout, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AuthLockoutMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AuthLockoutMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AuthLockout).
+func (m *AuthLockoutMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AuthLockoutMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.failures != nil {
+		fields = append(fields, authlockout.FieldFailures)
+	}
+	if m.window_start != nil {
+		fields = append(fields, authlockout.FieldWindowStart)
+	}
+	if m.locked_until != nil {
+		fields = append(fields, authlockout.FieldLockedUntil)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, authlockout.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AuthLockoutMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case authlockout.FieldFailures:
+		return m.Failures()
+	case authlockout.FieldWindowStart:
+		return m.WindowStart()
+	case authlockout.FieldLockedUntil:
+		return m.LockedUntil()
+	case authlockout.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AuthLockoutMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case authlockout.FieldFailures:
+		return m.OldFailures(ctx)
+	case authlockout.FieldWindowStart:
+		return m.OldWindowStart(ctx)
+	case authlockout.FieldLockedUntil:
+		return m.OldLockedUntil(ctx)
+	case authlockout.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown AuthLockout field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AuthLockoutMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case authlockout.FieldFailures:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFailures(v)
+		return nil
+	case authlockout.FieldWindowStart:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowStart(v)
+		return nil
+	case authlockout.FieldLockedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLockedUntil(v)
+		return nil
+	case authlockout.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AuthLockout field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AuthLockoutMutation) AddedFields() []string {
+	var fields []string
+	if m.addfailures != nil {
+		fields = append(fields, authlockout.FieldFailures)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AuthLockoutMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case authlockout.FieldFailures:
+		return m.AddedFailures()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AuthLockoutMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case authlockout.FieldFailures:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFailures(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AuthLockout numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AuthLockoutMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(authlockout.FieldLockedUntil) {
+		fields = append(fields, authlockout.FieldLockedUntil)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AuthLockoutMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AuthLockoutMutation) ClearField(name string) error {
+	switch name {
+	case authlockout.FieldLockedUntil:
+		m.ClearLockedUntil()
+		return nil
+	}
+	return fmt.Errorf("unknown AuthLockout nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AuthLockoutMutation) ResetField(name string) error {
+	switch name {
+	case authlockout.FieldFailures:
+		m.ResetFailures()
+		return nil
+	case authlockout.FieldWindowStart:
+		m.ResetWindowStart()
+		return nil
+	case authlockout.FieldLockedUntil:
+		m.ResetLockedUntil()
+		return nil
+	case authlockout.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AuthLockout field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AuthLockoutMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AuthLockoutMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AuthLockoutMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AuthLockoutMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AuthLockoutMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AuthLockoutMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AuthLockoutMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AuthLockout unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AuthLockoutMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AuthLockout edge %s", name)
 }
 
 // BounceEventMutation represents an operation that mutates the BounceEvent nodes in the graph.
@@ -5167,18 +5723,22 @@ func (m *ExportJobMutation) ResetEdge(name string) error {
 // FolderMutation represents an operation that mutates the Folder nodes in the graph.
 type FolderMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *string
-	mailbox_id    *string
-	name          *string
-	system        *bool
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*Folder, error)
-	predicates    []predicate.Folder
+	op              Op
+	typ             string
+	id              *string
+	mailbox_id      *string
+	name            *string
+	system          *bool
+	uid_validity    *uint32
+	adduid_validity *int32
+	uid_next        *uint32
+	adduid_next     *int32
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*Folder, error)
+	predicates      []predicate.Folder
 }
 
 var _ ent.Mutation = (*FolderMutation)(nil)
@@ -5393,6 +5953,118 @@ func (m *FolderMutation) ResetSystem() {
 	m.system = nil
 }
 
+// SetUIDValidity sets the "uid_validity" field.
+func (m *FolderMutation) SetUIDValidity(u uint32) {
+	m.uid_validity = &u
+	m.adduid_validity = nil
+}
+
+// UIDValidity returns the value of the "uid_validity" field in the mutation.
+func (m *FolderMutation) UIDValidity() (r uint32, exists bool) {
+	v := m.uid_validity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUIDValidity returns the old "uid_validity" field's value of the Folder entity.
+// If the Folder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FolderMutation) OldUIDValidity(ctx context.Context) (v uint32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUIDValidity is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUIDValidity requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUIDValidity: %w", err)
+	}
+	return oldValue.UIDValidity, nil
+}
+
+// AddUIDValidity adds u to the "uid_validity" field.
+func (m *FolderMutation) AddUIDValidity(u int32) {
+	if m.adduid_validity != nil {
+		*m.adduid_validity += u
+	} else {
+		m.adduid_validity = &u
+	}
+}
+
+// AddedUIDValidity returns the value that was added to the "uid_validity" field in this mutation.
+func (m *FolderMutation) AddedUIDValidity() (r int32, exists bool) {
+	v := m.adduid_validity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUIDValidity resets all changes to the "uid_validity" field.
+func (m *FolderMutation) ResetUIDValidity() {
+	m.uid_validity = nil
+	m.adduid_validity = nil
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (m *FolderMutation) SetUIDNext(u uint32) {
+	m.uid_next = &u
+	m.adduid_next = nil
+}
+
+// UIDNext returns the value of the "uid_next" field in the mutation.
+func (m *FolderMutation) UIDNext() (r uint32, exists bool) {
+	v := m.uid_next
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUIDNext returns the old "uid_next" field's value of the Folder entity.
+// If the Folder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *FolderMutation) OldUIDNext(ctx context.Context) (v uint32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUIDNext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUIDNext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUIDNext: %w", err)
+	}
+	return oldValue.UIDNext, nil
+}
+
+// AddUIDNext adds u to the "uid_next" field.
+func (m *FolderMutation) AddUIDNext(u int32) {
+	if m.adduid_next != nil {
+		*m.adduid_next += u
+	} else {
+		m.adduid_next = &u
+	}
+}
+
+// AddedUIDNext returns the value that was added to the "uid_next" field in this mutation.
+func (m *FolderMutation) AddedUIDNext() (r int32, exists bool) {
+	v := m.adduid_next
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUIDNext resets all changes to the "uid_next" field.
+func (m *FolderMutation) ResetUIDNext() {
+	m.uid_next = nil
+	m.adduid_next = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *FolderMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -5499,7 +6171,7 @@ func (m *FolderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *FolderMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 7)
 	if m.mailbox_id != nil {
 		fields = append(fields, folder.FieldMailboxID)
 	}
@@ -5508,6 +6180,12 @@ func (m *FolderMutation) Fields() []string {
 	}
 	if m.system != nil {
 		fields = append(fields, folder.FieldSystem)
+	}
+	if m.uid_validity != nil {
+		fields = append(fields, folder.FieldUIDValidity)
+	}
+	if m.uid_next != nil {
+		fields = append(fields, folder.FieldUIDNext)
 	}
 	if m.created_at != nil {
 		fields = append(fields, folder.FieldCreatedAt)
@@ -5529,6 +6207,10 @@ func (m *FolderMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case folder.FieldSystem:
 		return m.System()
+	case folder.FieldUIDValidity:
+		return m.UIDValidity()
+	case folder.FieldUIDNext:
+		return m.UIDNext()
 	case folder.FieldCreatedAt:
 		return m.CreatedAt()
 	case folder.FieldUpdatedAt:
@@ -5548,6 +6230,10 @@ func (m *FolderMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldName(ctx)
 	case folder.FieldSystem:
 		return m.OldSystem(ctx)
+	case folder.FieldUIDValidity:
+		return m.OldUIDValidity(ctx)
+	case folder.FieldUIDNext:
+		return m.OldUIDNext(ctx)
 	case folder.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case folder.FieldUpdatedAt:
@@ -5582,6 +6268,20 @@ func (m *FolderMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSystem(v)
 		return nil
+	case folder.FieldUIDValidity:
+		v, ok := value.(uint32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUIDValidity(v)
+		return nil
+	case folder.FieldUIDNext:
+		v, ok := value.(uint32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUIDNext(v)
+		return nil
 	case folder.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -5603,13 +6303,26 @@ func (m *FolderMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *FolderMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.adduid_validity != nil {
+		fields = append(fields, folder.FieldUIDValidity)
+	}
+	if m.adduid_next != nil {
+		fields = append(fields, folder.FieldUIDNext)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *FolderMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case folder.FieldUIDValidity:
+		return m.AddedUIDValidity()
+	case folder.FieldUIDNext:
+		return m.AddedUIDNext()
+	}
 	return nil, false
 }
 
@@ -5618,6 +6331,20 @@ func (m *FolderMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *FolderMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case folder.FieldUIDValidity:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUIDValidity(v)
+		return nil
+	case folder.FieldUIDNext:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUIDNext(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Folder numeric field %s", name)
 }
@@ -5653,6 +6380,12 @@ func (m *FolderMutation) ResetField(name string) error {
 		return nil
 	case folder.FieldSystem:
 		m.ResetSystem()
+		return nil
+	case folder.FieldUIDValidity:
+		m.ResetUIDValidity()
+		return nil
+	case folder.FieldUIDNext:
+		m.ResetUIDNext()
 		return nil
 	case folder.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -6629,17 +7362,21 @@ func (m *ImportJobMutation) ResetEdge(name string) error {
 // LabelMutation represents an operation that mutates the Label nodes in the graph.
 type LabelMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *string
-	mailbox_id    *string
-	name          *string
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*Label, error)
-	predicates    []predicate.Label
+	op              Op
+	typ             string
+	id              *string
+	mailbox_id      *string
+	name            *string
+	uid_validity    *uint32
+	adduid_validity *int32
+	uid_next        *uint32
+	adduid_next     *int32
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*Label, error)
+	predicates      []predicate.Label
 }
 
 var _ ent.Mutation = (*LabelMutation)(nil)
@@ -6818,6 +7555,118 @@ func (m *LabelMutation) ResetName() {
 	m.name = nil
 }
 
+// SetUIDValidity sets the "uid_validity" field.
+func (m *LabelMutation) SetUIDValidity(u uint32) {
+	m.uid_validity = &u
+	m.adduid_validity = nil
+}
+
+// UIDValidity returns the value of the "uid_validity" field in the mutation.
+func (m *LabelMutation) UIDValidity() (r uint32, exists bool) {
+	v := m.uid_validity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUIDValidity returns the old "uid_validity" field's value of the Label entity.
+// If the Label object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LabelMutation) OldUIDValidity(ctx context.Context) (v uint32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUIDValidity is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUIDValidity requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUIDValidity: %w", err)
+	}
+	return oldValue.UIDValidity, nil
+}
+
+// AddUIDValidity adds u to the "uid_validity" field.
+func (m *LabelMutation) AddUIDValidity(u int32) {
+	if m.adduid_validity != nil {
+		*m.adduid_validity += u
+	} else {
+		m.adduid_validity = &u
+	}
+}
+
+// AddedUIDValidity returns the value that was added to the "uid_validity" field in this mutation.
+func (m *LabelMutation) AddedUIDValidity() (r int32, exists bool) {
+	v := m.adduid_validity
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUIDValidity resets all changes to the "uid_validity" field.
+func (m *LabelMutation) ResetUIDValidity() {
+	m.uid_validity = nil
+	m.adduid_validity = nil
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (m *LabelMutation) SetUIDNext(u uint32) {
+	m.uid_next = &u
+	m.adduid_next = nil
+}
+
+// UIDNext returns the value of the "uid_next" field in the mutation.
+func (m *LabelMutation) UIDNext() (r uint32, exists bool) {
+	v := m.uid_next
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUIDNext returns the old "uid_next" field's value of the Label entity.
+// If the Label object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LabelMutation) OldUIDNext(ctx context.Context) (v uint32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUIDNext is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUIDNext requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUIDNext: %w", err)
+	}
+	return oldValue.UIDNext, nil
+}
+
+// AddUIDNext adds u to the "uid_next" field.
+func (m *LabelMutation) AddUIDNext(u int32) {
+	if m.adduid_next != nil {
+		*m.adduid_next += u
+	} else {
+		m.adduid_next = &u
+	}
+}
+
+// AddedUIDNext returns the value that was added to the "uid_next" field in this mutation.
+func (m *LabelMutation) AddedUIDNext() (r int32, exists bool) {
+	v := m.adduid_next
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUIDNext resets all changes to the "uid_next" field.
+func (m *LabelMutation) ResetUIDNext() {
+	m.uid_next = nil
+	m.adduid_next = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *LabelMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -6924,12 +7773,18 @@ func (m *LabelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *LabelMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 6)
 	if m.mailbox_id != nil {
 		fields = append(fields, label.FieldMailboxID)
 	}
 	if m.name != nil {
 		fields = append(fields, label.FieldName)
+	}
+	if m.uid_validity != nil {
+		fields = append(fields, label.FieldUIDValidity)
+	}
+	if m.uid_next != nil {
+		fields = append(fields, label.FieldUIDNext)
 	}
 	if m.created_at != nil {
 		fields = append(fields, label.FieldCreatedAt)
@@ -6949,6 +7804,10 @@ func (m *LabelMutation) Field(name string) (ent.Value, bool) {
 		return m.MailboxID()
 	case label.FieldName:
 		return m.Name()
+	case label.FieldUIDValidity:
+		return m.UIDValidity()
+	case label.FieldUIDNext:
+		return m.UIDNext()
 	case label.FieldCreatedAt:
 		return m.CreatedAt()
 	case label.FieldUpdatedAt:
@@ -6966,6 +7825,10 @@ func (m *LabelMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMailboxID(ctx)
 	case label.FieldName:
 		return m.OldName(ctx)
+	case label.FieldUIDValidity:
+		return m.OldUIDValidity(ctx)
+	case label.FieldUIDNext:
+		return m.OldUIDNext(ctx)
 	case label.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case label.FieldUpdatedAt:
@@ -6993,6 +7856,20 @@ func (m *LabelMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetName(v)
 		return nil
+	case label.FieldUIDValidity:
+		v, ok := value.(uint32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUIDValidity(v)
+		return nil
+	case label.FieldUIDNext:
+		v, ok := value.(uint32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUIDNext(v)
+		return nil
 	case label.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -7014,13 +7891,26 @@ func (m *LabelMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *LabelMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.adduid_validity != nil {
+		fields = append(fields, label.FieldUIDValidity)
+	}
+	if m.adduid_next != nil {
+		fields = append(fields, label.FieldUIDNext)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *LabelMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case label.FieldUIDValidity:
+		return m.AddedUIDValidity()
+	case label.FieldUIDNext:
+		return m.AddedUIDNext()
+	}
 	return nil, false
 }
 
@@ -7029,6 +7919,20 @@ func (m *LabelMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *LabelMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case label.FieldUIDValidity:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUIDValidity(v)
+		return nil
+	case label.FieldUIDNext:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUIDNext(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Label numeric field %s", name)
 }
@@ -7061,6 +7965,12 @@ func (m *LabelMutation) ResetField(name string) error {
 		return nil
 	case label.FieldName:
 		m.ResetName()
+		return nil
+	case label.FieldUIDValidity:
+		m.ResetUIDValidity()
+		return nil
+	case label.FieldUIDNext:
+		m.ResetUIDNext()
 		return nil
 	case label.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -7949,13 +8859,19 @@ type MailboxMessageMutation struct {
 	mailbox_id        *string
 	message_id        *string
 	folder_id         *string
+	uid               *uint32
+	adduid            *int32
 	original_rcpt     *string
 	base_rcpt         *string
 	plus_tag          *string
 	resolved_route_id *string
 	read              *bool
 	flagged           *bool
+	answered          *bool
+	draft             *bool
 	imap_deleted      *bool
+	keywords          *[]string
+	appendkeywords    []string
 	created_at        *time.Time
 	updated_at        *time.Time
 	deleted_at        *time.Time
@@ -8175,6 +9091,62 @@ func (m *MailboxMessageMutation) OldFolderID(ctx context.Context) (v string, err
 // ResetFolderID resets all changes to the "folder_id" field.
 func (m *MailboxMessageMutation) ResetFolderID() {
 	m.folder_id = nil
+}
+
+// SetUID sets the "uid" field.
+func (m *MailboxMessageMutation) SetUID(u uint32) {
+	m.uid = &u
+	m.adduid = nil
+}
+
+// UID returns the value of the "uid" field in the mutation.
+func (m *MailboxMessageMutation) UID() (r uint32, exists bool) {
+	v := m.uid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUID returns the old "uid" field's value of the MailboxMessage entity.
+// If the MailboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageMutation) OldUID(ctx context.Context) (v uint32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUID: %w", err)
+	}
+	return oldValue.UID, nil
+}
+
+// AddUID adds u to the "uid" field.
+func (m *MailboxMessageMutation) AddUID(u int32) {
+	if m.adduid != nil {
+		*m.adduid += u
+	} else {
+		m.adduid = &u
+	}
+}
+
+// AddedUID returns the value that was added to the "uid" field in this mutation.
+func (m *MailboxMessageMutation) AddedUID() (r int32, exists bool) {
+	v := m.adduid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUID resets all changes to the "uid" field.
+func (m *MailboxMessageMutation) ResetUID() {
+	m.uid = nil
+	m.adduid = nil
 }
 
 // SetOriginalRcpt sets the "original_rcpt" field.
@@ -8419,6 +9391,78 @@ func (m *MailboxMessageMutation) ResetFlagged() {
 	m.flagged = nil
 }
 
+// SetAnswered sets the "answered" field.
+func (m *MailboxMessageMutation) SetAnswered(b bool) {
+	m.answered = &b
+}
+
+// Answered returns the value of the "answered" field in the mutation.
+func (m *MailboxMessageMutation) Answered() (r bool, exists bool) {
+	v := m.answered
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAnswered returns the old "answered" field's value of the MailboxMessage entity.
+// If the MailboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageMutation) OldAnswered(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAnswered is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAnswered requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAnswered: %w", err)
+	}
+	return oldValue.Answered, nil
+}
+
+// ResetAnswered resets all changes to the "answered" field.
+func (m *MailboxMessageMutation) ResetAnswered() {
+	m.answered = nil
+}
+
+// SetDraft sets the "draft" field.
+func (m *MailboxMessageMutation) SetDraft(b bool) {
+	m.draft = &b
+}
+
+// Draft returns the value of the "draft" field in the mutation.
+func (m *MailboxMessageMutation) Draft() (r bool, exists bool) {
+	v := m.draft
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDraft returns the old "draft" field's value of the MailboxMessage entity.
+// If the MailboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageMutation) OldDraft(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDraft is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDraft requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDraft: %w", err)
+	}
+	return oldValue.Draft, nil
+}
+
+// ResetDraft resets all changes to the "draft" field.
+func (m *MailboxMessageMutation) ResetDraft() {
+	m.draft = nil
+}
+
 // SetImapDeleted sets the "imap_deleted" field.
 func (m *MailboxMessageMutation) SetImapDeleted(b bool) {
 	m.imap_deleted = &b
@@ -8453,6 +9497,71 @@ func (m *MailboxMessageMutation) OldImapDeleted(ctx context.Context) (v bool, er
 // ResetImapDeleted resets all changes to the "imap_deleted" field.
 func (m *MailboxMessageMutation) ResetImapDeleted() {
 	m.imap_deleted = nil
+}
+
+// SetKeywords sets the "keywords" field.
+func (m *MailboxMessageMutation) SetKeywords(s []string) {
+	m.keywords = &s
+	m.appendkeywords = nil
+}
+
+// Keywords returns the value of the "keywords" field in the mutation.
+func (m *MailboxMessageMutation) Keywords() (r []string, exists bool) {
+	v := m.keywords
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKeywords returns the old "keywords" field's value of the MailboxMessage entity.
+// If the MailboxMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageMutation) OldKeywords(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKeywords is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKeywords requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKeywords: %w", err)
+	}
+	return oldValue.Keywords, nil
+}
+
+// AppendKeywords adds s to the "keywords" field.
+func (m *MailboxMessageMutation) AppendKeywords(s []string) {
+	m.appendkeywords = append(m.appendkeywords, s...)
+}
+
+// AppendedKeywords returns the list of values that were appended to the "keywords" field in this mutation.
+func (m *MailboxMessageMutation) AppendedKeywords() ([]string, bool) {
+	if len(m.appendkeywords) == 0 {
+		return nil, false
+	}
+	return m.appendkeywords, true
+}
+
+// ClearKeywords clears the value of the "keywords" field.
+func (m *MailboxMessageMutation) ClearKeywords() {
+	m.keywords = nil
+	m.appendkeywords = nil
+	m.clearedFields[mailboxmessage.FieldKeywords] = struct{}{}
+}
+
+// KeywordsCleared returns if the "keywords" field was cleared in this mutation.
+func (m *MailboxMessageMutation) KeywordsCleared() bool {
+	_, ok := m.clearedFields[mailboxmessage.FieldKeywords]
+	return ok
+}
+
+// ResetKeywords resets all changes to the "keywords" field.
+func (m *MailboxMessageMutation) ResetKeywords() {
+	m.keywords = nil
+	m.appendkeywords = nil
+	delete(m.clearedFields, mailboxmessage.FieldKeywords)
 }
 
 // SetCreatedAt sets the "created_at" field.
@@ -8610,7 +9719,7 @@ func (m *MailboxMessageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MailboxMessageMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 17)
 	if m.mailbox_id != nil {
 		fields = append(fields, mailboxmessage.FieldMailboxID)
 	}
@@ -8619,6 +9728,9 @@ func (m *MailboxMessageMutation) Fields() []string {
 	}
 	if m.folder_id != nil {
 		fields = append(fields, mailboxmessage.FieldFolderID)
+	}
+	if m.uid != nil {
+		fields = append(fields, mailboxmessage.FieldUID)
 	}
 	if m.original_rcpt != nil {
 		fields = append(fields, mailboxmessage.FieldOriginalRcpt)
@@ -8638,8 +9750,17 @@ func (m *MailboxMessageMutation) Fields() []string {
 	if m.flagged != nil {
 		fields = append(fields, mailboxmessage.FieldFlagged)
 	}
+	if m.answered != nil {
+		fields = append(fields, mailboxmessage.FieldAnswered)
+	}
+	if m.draft != nil {
+		fields = append(fields, mailboxmessage.FieldDraft)
+	}
 	if m.imap_deleted != nil {
 		fields = append(fields, mailboxmessage.FieldImapDeleted)
+	}
+	if m.keywords != nil {
+		fields = append(fields, mailboxmessage.FieldKeywords)
 	}
 	if m.created_at != nil {
 		fields = append(fields, mailboxmessage.FieldCreatedAt)
@@ -8664,6 +9785,8 @@ func (m *MailboxMessageMutation) Field(name string) (ent.Value, bool) {
 		return m.MessageID()
 	case mailboxmessage.FieldFolderID:
 		return m.FolderID()
+	case mailboxmessage.FieldUID:
+		return m.UID()
 	case mailboxmessage.FieldOriginalRcpt:
 		return m.OriginalRcpt()
 	case mailboxmessage.FieldBaseRcpt:
@@ -8676,8 +9799,14 @@ func (m *MailboxMessageMutation) Field(name string) (ent.Value, bool) {
 		return m.Read()
 	case mailboxmessage.FieldFlagged:
 		return m.Flagged()
+	case mailboxmessage.FieldAnswered:
+		return m.Answered()
+	case mailboxmessage.FieldDraft:
+		return m.Draft()
 	case mailboxmessage.FieldImapDeleted:
 		return m.ImapDeleted()
+	case mailboxmessage.FieldKeywords:
+		return m.Keywords()
 	case mailboxmessage.FieldCreatedAt:
 		return m.CreatedAt()
 	case mailboxmessage.FieldUpdatedAt:
@@ -8699,6 +9828,8 @@ func (m *MailboxMessageMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldMessageID(ctx)
 	case mailboxmessage.FieldFolderID:
 		return m.OldFolderID(ctx)
+	case mailboxmessage.FieldUID:
+		return m.OldUID(ctx)
 	case mailboxmessage.FieldOriginalRcpt:
 		return m.OldOriginalRcpt(ctx)
 	case mailboxmessage.FieldBaseRcpt:
@@ -8711,8 +9842,14 @@ func (m *MailboxMessageMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldRead(ctx)
 	case mailboxmessage.FieldFlagged:
 		return m.OldFlagged(ctx)
+	case mailboxmessage.FieldAnswered:
+		return m.OldAnswered(ctx)
+	case mailboxmessage.FieldDraft:
+		return m.OldDraft(ctx)
 	case mailboxmessage.FieldImapDeleted:
 		return m.OldImapDeleted(ctx)
+	case mailboxmessage.FieldKeywords:
+		return m.OldKeywords(ctx)
 	case mailboxmessage.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case mailboxmessage.FieldUpdatedAt:
@@ -8748,6 +9885,13 @@ func (m *MailboxMessageMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFolderID(v)
+		return nil
+	case mailboxmessage.FieldUID:
+		v, ok := value.(uint32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUID(v)
 		return nil
 	case mailboxmessage.FieldOriginalRcpt:
 		v, ok := value.(string)
@@ -8791,12 +9935,33 @@ func (m *MailboxMessageMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFlagged(v)
 		return nil
+	case mailboxmessage.FieldAnswered:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAnswered(v)
+		return nil
+	case mailboxmessage.FieldDraft:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDraft(v)
+		return nil
 	case mailboxmessage.FieldImapDeleted:
 		v, ok := value.(bool)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImapDeleted(v)
+		return nil
+	case mailboxmessage.FieldKeywords:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKeywords(v)
 		return nil
 	case mailboxmessage.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -8826,13 +9991,21 @@ func (m *MailboxMessageMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *MailboxMessageMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.adduid != nil {
+		fields = append(fields, mailboxmessage.FieldUID)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *MailboxMessageMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case mailboxmessage.FieldUID:
+		return m.AddedUID()
+	}
 	return nil, false
 }
 
@@ -8841,6 +10014,13 @@ func (m *MailboxMessageMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *MailboxMessageMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case mailboxmessage.FieldUID:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown MailboxMessage numeric field %s", name)
 }
@@ -8854,6 +10034,9 @@ func (m *MailboxMessageMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(mailboxmessage.FieldResolvedRouteID) {
 		fields = append(fields, mailboxmessage.FieldResolvedRouteID)
+	}
+	if m.FieldCleared(mailboxmessage.FieldKeywords) {
+		fields = append(fields, mailboxmessage.FieldKeywords)
 	}
 	if m.FieldCleared(mailboxmessage.FieldDeletedAt) {
 		fields = append(fields, mailboxmessage.FieldDeletedAt)
@@ -8878,6 +10061,9 @@ func (m *MailboxMessageMutation) ClearField(name string) error {
 	case mailboxmessage.FieldResolvedRouteID:
 		m.ClearResolvedRouteID()
 		return nil
+	case mailboxmessage.FieldKeywords:
+		m.ClearKeywords()
+		return nil
 	case mailboxmessage.FieldDeletedAt:
 		m.ClearDeletedAt()
 		return nil
@@ -8898,6 +10084,9 @@ func (m *MailboxMessageMutation) ResetField(name string) error {
 	case mailboxmessage.FieldFolderID:
 		m.ResetFolderID()
 		return nil
+	case mailboxmessage.FieldUID:
+		m.ResetUID()
+		return nil
 	case mailboxmessage.FieldOriginalRcpt:
 		m.ResetOriginalRcpt()
 		return nil
@@ -8916,8 +10105,17 @@ func (m *MailboxMessageMutation) ResetField(name string) error {
 	case mailboxmessage.FieldFlagged:
 		m.ResetFlagged()
 		return nil
+	case mailboxmessage.FieldAnswered:
+		m.ResetAnswered()
+		return nil
+	case mailboxmessage.FieldDraft:
+		m.ResetDraft()
+		return nil
 	case mailboxmessage.FieldImapDeleted:
 		m.ResetImapDeleted()
+		return nil
+	case mailboxmessage.FieldKeywords:
+		m.ResetKeywords()
 		return nil
 	case mailboxmessage.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -8988,6 +10186,8 @@ type MailboxMessageLabelMutation struct {
 	id                 *string
 	mailbox_message_id *string
 	label_id           *string
+	uid                *uint32
+	adduid             *int32
 	created_at         *time.Time
 	clearedFields      map[string]struct{}
 	done               bool
@@ -9171,6 +10371,62 @@ func (m *MailboxMessageLabelMutation) ResetLabelID() {
 	m.label_id = nil
 }
 
+// SetUID sets the "uid" field.
+func (m *MailboxMessageLabelMutation) SetUID(u uint32) {
+	m.uid = &u
+	m.adduid = nil
+}
+
+// UID returns the value of the "uid" field in the mutation.
+func (m *MailboxMessageLabelMutation) UID() (r uint32, exists bool) {
+	v := m.uid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUID returns the old "uid" field's value of the MailboxMessageLabel entity.
+// If the MailboxMessageLabel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMessageLabelMutation) OldUID(ctx context.Context) (v uint32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUID: %w", err)
+	}
+	return oldValue.UID, nil
+}
+
+// AddUID adds u to the "uid" field.
+func (m *MailboxMessageLabelMutation) AddUID(u int32) {
+	if m.adduid != nil {
+		*m.adduid += u
+	} else {
+		m.adduid = &u
+	}
+}
+
+// AddedUID returns the value that was added to the "uid" field in this mutation.
+func (m *MailboxMessageLabelMutation) AddedUID() (r int32, exists bool) {
+	v := m.adduid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUID resets all changes to the "uid" field.
+func (m *MailboxMessageLabelMutation) ResetUID() {
+	m.uid = nil
+	m.adduid = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *MailboxMessageLabelMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -9241,12 +10497,15 @@ func (m *MailboxMessageLabelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MailboxMessageLabelMutation) Fields() []string {
-	fields := make([]string, 0, 3)
+	fields := make([]string, 0, 4)
 	if m.mailbox_message_id != nil {
 		fields = append(fields, mailboxmessagelabel.FieldMailboxMessageID)
 	}
 	if m.label_id != nil {
 		fields = append(fields, mailboxmessagelabel.FieldLabelID)
+	}
+	if m.uid != nil {
+		fields = append(fields, mailboxmessagelabel.FieldUID)
 	}
 	if m.created_at != nil {
 		fields = append(fields, mailboxmessagelabel.FieldCreatedAt)
@@ -9263,6 +10522,8 @@ func (m *MailboxMessageLabelMutation) Field(name string) (ent.Value, bool) {
 		return m.MailboxMessageID()
 	case mailboxmessagelabel.FieldLabelID:
 		return m.LabelID()
+	case mailboxmessagelabel.FieldUID:
+		return m.UID()
 	case mailboxmessagelabel.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -9278,6 +10539,8 @@ func (m *MailboxMessageLabelMutation) OldField(ctx context.Context, name string)
 		return m.OldMailboxMessageID(ctx)
 	case mailboxmessagelabel.FieldLabelID:
 		return m.OldLabelID(ctx)
+	case mailboxmessagelabel.FieldUID:
+		return m.OldUID(ctx)
 	case mailboxmessagelabel.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -9303,6 +10566,13 @@ func (m *MailboxMessageLabelMutation) SetField(name string, value ent.Value) err
 		}
 		m.SetLabelID(v)
 		return nil
+	case mailboxmessagelabel.FieldUID:
+		v, ok := value.(uint32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUID(v)
+		return nil
 	case mailboxmessagelabel.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -9317,13 +10587,21 @@ func (m *MailboxMessageLabelMutation) SetField(name string, value ent.Value) err
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *MailboxMessageLabelMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.adduid != nil {
+		fields = append(fields, mailboxmessagelabel.FieldUID)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *MailboxMessageLabelMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case mailboxmessagelabel.FieldUID:
+		return m.AddedUID()
+	}
 	return nil, false
 }
 
@@ -9332,6 +10610,13 @@ func (m *MailboxMessageLabelMutation) AddedField(name string) (ent.Value, bool) 
 // type.
 func (m *MailboxMessageLabelMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case mailboxmessagelabel.FieldUID:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUID(v)
+		return nil
 	}
 	return fmt.Errorf("unknown MailboxMessageLabel numeric field %s", name)
 }
@@ -9364,6 +10649,9 @@ func (m *MailboxMessageLabelMutation) ResetField(name string) error {
 		return nil
 	case mailboxmessagelabel.FieldLabelID:
 		m.ResetLabelID()
+		return nil
+	case mailboxmessagelabel.FieldUID:
+		m.ResetUID()
 		return nil
 	case mailboxmessagelabel.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -14522,6 +15810,338 @@ func (m *RoutingRuleMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RoutingRuleMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RoutingRule edge %s", name)
+}
+
+// SchemaMigrationMutation represents an operation that mutates the SchemaMigration nodes in the graph.
+type SchemaMigrationMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	applied_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*SchemaMigration, error)
+	predicates    []predicate.SchemaMigration
+}
+
+var _ ent.Mutation = (*SchemaMigrationMutation)(nil)
+
+// schemamigrationOption allows management of the mutation configuration using functional options.
+type schemamigrationOption func(*SchemaMigrationMutation)
+
+// newSchemaMigrationMutation creates new mutation for the SchemaMigration entity.
+func newSchemaMigrationMutation(c config, op Op, opts ...schemamigrationOption) *SchemaMigrationMutation {
+	m := &SchemaMigrationMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSchemaMigration,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSchemaMigrationID sets the ID field of the mutation.
+func withSchemaMigrationID(id string) schemamigrationOption {
+	return func(m *SchemaMigrationMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SchemaMigration
+		)
+		m.oldValue = func(ctx context.Context) (*SchemaMigration, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SchemaMigration.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSchemaMigration sets the old SchemaMigration of the mutation.
+func withSchemaMigration(node *SchemaMigration) schemamigrationOption {
+	return func(m *SchemaMigrationMutation) {
+		m.oldValue = func(context.Context) (*SchemaMigration, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SchemaMigrationMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SchemaMigrationMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SchemaMigration entities.
+func (m *SchemaMigrationMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SchemaMigrationMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SchemaMigrationMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SchemaMigration.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetAppliedAt sets the "applied_at" field.
+func (m *SchemaMigrationMutation) SetAppliedAt(t time.Time) {
+	m.applied_at = &t
+}
+
+// AppliedAt returns the value of the "applied_at" field in the mutation.
+func (m *SchemaMigrationMutation) AppliedAt() (r time.Time, exists bool) {
+	v := m.applied_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAppliedAt returns the old "applied_at" field's value of the SchemaMigration entity.
+// If the SchemaMigration object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SchemaMigrationMutation) OldAppliedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAppliedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAppliedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAppliedAt: %w", err)
+	}
+	return oldValue.AppliedAt, nil
+}
+
+// ResetAppliedAt resets all changes to the "applied_at" field.
+func (m *SchemaMigrationMutation) ResetAppliedAt() {
+	m.applied_at = nil
+}
+
+// Where appends a list predicates to the SchemaMigrationMutation builder.
+func (m *SchemaMigrationMutation) Where(ps ...predicate.SchemaMigration) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SchemaMigrationMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SchemaMigrationMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SchemaMigration, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SchemaMigrationMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SchemaMigrationMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SchemaMigration).
+func (m *SchemaMigrationMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SchemaMigrationMutation) Fields() []string {
+	fields := make([]string, 0, 1)
+	if m.applied_at != nil {
+		fields = append(fields, schemamigration.FieldAppliedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SchemaMigrationMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case schemamigration.FieldAppliedAt:
+		return m.AppliedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SchemaMigrationMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case schemamigration.FieldAppliedAt:
+		return m.OldAppliedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SchemaMigration field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SchemaMigrationMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case schemamigration.FieldAppliedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAppliedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SchemaMigration field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SchemaMigrationMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SchemaMigrationMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SchemaMigrationMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SchemaMigration numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SchemaMigrationMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SchemaMigrationMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SchemaMigrationMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown SchemaMigration nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SchemaMigrationMutation) ResetField(name string) error {
+	switch name {
+	case schemamigration.FieldAppliedAt:
+		m.ResetAppliedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SchemaMigration field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SchemaMigrationMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SchemaMigrationMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SchemaMigrationMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SchemaMigrationMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SchemaMigrationMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SchemaMigrationMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SchemaMigrationMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SchemaMigration unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SchemaMigrationMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SchemaMigration edge %s", name)
 }
 
 // SenderRuleMutation represents an operation that mutates the SenderRule nodes in the graph.

@@ -14,12 +14,17 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 )
 
 type mailboxMessageUpdateRequest struct {
-	Read    *bool `json:"read"`
-	Flagged *bool `json:"flagged"`
+	Read     *bool    `json:"read"`
+	Flagged  *bool    `json:"flagged"`
+	Answered *bool    `json:"answered"`
+	Draft    *bool    `json:"draft"`
+	Keywords []string `json:"keywords"`
 }
 
 type moveMessageRequest struct {
@@ -56,10 +61,17 @@ type messageSearch struct {
 
 func (h *Handler) listMessages(c fiber.Ctx) error {
 	limit := requestLimit(c)
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
 	query := h.client.MailboxMessage.Query().
 		Where(mailboxmessage.MailboxIDEQ(c.Params("mailbox_id")), mailboxmessage.DeletedAtIsNil()).
-		Order(mailboxmessage.ByCreatedAt(entsql.OrderDesc())).
-		Limit(limit)
+		Order(mailboxmessage.ByCreatedAt(entsql.OrderDesc()), mailboxmessage.ByID(entsql.OrderDesc())).
+		Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.MailboxMessage](mailboxmessage.FieldCreatedAt, mailboxmessage.FieldID, cur))
+	}
 
 	if folderID := c.Query("folder_id"); folderID != "" {
 		query.Where(mailboxmessage.FolderIDEQ(folderID))
@@ -95,11 +107,12 @@ func (h *Handler) listMessages(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "message_list_failed", "Failed to list messages")
 	}
-	responses, err := h.mailboxMessageResponses(c, items)
+	page, next := nextCursor(items, limit, func(item *ent.MailboxMessage) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	responses, err := h.mailboxMessageResponses(c, page)
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "message_load_failed", "Failed to load messages")
 	}
-	return list(c, responses, limit, "")
+	return list(c, responses, limit, next)
 }
 
 func (h *Handler) getMessage(c fiber.Ctx) error {
@@ -161,18 +174,31 @@ func (h *Handler) updateMailboxMessage(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
-	update := h.client.MailboxMessage.UpdateOneID(c.Params("id"))
+	item, err := h.client.MailboxMessage.Get(c.Context(), c.Params("id"))
+	if err != nil {
+		return entProblem(c, err, "message_not_found", "Message not found")
+	}
+	flags := mailstore.FlagsOf(item)
 	if req.Read != nil {
-		update.SetRead(*req.Read)
+		flags.Seen = *req.Read
 	}
 	if req.Flagged != nil {
-		update.SetFlagged(*req.Flagged)
+		flags.Flagged = *req.Flagged
 	}
-	item, err := update.Save(c.Context())
+	if req.Answered != nil {
+		flags.Answered = *req.Answered
+	}
+	if req.Draft != nil {
+		flags.Draft = *req.Draft
+	}
+	if req.Keywords != nil {
+		flags.Keywords = req.Keywords
+	}
+	updated, err := h.mail.SetFlags(c.Context(), item, flags)
 	if err != nil {
 		return entProblem(c, err, "message_update_failed", "Failed to update message")
 	}
-	return data(c, item)
+	return data(c, updated)
 }
 
 func (h *Handler) messageForMailboxMessage(c fiber.Ctx) (*ent.Message, error) {
@@ -206,7 +232,7 @@ func (h *Handler) moveMessage(c fiber.Ctx) error {
 	if folder.MailboxID != item.MailboxID {
 		return problem(c, fiber.StatusBadRequest, "folder_mailbox_mismatch", "Folder does not belong to message mailbox")
 	}
-	item, err = h.client.MailboxMessage.UpdateOneID(item.ID).SetFolderID(req.FolderID).ClearDeletedAt().Save(c.Context())
+	item, err = h.mail.Move(c.Context(), item, req.FolderID)
 	if err != nil {
 		return entProblem(c, err, "message_move_failed", "Failed to move message")
 	}
@@ -233,9 +259,16 @@ func (h *Handler) restoreMessage(c fiber.Ctx) error {
 }
 
 func (h *Handler) permanentlyDeleteMessage(c fiber.Ctx) error {
-	item, err := h.client.MailboxMessage.UpdateOneID(c.Params("id")).SetDeletedAt(time.Now()).Save(c.Context())
+	item, err := h.client.MailboxMessage.Get(c.Context(), c.Params("id"))
 	if err != nil {
+		return entProblem(c, err, "message_not_found", "Message not found")
+	}
+	if err := h.mail.SoftDelete(c.Context(), item); err != nil {
 		return entProblem(c, err, "message_delete_failed", "Failed to permanently delete message")
+	}
+	item, err = h.client.MailboxMessage.Get(c.Context(), item.ID)
+	if err != nil {
+		return entProblem(c, err, "message_not_found", "Message not found")
 	}
 	return data(c, item)
 }
@@ -259,7 +292,7 @@ func (h *Handler) addMessageLabel(c fiber.Ctx) error {
 	if label.MailboxID != item.MailboxID {
 		return problem(c, fiber.StatusBadRequest, "label_mailbox_mismatch", "Label does not belong to message mailbox")
 	}
-	link, err := h.client.MailboxMessageLabel.Create().SetMailboxMessageID(item.ID).SetLabelID(req.LabelID).Save(c.Context())
+	link, err := h.mail.AddLabel(c.Context(), item, req.LabelID)
 	if err != nil {
 		return entProblem(c, err, "message_label_failed", "Failed to add message label")
 	}
@@ -267,11 +300,11 @@ func (h *Handler) addMessageLabel(c fiber.Ctx) error {
 }
 
 func (h *Handler) removeMessageLabel(c fiber.Ctx) error {
-	_, err := h.client.MailboxMessageLabel.Delete().Where(
-		mailboxmessagelabel.MailboxMessageIDEQ(c.Params("id")),
-		mailboxmessagelabel.LabelIDEQ(c.Params("label_id")),
-	).Exec(c.Context())
+	item, err := h.client.MailboxMessage.Get(c.Context(), c.Params("id"))
 	if err != nil {
+		return entProblem(c, err, "message_not_found", "Message not found")
+	}
+	if err := h.mail.RemoveLabel(c.Context(), item, c.Params("label_id")); err != nil {
 		return problem(c, fiber.StatusInternalServerError, "message_label_remove_failed", "Failed to remove message label")
 	}
 	return empty(c)
@@ -282,11 +315,11 @@ func (h *Handler) moveToSystemFolder(c fiber.Ctx, name string) (*ent.MailboxMess
 	if err != nil {
 		return nil, entProblem(c, err, "message_not_found", "Message not found")
 	}
-	folder, err := h.client.Folder.Query().Where(folder.MailboxIDEQ(item.MailboxID), folder.NameEQ(name)).Only(c.Context())
+	moved, err := h.mail.MoveToFolderName(c.Context(), item, name)
 	if err != nil {
 		return nil, entProblem(c, err, "folder_not_found", "Folder not found")
 	}
-	return h.client.MailboxMessage.UpdateOneID(item.ID).SetFolderID(folder.ID).ClearDeletedAt().Save(c.Context())
+	return moved, nil
 }
 
 func (h *Handler) mailboxMessageResponses(c fiber.Ctx, items []*ent.MailboxMessage) ([]mailboxMessageResponse, error) {

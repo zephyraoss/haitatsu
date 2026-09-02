@@ -17,6 +17,8 @@ const (
 	FieldMailboxMessageID = "mailbox_message_id"
 	// FieldLabelID holds the string denoting the label_id field in the database.
 	FieldLabelID = "label_id"
+	// FieldUID holds the string denoting the uid field in the database.
+	FieldUID = "uid"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// Table holds the table name of the mailboxmessagelabel in the database.
@@ -28,6 +30,7 @@ var Columns = []string{
 	FieldID,
 	FieldMailboxMessageID,
 	FieldLabelID,
+	FieldUID,
 	FieldCreatedAt,
 }
 
@@ -42,6 +45,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultUID holds the default value on creation for the "uid" field.
+	DefaultUID uint32
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -64,6 +69,11 @@ func ByMailboxMessageID(opts ...sql.OrderTermOption) OrderOption {
 // ByLabelID orders the results by the label_id field.
 func ByLabelID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLabelID, opts...).ToFunc()
+}
+
+// ByUID orders the results by the uid field.
+func ByUID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

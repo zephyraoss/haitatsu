@@ -45,7 +45,7 @@ func (h *Handler) checkMX(domain string) dnsCheck {
 		return dnsCheck{Name: "mx", Status: "missing", Message: "No MX records found"}
 	}
 	for _, record := range mx {
-		if strings.TrimSuffix(strings.ToLower(record.Host), ".") == strings.ToLower(h.config.Server.PublicHostname) {
+		if strings.TrimSuffix(strings.ToLower(record.Host), ".") == strings.ToLower(h.config.Get().Server.PublicHostname) {
 			return dnsCheck{Name: "mx", Status: "ok", Message: "MX points to configured inbound host"}
 		}
 	}

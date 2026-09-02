@@ -15,6 +15,7 @@ func (MailboxMessageLabel) Fields() []ent.Field {
 		ulidField(),
 		field.String("mailbox_message_id"),
 		field.String("label_id"),
+		field.Uint32("uid").Default(0),
 		createdAtField(),
 	}
 }
@@ -22,6 +23,7 @@ func (MailboxMessageLabel) Fields() []ent.Field {
 func (MailboxMessageLabel) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("mailbox_message_id", "label_id").Unique(),
+		index.Fields("label_id", "uid"),
 		index.Fields("label_id"),
 	}
 }

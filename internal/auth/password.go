@@ -113,3 +113,12 @@ func parseParams(value string) (hashParams, error) {
 	}
 	return params, nil
 }
+
+func HasScope(scopes []string, expected string) bool {
+	for _, scope := range scopes {
+		if scope == expected {
+			return true
+		}
+	}
+	return false
+}

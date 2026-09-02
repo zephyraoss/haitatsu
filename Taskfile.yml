@@ -18,6 +18,17 @@ tasks:
     cmds:
       - go build -o {{.BIN}} ./cmd/haitatsu
 
+  test:
+    desc: Run unit and integration tests
+    cmds:
+      - go test -race ./...
+
+  generate:
+    desc: Regenerate ent code from schema
+    dir: internal/database/ent
+    cmds:
+      - go generate ./...
+
   build:linux:
     desc: Build Linux amd64 executable
     env:

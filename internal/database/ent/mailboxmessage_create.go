@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
@@ -18,6 +20,7 @@ type MailboxMessageCreate struct {
 	config
 	mutation *MailboxMessageMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetMailboxID sets the "mailbox_id" field.
@@ -35,6 +38,20 @@ func (_c *MailboxMessageCreate) SetMessageID(v string) *MailboxMessageCreate {
 // SetFolderID sets the "folder_id" field.
 func (_c *MailboxMessageCreate) SetFolderID(v string) *MailboxMessageCreate {
 	_c.mutation.SetFolderID(v)
+	return _c
+}
+
+// SetUID sets the "uid" field.
+func (_c *MailboxMessageCreate) SetUID(v uint32) *MailboxMessageCreate {
+	_c.mutation.SetUID(v)
+	return _c
+}
+
+// SetNillableUID sets the "uid" field if the given value is not nil.
+func (_c *MailboxMessageCreate) SetNillableUID(v *uint32) *MailboxMessageCreate {
+	if v != nil {
+		_c.SetUID(*v)
+	}
 	return _c
 }
 
@@ -106,6 +123,34 @@ func (_c *MailboxMessageCreate) SetNillableFlagged(v *bool) *MailboxMessageCreat
 	return _c
 }
 
+// SetAnswered sets the "answered" field.
+func (_c *MailboxMessageCreate) SetAnswered(v bool) *MailboxMessageCreate {
+	_c.mutation.SetAnswered(v)
+	return _c
+}
+
+// SetNillableAnswered sets the "answered" field if the given value is not nil.
+func (_c *MailboxMessageCreate) SetNillableAnswered(v *bool) *MailboxMessageCreate {
+	if v != nil {
+		_c.SetAnswered(*v)
+	}
+	return _c
+}
+
+// SetDraft sets the "draft" field.
+func (_c *MailboxMessageCreate) SetDraft(v bool) *MailboxMessageCreate {
+	_c.mutation.SetDraft(v)
+	return _c
+}
+
+// SetNillableDraft sets the "draft" field if the given value is not nil.
+func (_c *MailboxMessageCreate) SetNillableDraft(v *bool) *MailboxMessageCreate {
+	if v != nil {
+		_c.SetDraft(*v)
+	}
+	return _c
+}
+
 // SetImapDeleted sets the "imap_deleted" field.
 func (_c *MailboxMessageCreate) SetImapDeleted(v bool) *MailboxMessageCreate {
 	_c.mutation.SetImapDeleted(v)
@@ -117,6 +162,12 @@ func (_c *MailboxMessageCreate) SetNillableImapDeleted(v *bool) *MailboxMessageC
 	if v != nil {
 		_c.SetImapDeleted(*v)
 	}
+	return _c
+}
+
+// SetKeywords sets the "keywords" field.
+func (_c *MailboxMessageCreate) SetKeywords(v []string) *MailboxMessageCreate {
+	_c.mutation.SetKeywords(v)
 	return _c
 }
 
@@ -211,6 +262,10 @@ func (_c *MailboxMessageCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *MailboxMessageCreate) defaults() {
+	if _, ok := _c.mutation.UID(); !ok {
+		v := mailboxmessage.DefaultUID
+		_c.mutation.SetUID(v)
+	}
 	if _, ok := _c.mutation.Read(); !ok {
 		v := mailboxmessage.DefaultRead
 		_c.mutation.SetRead(v)
@@ -218,6 +273,14 @@ func (_c *MailboxMessageCreate) defaults() {
 	if _, ok := _c.mutation.Flagged(); !ok {
 		v := mailboxmessage.DefaultFlagged
 		_c.mutation.SetFlagged(v)
+	}
+	if _, ok := _c.mutation.Answered(); !ok {
+		v := mailboxmessage.DefaultAnswered
+		_c.mutation.SetAnswered(v)
+	}
+	if _, ok := _c.mutation.Draft(); !ok {
+		v := mailboxmessage.DefaultDraft
+		_c.mutation.SetDraft(v)
 	}
 	if _, ok := _c.mutation.ImapDeleted(); !ok {
 		v := mailboxmessage.DefaultImapDeleted
@@ -248,6 +311,9 @@ func (_c *MailboxMessageCreate) check() error {
 	if _, ok := _c.mutation.FolderID(); !ok {
 		return &ValidationError{Name: "folder_id", err: errors.New(`ent: missing required field "MailboxMessage.folder_id"`)}
 	}
+	if _, ok := _c.mutation.UID(); !ok {
+		return &ValidationError{Name: "uid", err: errors.New(`ent: missing required field "MailboxMessage.uid"`)}
+	}
 	if _, ok := _c.mutation.OriginalRcpt(); !ok {
 		return &ValidationError{Name: "original_rcpt", err: errors.New(`ent: missing required field "MailboxMessage.original_rcpt"`)}
 	}
@@ -259,6 +325,12 @@ func (_c *MailboxMessageCreate) check() error {
 	}
 	if _, ok := _c.mutation.Flagged(); !ok {
 		return &ValidationError{Name: "flagged", err: errors.New(`ent: missing required field "MailboxMessage.flagged"`)}
+	}
+	if _, ok := _c.mutation.Answered(); !ok {
+		return &ValidationError{Name: "answered", err: errors.New(`ent: missing required field "MailboxMessage.answered"`)}
+	}
+	if _, ok := _c.mutation.Draft(); !ok {
+		return &ValidationError{Name: "draft", err: errors.New(`ent: missing required field "MailboxMessage.draft"`)}
 	}
 	if _, ok := _c.mutation.ImapDeleted(); !ok {
 		return &ValidationError{Name: "imap_deleted", err: errors.New(`ent: missing required field "MailboxMessage.imap_deleted"`)}
@@ -300,6 +372,7 @@ func (_c *MailboxMessageCreate) createSpec() (*MailboxMessage, *sqlgraph.CreateS
 		_node = &MailboxMessage{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(mailboxmessage.Table, sqlgraph.NewFieldSpec(mailboxmessage.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -315,6 +388,10 @@ func (_c *MailboxMessageCreate) createSpec() (*MailboxMessage, *sqlgraph.CreateS
 	if value, ok := _c.mutation.FolderID(); ok {
 		_spec.SetField(mailboxmessage.FieldFolderID, field.TypeString, value)
 		_node.FolderID = value
+	}
+	if value, ok := _c.mutation.UID(); ok {
+		_spec.SetField(mailboxmessage.FieldUID, field.TypeUint32, value)
+		_node.UID = value
 	}
 	if value, ok := _c.mutation.OriginalRcpt(); ok {
 		_spec.SetField(mailboxmessage.FieldOriginalRcpt, field.TypeString, value)
@@ -340,9 +417,21 @@ func (_c *MailboxMessageCreate) createSpec() (*MailboxMessage, *sqlgraph.CreateS
 		_spec.SetField(mailboxmessage.FieldFlagged, field.TypeBool, value)
 		_node.Flagged = value
 	}
+	if value, ok := _c.mutation.Answered(); ok {
+		_spec.SetField(mailboxmessage.FieldAnswered, field.TypeBool, value)
+		_node.Answered = value
+	}
+	if value, ok := _c.mutation.Draft(); ok {
+		_spec.SetField(mailboxmessage.FieldDraft, field.TypeBool, value)
+		_node.Draft = value
+	}
 	if value, ok := _c.mutation.ImapDeleted(); ok {
 		_spec.SetField(mailboxmessage.FieldImapDeleted, field.TypeBool, value)
 		_node.ImapDeleted = value
+	}
+	if value, ok := _c.mutation.Keywords(); ok {
+		_spec.SetField(mailboxmessage.FieldKeywords, field.TypeJSON, value)
+		_node.Keywords = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(mailboxmessage.FieldCreatedAt, field.TypeTime, value)
@@ -359,11 +448,631 @@ func (_c *MailboxMessageCreate) createSpec() (*MailboxMessage, *sqlgraph.CreateS
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.MailboxMessage.Create().
+//		SetMailboxID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MailboxMessageUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MailboxMessageCreate) OnConflict(opts ...sql.ConflictOption) *MailboxMessageUpsertOne {
+	_c.conflict = opts
+	return &MailboxMessageUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.MailboxMessage.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MailboxMessageCreate) OnConflictColumns(columns ...string) *MailboxMessageUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MailboxMessageUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// MailboxMessageUpsertOne is the builder for "upsert"-ing
+	//  one MailboxMessage node.
+	MailboxMessageUpsertOne struct {
+		create *MailboxMessageCreate
+	}
+
+	// MailboxMessageUpsert is the "OnConflict" setter.
+	MailboxMessageUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *MailboxMessageUpsert) SetMailboxID(v string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateMailboxID() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldMailboxID)
+	return u
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *MailboxMessageUpsert) SetMessageID(v string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldMessageID, v)
+	return u
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateMessageID() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldMessageID)
+	return u
+}
+
+// SetFolderID sets the "folder_id" field.
+func (u *MailboxMessageUpsert) SetFolderID(v string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldFolderID, v)
+	return u
+}
+
+// UpdateFolderID sets the "folder_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateFolderID() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldFolderID)
+	return u
+}
+
+// SetUID sets the "uid" field.
+func (u *MailboxMessageUpsert) SetUID(v uint32) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldUID, v)
+	return u
+}
+
+// UpdateUID sets the "uid" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateUID() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldUID)
+	return u
+}
+
+// AddUID adds v to the "uid" field.
+func (u *MailboxMessageUpsert) AddUID(v uint32) *MailboxMessageUpsert {
+	u.Add(mailboxmessage.FieldUID, v)
+	return u
+}
+
+// SetOriginalRcpt sets the "original_rcpt" field.
+func (u *MailboxMessageUpsert) SetOriginalRcpt(v string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldOriginalRcpt, v)
+	return u
+}
+
+// UpdateOriginalRcpt sets the "original_rcpt" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateOriginalRcpt() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldOriginalRcpt)
+	return u
+}
+
+// SetBaseRcpt sets the "base_rcpt" field.
+func (u *MailboxMessageUpsert) SetBaseRcpt(v string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldBaseRcpt, v)
+	return u
+}
+
+// UpdateBaseRcpt sets the "base_rcpt" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateBaseRcpt() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldBaseRcpt)
+	return u
+}
+
+// SetPlusTag sets the "plus_tag" field.
+func (u *MailboxMessageUpsert) SetPlusTag(v string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldPlusTag, v)
+	return u
+}
+
+// UpdatePlusTag sets the "plus_tag" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdatePlusTag() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldPlusTag)
+	return u
+}
+
+// ClearPlusTag clears the value of the "plus_tag" field.
+func (u *MailboxMessageUpsert) ClearPlusTag() *MailboxMessageUpsert {
+	u.SetNull(mailboxmessage.FieldPlusTag)
+	return u
+}
+
+// SetResolvedRouteID sets the "resolved_route_id" field.
+func (u *MailboxMessageUpsert) SetResolvedRouteID(v string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldResolvedRouteID, v)
+	return u
+}
+
+// UpdateResolvedRouteID sets the "resolved_route_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateResolvedRouteID() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldResolvedRouteID)
+	return u
+}
+
+// ClearResolvedRouteID clears the value of the "resolved_route_id" field.
+func (u *MailboxMessageUpsert) ClearResolvedRouteID() *MailboxMessageUpsert {
+	u.SetNull(mailboxmessage.FieldResolvedRouteID)
+	return u
+}
+
+// SetRead sets the "read" field.
+func (u *MailboxMessageUpsert) SetRead(v bool) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldRead, v)
+	return u
+}
+
+// UpdateRead sets the "read" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateRead() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldRead)
+	return u
+}
+
+// SetFlagged sets the "flagged" field.
+func (u *MailboxMessageUpsert) SetFlagged(v bool) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldFlagged, v)
+	return u
+}
+
+// UpdateFlagged sets the "flagged" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateFlagged() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldFlagged)
+	return u
+}
+
+// SetAnswered sets the "answered" field.
+func (u *MailboxMessageUpsert) SetAnswered(v bool) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldAnswered, v)
+	return u
+}
+
+// UpdateAnswered sets the "answered" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateAnswered() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldAnswered)
+	return u
+}
+
+// SetDraft sets the "draft" field.
+func (u *MailboxMessageUpsert) SetDraft(v bool) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldDraft, v)
+	return u
+}
+
+// UpdateDraft sets the "draft" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateDraft() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldDraft)
+	return u
+}
+
+// SetImapDeleted sets the "imap_deleted" field.
+func (u *MailboxMessageUpsert) SetImapDeleted(v bool) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldImapDeleted, v)
+	return u
+}
+
+// UpdateImapDeleted sets the "imap_deleted" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateImapDeleted() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldImapDeleted)
+	return u
+}
+
+// SetKeywords sets the "keywords" field.
+func (u *MailboxMessageUpsert) SetKeywords(v []string) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldKeywords, v)
+	return u
+}
+
+// UpdateKeywords sets the "keywords" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateKeywords() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldKeywords)
+	return u
+}
+
+// ClearKeywords clears the value of the "keywords" field.
+func (u *MailboxMessageUpsert) ClearKeywords() *MailboxMessageUpsert {
+	u.SetNull(mailboxmessage.FieldKeywords)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MailboxMessageUpsert) SetUpdatedAt(v time.Time) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateUpdatedAt() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldUpdatedAt)
+	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MailboxMessageUpsert) SetDeletedAt(v time.Time) *MailboxMessageUpsert {
+	u.Set(mailboxmessage.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MailboxMessageUpsert) UpdateDeletedAt() *MailboxMessageUpsert {
+	u.SetExcluded(mailboxmessage.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MailboxMessageUpsert) ClearDeletedAt() *MailboxMessageUpsert {
+	u.SetNull(mailboxmessage.FieldDeletedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.MailboxMessage.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(mailboxmessage.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *MailboxMessageUpsertOne) UpdateNewValues() *MailboxMessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(mailboxmessage.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(mailboxmessage.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.MailboxMessage.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *MailboxMessageUpsertOne) Ignore() *MailboxMessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MailboxMessageUpsertOne) DoNothing() *MailboxMessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MailboxMessageCreate.OnConflict
+// documentation for more info.
+func (u *MailboxMessageUpsertOne) Update(set func(*MailboxMessageUpsert)) *MailboxMessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MailboxMessageUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *MailboxMessageUpsertOne) SetMailboxID(v string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateMailboxID() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *MailboxMessageUpsertOne) SetMessageID(v string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateMessageID() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// SetFolderID sets the "folder_id" field.
+func (u *MailboxMessageUpsertOne) SetFolderID(v string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetFolderID(v)
+	})
+}
+
+// UpdateFolderID sets the "folder_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateFolderID() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateFolderID()
+	})
+}
+
+// SetUID sets the "uid" field.
+func (u *MailboxMessageUpsertOne) SetUID(v uint32) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetUID(v)
+	})
+}
+
+// AddUID adds v to the "uid" field.
+func (u *MailboxMessageUpsertOne) AddUID(v uint32) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.AddUID(v)
+	})
+}
+
+// UpdateUID sets the "uid" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateUID() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateUID()
+	})
+}
+
+// SetOriginalRcpt sets the "original_rcpt" field.
+func (u *MailboxMessageUpsertOne) SetOriginalRcpt(v string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetOriginalRcpt(v)
+	})
+}
+
+// UpdateOriginalRcpt sets the "original_rcpt" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateOriginalRcpt() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateOriginalRcpt()
+	})
+}
+
+// SetBaseRcpt sets the "base_rcpt" field.
+func (u *MailboxMessageUpsertOne) SetBaseRcpt(v string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetBaseRcpt(v)
+	})
+}
+
+// UpdateBaseRcpt sets the "base_rcpt" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateBaseRcpt() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateBaseRcpt()
+	})
+}
+
+// SetPlusTag sets the "plus_tag" field.
+func (u *MailboxMessageUpsertOne) SetPlusTag(v string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetPlusTag(v)
+	})
+}
+
+// UpdatePlusTag sets the "plus_tag" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdatePlusTag() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdatePlusTag()
+	})
+}
+
+// ClearPlusTag clears the value of the "plus_tag" field.
+func (u *MailboxMessageUpsertOne) ClearPlusTag() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearPlusTag()
+	})
+}
+
+// SetResolvedRouteID sets the "resolved_route_id" field.
+func (u *MailboxMessageUpsertOne) SetResolvedRouteID(v string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetResolvedRouteID(v)
+	})
+}
+
+// UpdateResolvedRouteID sets the "resolved_route_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateResolvedRouteID() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateResolvedRouteID()
+	})
+}
+
+// ClearResolvedRouteID clears the value of the "resolved_route_id" field.
+func (u *MailboxMessageUpsertOne) ClearResolvedRouteID() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearResolvedRouteID()
+	})
+}
+
+// SetRead sets the "read" field.
+func (u *MailboxMessageUpsertOne) SetRead(v bool) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetRead(v)
+	})
+}
+
+// UpdateRead sets the "read" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateRead() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateRead()
+	})
+}
+
+// SetFlagged sets the "flagged" field.
+func (u *MailboxMessageUpsertOne) SetFlagged(v bool) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetFlagged(v)
+	})
+}
+
+// UpdateFlagged sets the "flagged" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateFlagged() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateFlagged()
+	})
+}
+
+// SetAnswered sets the "answered" field.
+func (u *MailboxMessageUpsertOne) SetAnswered(v bool) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetAnswered(v)
+	})
+}
+
+// UpdateAnswered sets the "answered" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateAnswered() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateAnswered()
+	})
+}
+
+// SetDraft sets the "draft" field.
+func (u *MailboxMessageUpsertOne) SetDraft(v bool) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetDraft(v)
+	})
+}
+
+// UpdateDraft sets the "draft" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateDraft() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateDraft()
+	})
+}
+
+// SetImapDeleted sets the "imap_deleted" field.
+func (u *MailboxMessageUpsertOne) SetImapDeleted(v bool) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetImapDeleted(v)
+	})
+}
+
+// UpdateImapDeleted sets the "imap_deleted" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateImapDeleted() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateImapDeleted()
+	})
+}
+
+// SetKeywords sets the "keywords" field.
+func (u *MailboxMessageUpsertOne) SetKeywords(v []string) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetKeywords(v)
+	})
+}
+
+// UpdateKeywords sets the "keywords" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateKeywords() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateKeywords()
+	})
+}
+
+// ClearKeywords clears the value of the "keywords" field.
+func (u *MailboxMessageUpsertOne) ClearKeywords() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearKeywords()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MailboxMessageUpsertOne) SetUpdatedAt(v time.Time) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateUpdatedAt() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MailboxMessageUpsertOne) SetDeletedAt(v time.Time) *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MailboxMessageUpsertOne) UpdateDeletedAt() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MailboxMessageUpsertOne) ClearDeletedAt() *MailboxMessageUpsertOne {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MailboxMessageUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MailboxMessageCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MailboxMessageUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *MailboxMessageUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: MailboxMessageUpsertOne.ID is not supported by MySQL driver. Use MailboxMessageUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *MailboxMessageUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // MailboxMessageCreateBulk is the builder for creating many MailboxMessage entities in bulk.
 type MailboxMessageCreateBulk struct {
 	config
 	err      error
 	builders []*MailboxMessageCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the MailboxMessage entities in the database.
@@ -393,6 +1102,7 @@ func (_c *MailboxMessageCreateBulk) Save(ctx context.Context) ([]*MailboxMessage
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -439,6 +1149,382 @@ func (_c *MailboxMessageCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *MailboxMessageCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.MailboxMessage.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MailboxMessageUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MailboxMessageCreateBulk) OnConflict(opts ...sql.ConflictOption) *MailboxMessageUpsertBulk {
+	_c.conflict = opts
+	return &MailboxMessageUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.MailboxMessage.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MailboxMessageCreateBulk) OnConflictColumns(columns ...string) *MailboxMessageUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MailboxMessageUpsertBulk{
+		create: _c,
+	}
+}
+
+// MailboxMessageUpsertBulk is the builder for "upsert"-ing
+// a bulk of MailboxMessage nodes.
+type MailboxMessageUpsertBulk struct {
+	create *MailboxMessageCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.MailboxMessage.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(mailboxmessage.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *MailboxMessageUpsertBulk) UpdateNewValues() *MailboxMessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(mailboxmessage.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(mailboxmessage.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.MailboxMessage.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *MailboxMessageUpsertBulk) Ignore() *MailboxMessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MailboxMessageUpsertBulk) DoNothing() *MailboxMessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MailboxMessageCreateBulk.OnConflict
+// documentation for more info.
+func (u *MailboxMessageUpsertBulk) Update(set func(*MailboxMessageUpsert)) *MailboxMessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MailboxMessageUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *MailboxMessageUpsertBulk) SetMailboxID(v string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateMailboxID() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *MailboxMessageUpsertBulk) SetMessageID(v string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateMessageID() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// SetFolderID sets the "folder_id" field.
+func (u *MailboxMessageUpsertBulk) SetFolderID(v string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetFolderID(v)
+	})
+}
+
+// UpdateFolderID sets the "folder_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateFolderID() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateFolderID()
+	})
+}
+
+// SetUID sets the "uid" field.
+func (u *MailboxMessageUpsertBulk) SetUID(v uint32) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetUID(v)
+	})
+}
+
+// AddUID adds v to the "uid" field.
+func (u *MailboxMessageUpsertBulk) AddUID(v uint32) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.AddUID(v)
+	})
+}
+
+// UpdateUID sets the "uid" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateUID() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateUID()
+	})
+}
+
+// SetOriginalRcpt sets the "original_rcpt" field.
+func (u *MailboxMessageUpsertBulk) SetOriginalRcpt(v string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetOriginalRcpt(v)
+	})
+}
+
+// UpdateOriginalRcpt sets the "original_rcpt" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateOriginalRcpt() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateOriginalRcpt()
+	})
+}
+
+// SetBaseRcpt sets the "base_rcpt" field.
+func (u *MailboxMessageUpsertBulk) SetBaseRcpt(v string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetBaseRcpt(v)
+	})
+}
+
+// UpdateBaseRcpt sets the "base_rcpt" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateBaseRcpt() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateBaseRcpt()
+	})
+}
+
+// SetPlusTag sets the "plus_tag" field.
+func (u *MailboxMessageUpsertBulk) SetPlusTag(v string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetPlusTag(v)
+	})
+}
+
+// UpdatePlusTag sets the "plus_tag" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdatePlusTag() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdatePlusTag()
+	})
+}
+
+// ClearPlusTag clears the value of the "plus_tag" field.
+func (u *MailboxMessageUpsertBulk) ClearPlusTag() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearPlusTag()
+	})
+}
+
+// SetResolvedRouteID sets the "resolved_route_id" field.
+func (u *MailboxMessageUpsertBulk) SetResolvedRouteID(v string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetResolvedRouteID(v)
+	})
+}
+
+// UpdateResolvedRouteID sets the "resolved_route_id" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateResolvedRouteID() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateResolvedRouteID()
+	})
+}
+
+// ClearResolvedRouteID clears the value of the "resolved_route_id" field.
+func (u *MailboxMessageUpsertBulk) ClearResolvedRouteID() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearResolvedRouteID()
+	})
+}
+
+// SetRead sets the "read" field.
+func (u *MailboxMessageUpsertBulk) SetRead(v bool) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetRead(v)
+	})
+}
+
+// UpdateRead sets the "read" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateRead() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateRead()
+	})
+}
+
+// SetFlagged sets the "flagged" field.
+func (u *MailboxMessageUpsertBulk) SetFlagged(v bool) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetFlagged(v)
+	})
+}
+
+// UpdateFlagged sets the "flagged" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateFlagged() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateFlagged()
+	})
+}
+
+// SetAnswered sets the "answered" field.
+func (u *MailboxMessageUpsertBulk) SetAnswered(v bool) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetAnswered(v)
+	})
+}
+
+// UpdateAnswered sets the "answered" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateAnswered() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateAnswered()
+	})
+}
+
+// SetDraft sets the "draft" field.
+func (u *MailboxMessageUpsertBulk) SetDraft(v bool) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetDraft(v)
+	})
+}
+
+// UpdateDraft sets the "draft" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateDraft() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateDraft()
+	})
+}
+
+// SetImapDeleted sets the "imap_deleted" field.
+func (u *MailboxMessageUpsertBulk) SetImapDeleted(v bool) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetImapDeleted(v)
+	})
+}
+
+// UpdateImapDeleted sets the "imap_deleted" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateImapDeleted() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateImapDeleted()
+	})
+}
+
+// SetKeywords sets the "keywords" field.
+func (u *MailboxMessageUpsertBulk) SetKeywords(v []string) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetKeywords(v)
+	})
+}
+
+// UpdateKeywords sets the "keywords" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateKeywords() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateKeywords()
+	})
+}
+
+// ClearKeywords clears the value of the "keywords" field.
+func (u *MailboxMessageUpsertBulk) ClearKeywords() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearKeywords()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MailboxMessageUpsertBulk) SetUpdatedAt(v time.Time) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateUpdatedAt() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MailboxMessageUpsertBulk) SetDeletedAt(v time.Time) *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MailboxMessageUpsertBulk) UpdateDeletedAt() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MailboxMessageUpsertBulk) ClearDeletedAt() *MailboxMessageUpsertBulk {
+	return u.Update(func(s *MailboxMessageUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MailboxMessageUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the MailboxMessageCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MailboxMessageCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MailboxMessageUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

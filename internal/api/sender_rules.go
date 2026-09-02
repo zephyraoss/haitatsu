@@ -3,8 +3,11 @@ package api
 import (
 	"strings"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
 )
 
@@ -19,7 +22,14 @@ type senderRuleRequest struct {
 
 func (h *Handler) listSenderRules(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	query := h.client.SenderRule.Query().Limit(limit)
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.SenderRule.Query().Order(senderrule.ByCreatedAt(entsql.OrderDesc()), senderrule.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.SenderRule](senderrule.FieldCreatedAt, senderrule.FieldID, cur))
+	}
 	if scope := c.Query("scope"); scope != "" {
 		query.Where(senderrule.ScopeEQ(scope))
 	}
@@ -30,7 +40,8 @@ func (h *Handler) listSenderRules(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "sender_rule_list_failed", "Failed to list sender rules")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.SenderRule) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }
 
 func (h *Handler) createSenderRule(c fiber.Ctx) error {

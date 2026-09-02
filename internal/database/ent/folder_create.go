@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -18,6 +20,7 @@ type FolderCreate struct {
 	config
 	mutation *FolderMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetMailboxID sets the "mailbox_id" field.
@@ -42,6 +45,34 @@ func (_c *FolderCreate) SetSystem(v bool) *FolderCreate {
 func (_c *FolderCreate) SetNillableSystem(v *bool) *FolderCreate {
 	if v != nil {
 		_c.SetSystem(*v)
+	}
+	return _c
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (_c *FolderCreate) SetUIDValidity(v uint32) *FolderCreate {
+	_c.mutation.SetUIDValidity(v)
+	return _c
+}
+
+// SetNillableUIDValidity sets the "uid_validity" field if the given value is not nil.
+func (_c *FolderCreate) SetNillableUIDValidity(v *uint32) *FolderCreate {
+	if v != nil {
+		_c.SetUIDValidity(*v)
+	}
+	return _c
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (_c *FolderCreate) SetUIDNext(v uint32) *FolderCreate {
+	_c.mutation.SetUIDNext(v)
+	return _c
+}
+
+// SetNillableUIDNext sets the "uid_next" field if the given value is not nil.
+func (_c *FolderCreate) SetNillableUIDNext(v *uint32) *FolderCreate {
+	if v != nil {
+		_c.SetUIDNext(*v)
 	}
 	return _c
 }
@@ -127,6 +158,14 @@ func (_c *FolderCreate) defaults() {
 		v := folder.DefaultSystem
 		_c.mutation.SetSystem(v)
 	}
+	if _, ok := _c.mutation.UIDValidity(); !ok {
+		v := folder.DefaultUIDValidity
+		_c.mutation.SetUIDValidity(v)
+	}
+	if _, ok := _c.mutation.UIDNext(); !ok {
+		v := folder.DefaultUIDNext
+		_c.mutation.SetUIDNext(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := folder.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -151,6 +190,12 @@ func (_c *FolderCreate) check() error {
 	}
 	if _, ok := _c.mutation.System(); !ok {
 		return &ValidationError{Name: "system", err: errors.New(`ent: missing required field "Folder.system"`)}
+	}
+	if _, ok := _c.mutation.UIDValidity(); !ok {
+		return &ValidationError{Name: "uid_validity", err: errors.New(`ent: missing required field "Folder.uid_validity"`)}
+	}
+	if _, ok := _c.mutation.UIDNext(); !ok {
+		return &ValidationError{Name: "uid_next", err: errors.New(`ent: missing required field "Folder.uid_next"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Folder.created_at"`)}
@@ -189,6 +234,7 @@ func (_c *FolderCreate) createSpec() (*Folder, *sqlgraph.CreateSpec) {
 		_node = &Folder{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(folder.Table, sqlgraph.NewFieldSpec(folder.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -205,6 +251,14 @@ func (_c *FolderCreate) createSpec() (*Folder, *sqlgraph.CreateSpec) {
 		_spec.SetField(folder.FieldSystem, field.TypeBool, value)
 		_node.System = value
 	}
+	if value, ok := _c.mutation.UIDValidity(); ok {
+		_spec.SetField(folder.FieldUIDValidity, field.TypeUint32, value)
+		_node.UIDValidity = value
+	}
+	if value, ok := _c.mutation.UIDNext(); ok {
+		_spec.SetField(folder.FieldUIDNext, field.TypeUint32, value)
+		_node.UIDNext = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(folder.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -216,11 +270,332 @@ func (_c *FolderCreate) createSpec() (*Folder, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Folder.Create().
+//		SetMailboxID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.FolderUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *FolderCreate) OnConflict(opts ...sql.ConflictOption) *FolderUpsertOne {
+	_c.conflict = opts
+	return &FolderUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Folder.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *FolderCreate) OnConflictColumns(columns ...string) *FolderUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &FolderUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// FolderUpsertOne is the builder for "upsert"-ing
+	//  one Folder node.
+	FolderUpsertOne struct {
+		create *FolderCreate
+	}
+
+	// FolderUpsert is the "OnConflict" setter.
+	FolderUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *FolderUpsert) SetMailboxID(v string) *FolderUpsert {
+	u.Set(folder.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *FolderUpsert) UpdateMailboxID() *FolderUpsert {
+	u.SetExcluded(folder.FieldMailboxID)
+	return u
+}
+
+// SetName sets the "name" field.
+func (u *FolderUpsert) SetName(v string) *FolderUpsert {
+	u.Set(folder.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *FolderUpsert) UpdateName() *FolderUpsert {
+	u.SetExcluded(folder.FieldName)
+	return u
+}
+
+// SetSystem sets the "system" field.
+func (u *FolderUpsert) SetSystem(v bool) *FolderUpsert {
+	u.Set(folder.FieldSystem, v)
+	return u
+}
+
+// UpdateSystem sets the "system" field to the value that was provided on create.
+func (u *FolderUpsert) UpdateSystem() *FolderUpsert {
+	u.SetExcluded(folder.FieldSystem)
+	return u
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (u *FolderUpsert) SetUIDValidity(v uint32) *FolderUpsert {
+	u.Set(folder.FieldUIDValidity, v)
+	return u
+}
+
+// UpdateUIDValidity sets the "uid_validity" field to the value that was provided on create.
+func (u *FolderUpsert) UpdateUIDValidity() *FolderUpsert {
+	u.SetExcluded(folder.FieldUIDValidity)
+	return u
+}
+
+// AddUIDValidity adds v to the "uid_validity" field.
+func (u *FolderUpsert) AddUIDValidity(v uint32) *FolderUpsert {
+	u.Add(folder.FieldUIDValidity, v)
+	return u
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (u *FolderUpsert) SetUIDNext(v uint32) *FolderUpsert {
+	u.Set(folder.FieldUIDNext, v)
+	return u
+}
+
+// UpdateUIDNext sets the "uid_next" field to the value that was provided on create.
+func (u *FolderUpsert) UpdateUIDNext() *FolderUpsert {
+	u.SetExcluded(folder.FieldUIDNext)
+	return u
+}
+
+// AddUIDNext adds v to the "uid_next" field.
+func (u *FolderUpsert) AddUIDNext(v uint32) *FolderUpsert {
+	u.Add(folder.FieldUIDNext, v)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *FolderUpsert) SetUpdatedAt(v time.Time) *FolderUpsert {
+	u.Set(folder.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *FolderUpsert) UpdateUpdatedAt() *FolderUpsert {
+	u.SetExcluded(folder.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.Folder.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(folder.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *FolderUpsertOne) UpdateNewValues() *FolderUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(folder.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(folder.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Folder.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *FolderUpsertOne) Ignore() *FolderUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *FolderUpsertOne) DoNothing() *FolderUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the FolderCreate.OnConflict
+// documentation for more info.
+func (u *FolderUpsertOne) Update(set func(*FolderUpsert)) *FolderUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&FolderUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *FolderUpsertOne) SetMailboxID(v string) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *FolderUpsertOne) UpdateMailboxID() *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *FolderUpsertOne) SetName(v string) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *FolderUpsertOne) UpdateName() *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetSystem sets the "system" field.
+func (u *FolderUpsertOne) SetSystem(v bool) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetSystem(v)
+	})
+}
+
+// UpdateSystem sets the "system" field to the value that was provided on create.
+func (u *FolderUpsertOne) UpdateSystem() *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateSystem()
+	})
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (u *FolderUpsertOne) SetUIDValidity(v uint32) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetUIDValidity(v)
+	})
+}
+
+// AddUIDValidity adds v to the "uid_validity" field.
+func (u *FolderUpsertOne) AddUIDValidity(v uint32) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.AddUIDValidity(v)
+	})
+}
+
+// UpdateUIDValidity sets the "uid_validity" field to the value that was provided on create.
+func (u *FolderUpsertOne) UpdateUIDValidity() *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateUIDValidity()
+	})
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (u *FolderUpsertOne) SetUIDNext(v uint32) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetUIDNext(v)
+	})
+}
+
+// AddUIDNext adds v to the "uid_next" field.
+func (u *FolderUpsertOne) AddUIDNext(v uint32) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.AddUIDNext(v)
+	})
+}
+
+// UpdateUIDNext sets the "uid_next" field to the value that was provided on create.
+func (u *FolderUpsertOne) UpdateUIDNext() *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateUIDNext()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *FolderUpsertOne) SetUpdatedAt(v time.Time) *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *FolderUpsertOne) UpdateUpdatedAt() *FolderUpsertOne {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *FolderUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for FolderCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *FolderUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *FolderUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: FolderUpsertOne.ID is not supported by MySQL driver. Use FolderUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *FolderUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // FolderCreateBulk is the builder for creating many Folder entities in bulk.
 type FolderCreateBulk struct {
 	config
 	err      error
 	builders []*FolderCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Folder entities in the database.
@@ -250,6 +625,7 @@ func (_c *FolderCreateBulk) Save(ctx context.Context) ([]*Folder, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -296,6 +672,221 @@ func (_c *FolderCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *FolderCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Folder.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.FolderUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *FolderCreateBulk) OnConflict(opts ...sql.ConflictOption) *FolderUpsertBulk {
+	_c.conflict = opts
+	return &FolderUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Folder.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *FolderCreateBulk) OnConflictColumns(columns ...string) *FolderUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &FolderUpsertBulk{
+		create: _c,
+	}
+}
+
+// FolderUpsertBulk is the builder for "upsert"-ing
+// a bulk of Folder nodes.
+type FolderUpsertBulk struct {
+	create *FolderCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Folder.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(folder.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *FolderUpsertBulk) UpdateNewValues() *FolderUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(folder.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(folder.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Folder.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *FolderUpsertBulk) Ignore() *FolderUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *FolderUpsertBulk) DoNothing() *FolderUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the FolderCreateBulk.OnConflict
+// documentation for more info.
+func (u *FolderUpsertBulk) Update(set func(*FolderUpsert)) *FolderUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&FolderUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *FolderUpsertBulk) SetMailboxID(v string) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *FolderUpsertBulk) UpdateMailboxID() *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *FolderUpsertBulk) SetName(v string) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *FolderUpsertBulk) UpdateName() *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetSystem sets the "system" field.
+func (u *FolderUpsertBulk) SetSystem(v bool) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetSystem(v)
+	})
+}
+
+// UpdateSystem sets the "system" field to the value that was provided on create.
+func (u *FolderUpsertBulk) UpdateSystem() *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateSystem()
+	})
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (u *FolderUpsertBulk) SetUIDValidity(v uint32) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetUIDValidity(v)
+	})
+}
+
+// AddUIDValidity adds v to the "uid_validity" field.
+func (u *FolderUpsertBulk) AddUIDValidity(v uint32) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.AddUIDValidity(v)
+	})
+}
+
+// UpdateUIDValidity sets the "uid_validity" field to the value that was provided on create.
+func (u *FolderUpsertBulk) UpdateUIDValidity() *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateUIDValidity()
+	})
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (u *FolderUpsertBulk) SetUIDNext(v uint32) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetUIDNext(v)
+	})
+}
+
+// AddUIDNext adds v to the "uid_next" field.
+func (u *FolderUpsertBulk) AddUIDNext(v uint32) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.AddUIDNext(v)
+	})
+}
+
+// UpdateUIDNext sets the "uid_next" field to the value that was provided on create.
+func (u *FolderUpsertBulk) UpdateUIDNext() *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateUIDNext()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *FolderUpsertBulk) SetUpdatedAt(v time.Time) *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *FolderUpsertBulk) UpdateUpdatedAt() *FolderUpsertBulk {
+	return u.Update(func(s *FolderUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *FolderUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the FolderCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for FolderCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *FolderUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

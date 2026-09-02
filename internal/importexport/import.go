@@ -28,6 +28,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/events"
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 )
 
 const (
@@ -39,6 +40,7 @@ type ImportWorker struct {
 	db       *sql.DB
 	client   *ent.Client
 	store    Store
+	mail     *mailstore.Store
 	events   *events.Service
 	workerID string
 }
@@ -50,8 +52,15 @@ type importJob struct {
 	Source     map[string]any
 }
 
-func NewImportWorker(db *sql.DB, client *ent.Client, store Store, events *events.Service, workerID string) *ImportWorker {
-	return &ImportWorker{db: db, client: client, store: store, events: events, workerID: workerID}
+func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstore.Store, events *events.Service, workerID string) *ImportWorker {
+	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID}
+}
+
+func (w *ImportWorker) mailStore() *mailstore.Store {
+	if w.mail == nil {
+		w.mail = mailstore.New(w.client, nil)
+	}
+	return w.mail
 }
 
 func (w *ImportWorker) Run(ctx context.Context, concurrency int) {
@@ -222,9 +231,11 @@ func (p *importProgress) flush(ctx context.Context) {
 }
 
 type importFlags struct {
-	read    bool
-	flagged bool
-	deleted bool
+	read     bool
+	flagged  bool
+	deleted  bool
+	answered bool
+	draft    bool
 }
 
 type folderCache struct {
@@ -247,7 +258,7 @@ func (w *ImportWorker) ensureFolder(ctx context.Context, cache *folderCache, mai
 	if !ent.IsNotFound(err) {
 		return "", err
 	}
-	created, err := w.client.Folder.Create().SetMailboxID(mailboxID).SetName(name).Save(ctx)
+	created, err := w.mailStore().CreateFolder(ctx, mailboxID, name, false)
 	if err == nil {
 		cache.ids[name] = created.ID
 		return created.ID, nil
@@ -533,23 +544,19 @@ func (w *ImportWorker) alreadyAttached(ctx context.Context, mailboxID string, sh
 }
 
 func (w *ImportWorker) attachMessage(ctx context.Context, mailboxID string, folderID string, primaryAddress string, messageID string, size int64, flags importFlags) (bool, error) {
-	_, err := w.client.MailboxMessage.Create().
-		SetMailboxID(mailboxID).
-		SetMessageID(messageID).
-		SetFolderID(folderID).
-		SetOriginalRcpt(primaryAddress).
-		SetBaseRcpt(primaryAddress).
-		SetRead(flags.read).
-		SetFlagged(flags.flagged).
-		SetImapDeleted(flags.deleted).
-		Save(ctx)
+	_, err := w.mailStore().Attach(ctx, mailstore.Attach{
+		MailboxID:    mailboxID,
+		MessageID:    messageID,
+		FolderID:     folderID,
+		SizeBytes:    size,
+		OriginalRcpt: primaryAddress,
+		BaseRcpt:     primaryAddress,
+		Flags:        mailstore.Flags{Seen: flags.read, Flagged: flags.flagged, Deleted: flags.deleted, Answered: flags.answered, Draft: flags.draft},
+	})
 	if ent.IsConstraintError(err) {
 		return false, nil
 	}
 	if err != nil {
-		return false, err
-	}
-	if _, err := w.client.Mailbox.UpdateOneID(mailboxID).AddUsedBytes(size).Save(ctx); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -699,6 +706,10 @@ func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags
 					flags.flagged = true
 				case imap.FlagDeleted:
 					flags.deleted = true
+				case imap.FlagAnswered:
+					flags.answered = true
+				case imap.FlagDraft:
+					flags.draft = true
 				}
 			}
 		}
@@ -777,6 +788,10 @@ func maildirFlags(filename string) importFlags {
 			flags.flagged = true
 		case 'T':
 			flags.deleted = true
+		case 'R':
+			flags.answered = true
+		case 'D':
+			flags.draft = true
 		}
 	}
 	return flags

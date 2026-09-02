@@ -19,6 +19,8 @@ const (
 	FieldMessageID = "message_id"
 	// FieldFolderID holds the string denoting the folder_id field in the database.
 	FieldFolderID = "folder_id"
+	// FieldUID holds the string denoting the uid field in the database.
+	FieldUID = "uid"
 	// FieldOriginalRcpt holds the string denoting the original_rcpt field in the database.
 	FieldOriginalRcpt = "original_rcpt"
 	// FieldBaseRcpt holds the string denoting the base_rcpt field in the database.
@@ -31,8 +33,14 @@ const (
 	FieldRead = "read"
 	// FieldFlagged holds the string denoting the flagged field in the database.
 	FieldFlagged = "flagged"
+	// FieldAnswered holds the string denoting the answered field in the database.
+	FieldAnswered = "answered"
+	// FieldDraft holds the string denoting the draft field in the database.
+	FieldDraft = "draft"
 	// FieldImapDeleted holds the string denoting the imap_deleted field in the database.
 	FieldImapDeleted = "imap_deleted"
+	// FieldKeywords holds the string denoting the keywords field in the database.
+	FieldKeywords = "keywords"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -49,13 +57,17 @@ var Columns = []string{
 	FieldMailboxID,
 	FieldMessageID,
 	FieldFolderID,
+	FieldUID,
 	FieldOriginalRcpt,
 	FieldBaseRcpt,
 	FieldPlusTag,
 	FieldResolvedRouteID,
 	FieldRead,
 	FieldFlagged,
+	FieldAnswered,
+	FieldDraft,
 	FieldImapDeleted,
+	FieldKeywords,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldDeletedAt,
@@ -72,10 +84,16 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultUID holds the default value on creation for the "uid" field.
+	DefaultUID uint32
 	// DefaultRead holds the default value on creation for the "read" field.
 	DefaultRead bool
 	// DefaultFlagged holds the default value on creation for the "flagged" field.
 	DefaultFlagged bool
+	// DefaultAnswered holds the default value on creation for the "answered" field.
+	DefaultAnswered bool
+	// DefaultDraft holds the default value on creation for the "draft" field.
+	DefaultDraft bool
 	// DefaultImapDeleted holds the default value on creation for the "imap_deleted" field.
 	DefaultImapDeleted bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -111,6 +129,11 @@ func ByFolderID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFolderID, opts...).ToFunc()
 }
 
+// ByUID orders the results by the uid field.
+func ByUID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUID, opts...).ToFunc()
+}
+
 // ByOriginalRcpt orders the results by the original_rcpt field.
 func ByOriginalRcpt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOriginalRcpt, opts...).ToFunc()
@@ -139,6 +162,16 @@ func ByRead(opts ...sql.OrderTermOption) OrderOption {
 // ByFlagged orders the results by the flagged field.
 func ByFlagged(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFlagged, opts...).ToFunc()
+}
+
+// ByAnswered orders the results by the answered field.
+func ByAnswered(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAnswered, opts...).ToFunc()
+}
+
+// ByDraft orders the results by the draft field.
+func ByDraft(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDraft, opts...).ToFunc()
 }
 
 // ByImapDeleted orders the results by the imap_deleted field.

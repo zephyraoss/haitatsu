@@ -70,6 +70,48 @@ func (_u *FolderUpdate) SetNillableSystem(v *bool) *FolderUpdate {
 	return _u
 }
 
+// SetUIDValidity sets the "uid_validity" field.
+func (_u *FolderUpdate) SetUIDValidity(v uint32) *FolderUpdate {
+	_u.mutation.ResetUIDValidity()
+	_u.mutation.SetUIDValidity(v)
+	return _u
+}
+
+// SetNillableUIDValidity sets the "uid_validity" field if the given value is not nil.
+func (_u *FolderUpdate) SetNillableUIDValidity(v *uint32) *FolderUpdate {
+	if v != nil {
+		_u.SetUIDValidity(*v)
+	}
+	return _u
+}
+
+// AddUIDValidity adds value to the "uid_validity" field.
+func (_u *FolderUpdate) AddUIDValidity(v int32) *FolderUpdate {
+	_u.mutation.AddUIDValidity(v)
+	return _u
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (_u *FolderUpdate) SetUIDNext(v uint32) *FolderUpdate {
+	_u.mutation.ResetUIDNext()
+	_u.mutation.SetUIDNext(v)
+	return _u
+}
+
+// SetNillableUIDNext sets the "uid_next" field if the given value is not nil.
+func (_u *FolderUpdate) SetNillableUIDNext(v *uint32) *FolderUpdate {
+	if v != nil {
+		_u.SetUIDNext(*v)
+	}
+	return _u
+}
+
+// AddUIDNext adds value to the "uid_next" field.
+func (_u *FolderUpdate) AddUIDNext(v int32) *FolderUpdate {
+	_u.mutation.AddUIDNext(v)
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *FolderUpdate) SetUpdatedAt(v time.Time) *FolderUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -135,6 +177,18 @@ func (_u *FolderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.System(); ok {
 		_spec.SetField(folder.FieldSystem, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.UIDValidity(); ok {
+		_spec.SetField(folder.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDValidity(); ok {
+		_spec.AddField(folder.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.UIDNext(); ok {
+		_spec.SetField(folder.FieldUIDNext, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDNext(); ok {
+		_spec.AddField(folder.FieldUIDNext, field.TypeUint32, value)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(folder.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -197,6 +251,48 @@ func (_u *FolderUpdateOne) SetNillableSystem(v *bool) *FolderUpdateOne {
 	if v != nil {
 		_u.SetSystem(*v)
 	}
+	return _u
+}
+
+// SetUIDValidity sets the "uid_validity" field.
+func (_u *FolderUpdateOne) SetUIDValidity(v uint32) *FolderUpdateOne {
+	_u.mutation.ResetUIDValidity()
+	_u.mutation.SetUIDValidity(v)
+	return _u
+}
+
+// SetNillableUIDValidity sets the "uid_validity" field if the given value is not nil.
+func (_u *FolderUpdateOne) SetNillableUIDValidity(v *uint32) *FolderUpdateOne {
+	if v != nil {
+		_u.SetUIDValidity(*v)
+	}
+	return _u
+}
+
+// AddUIDValidity adds value to the "uid_validity" field.
+func (_u *FolderUpdateOne) AddUIDValidity(v int32) *FolderUpdateOne {
+	_u.mutation.AddUIDValidity(v)
+	return _u
+}
+
+// SetUIDNext sets the "uid_next" field.
+func (_u *FolderUpdateOne) SetUIDNext(v uint32) *FolderUpdateOne {
+	_u.mutation.ResetUIDNext()
+	_u.mutation.SetUIDNext(v)
+	return _u
+}
+
+// SetNillableUIDNext sets the "uid_next" field if the given value is not nil.
+func (_u *FolderUpdateOne) SetNillableUIDNext(v *uint32) *FolderUpdateOne {
+	if v != nil {
+		_u.SetUIDNext(*v)
+	}
+	return _u
+}
+
+// AddUIDNext adds value to the "uid_next" field.
+func (_u *FolderUpdateOne) AddUIDNext(v int32) *FolderUpdateOne {
+	_u.mutation.AddUIDNext(v)
 	return _u
 }
 
@@ -294,6 +390,18 @@ func (_u *FolderUpdateOne) sqlSave(ctx context.Context) (_node *Folder, err erro
 	}
 	if value, ok := _u.mutation.System(); ok {
 		_spec.SetField(folder.FieldSystem, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.UIDValidity(); ok {
+		_spec.SetField(folder.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDValidity(); ok {
+		_spec.AddField(folder.FieldUIDValidity, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.UIDNext(); ok {
+		_spec.SetField(folder.FieldUIDNext, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUIDNext(); ok {
+		_spec.AddField(folder.FieldUIDNext, field.TypeUint32, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(folder.FieldUpdatedAt, field.TypeTime, value)

@@ -13,8 +13,10 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/bounce"
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
+	"github.com/zephyraoss/haitatsu/internal/ratelimit"
 	"github.com/zephyraoss/haitatsu/internal/routing"
 	"github.com/zephyraoss/haitatsu/internal/spam"
 )
@@ -23,21 +25,46 @@ type Server struct {
 	server *smtp.Server
 }
 
-func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *routing.Resolver, messages *messages.Service, bounces *bounce.Handler, spamChecker *spam.Checker, metrics *metrics.Metrics) *Server {
-	server := smtp.NewServer(&backend{resolver: resolver, messages: messages, bounces: bounces, spam: spamChecker, metrics: metrics})
+type Options struct {
+	MaxMessageBytes     int64
+	MaxRecipients       int
+	MaxConnectionsPerIP int
+	MessagesPerMinute   int
+}
+
+func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *routing.Resolver, messages *messages.Service, bounces *bounce.Handler, spamChecker *spam.Checker, m *metrics.Metrics, opts Options) *Server {
+	backend := &backend{
+		resolver: resolver,
+		messages: messages,
+		bounces:  bounces,
+		spam:     spamChecker,
+		metrics:  m,
+		gate:     ratelimit.NewConcurrencyGate(opts.MaxConnectionsPerIP),
+		limiter:  ratelimit.New(float64(opts.MessagesPerMinute)/60, opts.MessagesPerMinute),
+	}
+	server := smtp.NewServer(backend)
 	server.Addr = cfg.InboundAddr
 	server.Domain = domain
 	server.TLSConfig = tlsConfig
-	server.ReadTimeout = 10 * time.Second
-	server.WriteTimeout = 10 * time.Second
-	server.MaxMessageBytes = cfg.MaxMessageSizeBytes
-	server.MaxRecipients = cfg.MaxInboundRecipients
+	server.ReadTimeout = 60 * time.Second
+	server.WriteTimeout = 60 * time.Second
+	server.MaxMessageBytes = opts.MaxMessageBytes
+	server.MaxRecipients = opts.MaxRecipients
+	server.MaxLineLength = 4000
 	server.AllowInsecureAuth = false
 	return &Server{server: server}
 }
 
 func (s *Server) Listen() error {
 	err := s.server.ListenAndServe()
+	if errors.Is(err, smtp.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func (s *Server) Serve(listener net.Listener) error {
+	err := s.server.Serve(listener)
 	if errors.Is(err, smtp.ErrServerClosed) {
 		return nil
 	}
@@ -54,68 +81,81 @@ type backend struct {
 	bounces  *bounce.Handler
 	spam     *spam.Checker
 	metrics  *metrics.Metrics
+	gate     *ratelimit.ConcurrencyGate
+	limiter  *ratelimit.Limiter
 }
 
 func (b *backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
+	ctx := smtpContext(conn)
+	if !b.gate.Acquire(ctx.RemoteIP) {
+		return nil, &smtp.SMTPError{Code: 421, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "too many connections from your address"}
+	}
 	b.metrics.SMTPConnection()
-	return &session{resolver: b.resolver, messages: b.messages, bounces: b.bounces, spam: b.spam, metrics: b.metrics, smtp: smtpContext(conn)}, nil
+	return &session{backend: b, smtp: ctx}, nil
 }
 
 type session struct {
-	resolver   *routing.Resolver
-	messages   *messages.Service
-	bounces    *bounce.Handler
-	spam       *spam.Checker
-	metrics    *metrics.Metrics
+	backend    *backend
 	smtp       spam.SMTPContext
 	mailFrom   string
 	recipients []routing.Result
 	bounceRcpt []bounce.Recipient
+	released   bool
 }
 
 func (s *session) Mail(from string, _ *smtp.MailOptions) error {
+	if !s.backend.limiter.Allow(s.smtp.RemoteIP) {
+		return &smtp.SMTPError{Code: 450, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "rate limit exceeded, try again later"}
+	}
 	s.mailFrom = from
 	s.smtp.MailFrom = from
 	s.recipients = nil
+	s.bounceRcpt = nil
 	return nil
 }
 
 func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
-	if recipient, bounceDomain, valid := s.bounces.ParseRecipient(context.Background(), to); bounceDomain {
+	if recipient, bounceDomain, valid := s.backend.bounces.ParseRecipient(context.Background(), to); bounceDomain {
 		if !valid {
-			return &smtp.SMTPError{Code: 550, Message: "invalid bounce recipient"}
+			return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "invalid bounce recipient"}
 		}
 		s.bounceRcpt = append(s.bounceRcpt, recipient)
 		return nil
 	}
 
-	result, ok, err := s.resolver.Resolve(context.Background(), to)
+	result, ok, err := s.backend.resolver.Resolve(context.Background(), to)
 	if err != nil {
 		return temporarySMTPError("temporary local problem")
 	}
 	if !ok {
-		return &smtp.SMTPError{Code: 550, Message: "unknown recipient"}
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "unknown recipient"}
 	}
+	deliverable := result.Mailboxes[:0]
 	for _, mbox := range result.Mailboxes {
-		if routing.OverQuota(mbox) {
-			s.metrics.MailboxOverQuota()
-			return &smtp.SMTPError{Code: 552, Message: "mailbox over quota"}
+		if mailstore.OverQuota(mbox) {
+			s.backend.metrics.MailboxOverQuota()
+			continue
 		}
+		deliverable = append(deliverable, mbox)
 	}
+	if len(deliverable) == 0 {
+		return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 2, 2}, Message: "mailbox over quota"}
+	}
+	result.Mailboxes = deliverable
 	s.recipients = append(s.recipients, result)
 	return nil
 }
 
 func (s *session) Data(r io.Reader) error {
 	if len(s.recipients) == 0 && len(s.bounceRcpt) == 0 {
-		return &smtp.SMTPError{Code: 554, Message: "no valid recipients"}
+		return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 5, 1}, Message: "no valid recipients"}
 	}
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return temporarySMTPError("temporary local problem")
 	}
 	for _, recipient := range s.bounceRcpt {
-		if err := s.bounces.Record(context.Background(), recipient, raw); err != nil {
+		if err := s.backend.bounces.Record(context.Background(), recipient, raw); err != nil {
 			slog.Error("bounce processing failed", "error", err)
 			return temporarySMTPError("temporary local problem")
 		}
@@ -123,11 +163,11 @@ func (s *session) Data(r io.Reader) error {
 	if len(s.recipients) == 0 {
 		return nil
 	}
-	assessment := s.spam.Check(context.Background(), raw, s.smtp, s.recipients)
+	assessment := s.backend.spam.Check(context.Background(), raw, s.smtp, s.recipients)
 	if assessment.Reject {
-		return &smtp.SMTPError{Code: 550, Message: "message rejected by policy"}
+		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "message rejected by policy"}
 	}
-	if _, err := s.messages.Deliver(context.Background(), raw, s.recipients, assessment); err != nil {
+	if _, err := s.backend.messages.Deliver(context.Background(), raw, s.recipients, assessment); err != nil {
 		slog.Error("inbound delivery failed", "error", err)
 		return temporarySMTPError("temporary local problem")
 	}
@@ -141,11 +181,15 @@ func (s *session) Reset() {
 }
 
 func (s *session) Logout() error {
+	if !s.released {
+		s.released = true
+		s.backend.gate.Release(s.smtp.RemoteIP)
+	}
 	return nil
 }
 
 func temporarySMTPError(message string) *smtp.SMTPError {
-	return &smtp.SMTPError{Code: 451, Message: message}
+	return &smtp.SMTPError{Code: 451, EnhancedCode: smtp.EnhancedCode{4, 3, 0}, Message: message}
 }
 
 func smtpContext(conn *smtp.Conn) spam.SMTPContext {

@@ -13,6 +13,7 @@ smtp {
 
 imap {
   addr = "0.0.0.0:143"
+  max_connections_per_ip = 30
 }
 
 submission {
@@ -25,6 +26,8 @@ relay {
   username = ""
   password = ""
   from_host = "localhost"
+  max_attempts = 30
+  max_retry_minutes = 240
 }
 
 postgres {
@@ -80,6 +83,7 @@ webhooks {
   default_timeout_seconds = 10
   secret = "woof"
   endpoints = new Mapping<String, String> {}
+  max_attempts = 10
 }
 
 notifications {
@@ -93,9 +97,18 @@ notifications {
 spam {
   junk_threshold = 5.0
   reject_threshold = 10.0
+  dnsbl_zones = new Listing<String> {}
+  dnsbl_score = 4.0
+  require_helo = false
 }
 
 limits {
   max_message_size_bytes = 52428800
   max_inbound_recipients = 100
+  max_submission_recipients = 100
+  max_connections_per_ip = 20
+  inbound_messages_per_minute_per_ip = 120
+  default_outbound_per_hour = 200
+  default_outbound_per_day = 2000
+  default_outbound_recipients_per_message = 50
 }

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
@@ -18,6 +20,7 @@ type RouteCreate struct {
 	config
 	mutation *RouteMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetSourceAddress sets the "source_address" field.
@@ -212,6 +215,7 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 		_node = &Route{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(route.Table, sqlgraph.NewFieldSpec(route.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -247,11 +251,319 @@ func (_c *RouteCreate) createSpec() (*Route, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Route.Create().
+//		SetSourceAddress(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.RouteUpsert) {
+//			SetSourceAddress(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *RouteCreate) OnConflict(opts ...sql.ConflictOption) *RouteUpsertOne {
+	_c.conflict = opts
+	return &RouteUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Route.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *RouteCreate) OnConflictColumns(columns ...string) *RouteUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &RouteUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// RouteUpsertOne is the builder for "upsert"-ing
+	//  one Route node.
+	RouteUpsertOne struct {
+		create *RouteCreate
+	}
+
+	// RouteUpsert is the "OnConflict" setter.
+	RouteUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetSourceAddress sets the "source_address" field.
+func (u *RouteUpsert) SetSourceAddress(v string) *RouteUpsert {
+	u.Set(route.FieldSourceAddress, v)
+	return u
+}
+
+// UpdateSourceAddress sets the "source_address" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateSourceAddress() *RouteUpsert {
+	u.SetExcluded(route.FieldSourceAddress)
+	return u
+}
+
+// SetType sets the "type" field.
+func (u *RouteUpsert) SetType(v string) *RouteUpsert {
+	u.Set(route.FieldType, v)
+	return u
+}
+
+// UpdateType sets the "type" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateType() *RouteUpsert {
+	u.SetExcluded(route.FieldType)
+	return u
+}
+
+// SetDestinations sets the "destinations" field.
+func (u *RouteUpsert) SetDestinations(v []string) *RouteUpsert {
+	u.Set(route.FieldDestinations, v)
+	return u
+}
+
+// UpdateDestinations sets the "destinations" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateDestinations() *RouteUpsert {
+	u.SetExcluded(route.FieldDestinations)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *RouteUpsert) SetStatus(v string) *RouteUpsert {
+	u.Set(route.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateStatus() *RouteUpsert {
+	u.SetExcluded(route.FieldStatus)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *RouteUpsert) SetUpdatedAt(v time.Time) *RouteUpsert {
+	u.Set(route.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateUpdatedAt() *RouteUpsert {
+	u.SetExcluded(route.FieldUpdatedAt)
+	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *RouteUpsert) SetDeletedAt(v time.Time) *RouteUpsert {
+	u.Set(route.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *RouteUpsert) UpdateDeletedAt() *RouteUpsert {
+	u.SetExcluded(route.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *RouteUpsert) ClearDeletedAt() *RouteUpsert {
+	u.SetNull(route.FieldDeletedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.Route.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(route.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *RouteUpsertOne) UpdateNewValues() *RouteUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(route.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(route.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Route.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *RouteUpsertOne) Ignore() *RouteUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *RouteUpsertOne) DoNothing() *RouteUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the RouteCreate.OnConflict
+// documentation for more info.
+func (u *RouteUpsertOne) Update(set func(*RouteUpsert)) *RouteUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&RouteUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetSourceAddress sets the "source_address" field.
+func (u *RouteUpsertOne) SetSourceAddress(v string) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetSourceAddress(v)
+	})
+}
+
+// UpdateSourceAddress sets the "source_address" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateSourceAddress() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateSourceAddress()
+	})
+}
+
+// SetType sets the "type" field.
+func (u *RouteUpsertOne) SetType(v string) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetType(v)
+	})
+}
+
+// UpdateType sets the "type" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateType() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateType()
+	})
+}
+
+// SetDestinations sets the "destinations" field.
+func (u *RouteUpsertOne) SetDestinations(v []string) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetDestinations(v)
+	})
+}
+
+// UpdateDestinations sets the "destinations" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateDestinations() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateDestinations()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *RouteUpsertOne) SetStatus(v string) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateStatus() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *RouteUpsertOne) SetUpdatedAt(v time.Time) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateUpdatedAt() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *RouteUpsertOne) SetDeletedAt(v time.Time) *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *RouteUpsertOne) UpdateDeletedAt() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *RouteUpsertOne) ClearDeletedAt() *RouteUpsertOne {
+	return u.Update(func(s *RouteUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *RouteUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for RouteCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *RouteUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *RouteUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: RouteUpsertOne.ID is not supported by MySQL driver. Use RouteUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *RouteUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // RouteCreateBulk is the builder for creating many Route entities in bulk.
 type RouteCreateBulk struct {
 	config
 	err      error
 	builders []*RouteCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Route entities in the database.
@@ -281,6 +593,7 @@ func (_c *RouteCreateBulk) Save(ctx context.Context) ([]*Route, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -327,6 +640,214 @@ func (_c *RouteCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *RouteCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Route.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.RouteUpsert) {
+//			SetSourceAddress(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *RouteCreateBulk) OnConflict(opts ...sql.ConflictOption) *RouteUpsertBulk {
+	_c.conflict = opts
+	return &RouteUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Route.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *RouteCreateBulk) OnConflictColumns(columns ...string) *RouteUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &RouteUpsertBulk{
+		create: _c,
+	}
+}
+
+// RouteUpsertBulk is the builder for "upsert"-ing
+// a bulk of Route nodes.
+type RouteUpsertBulk struct {
+	create *RouteCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Route.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(route.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *RouteUpsertBulk) UpdateNewValues() *RouteUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(route.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(route.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Route.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *RouteUpsertBulk) Ignore() *RouteUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *RouteUpsertBulk) DoNothing() *RouteUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the RouteCreateBulk.OnConflict
+// documentation for more info.
+func (u *RouteUpsertBulk) Update(set func(*RouteUpsert)) *RouteUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&RouteUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetSourceAddress sets the "source_address" field.
+func (u *RouteUpsertBulk) SetSourceAddress(v string) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetSourceAddress(v)
+	})
+}
+
+// UpdateSourceAddress sets the "source_address" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateSourceAddress() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateSourceAddress()
+	})
+}
+
+// SetType sets the "type" field.
+func (u *RouteUpsertBulk) SetType(v string) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetType(v)
+	})
+}
+
+// UpdateType sets the "type" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateType() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateType()
+	})
+}
+
+// SetDestinations sets the "destinations" field.
+func (u *RouteUpsertBulk) SetDestinations(v []string) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetDestinations(v)
+	})
+}
+
+// UpdateDestinations sets the "destinations" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateDestinations() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateDestinations()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *RouteUpsertBulk) SetStatus(v string) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateStatus() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *RouteUpsertBulk) SetUpdatedAt(v time.Time) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateUpdatedAt() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *RouteUpsertBulk) SetDeletedAt(v time.Time) *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *RouteUpsertBulk) UpdateDeletedAt() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *RouteUpsertBulk) ClearDeletedAt() *RouteUpsertBulk {
+	return u.Update(func(s *RouteUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *RouteUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the RouteCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for RouteCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *RouteUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

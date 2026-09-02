@@ -1,11 +1,13 @@
 package api
 
 import (
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/importexport"
 )
 
@@ -33,7 +35,14 @@ func (h *Handler) createExport(c fiber.Ctx) error {
 
 func (h *Handler) listExports(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	query := h.client.ExportJob.Query().Limit(limit)
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.ExportJob.Query().Order(exportjob.ByCreatedAt(entsql.OrderDesc()), exportjob.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.ExportJob](exportjob.FieldCreatedAt, exportjob.FieldID, cur))
+	}
 	if mailboxID := c.Query("mailbox_id"); mailboxID != "" {
 		query.Where(exportjob.MailboxIDEQ(mailboxID))
 	}
@@ -41,7 +50,8 @@ func (h *Handler) listExports(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "export_list_failed", "Failed to list exports")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.ExportJob) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }
 
 func (h *Handler) getExport(c fiber.Ctx) error {
@@ -90,7 +100,14 @@ func (h *Handler) createImport(c fiber.Ctx) error {
 
 func (h *Handler) listImports(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	query := h.client.ImportJob.Query().Limit(limit)
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.ImportJob.Query().Order(importjob.ByCreatedAt(entsql.OrderDesc()), importjob.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.ImportJob](importjob.FieldCreatedAt, importjob.FieldID, cur))
+	}
 	if mailboxID := c.Query("mailbox_id"); mailboxID != "" {
 		query.Where(importjob.MailboxIDEQ(mailboxID))
 	}
@@ -98,11 +115,12 @@ func (h *Handler) listImports(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "import_list_failed", "Failed to list imports")
 	}
-	redacted := make([]*ent.ImportJob, len(items))
-	for i, item := range items {
+	page, next := nextCursor(items, limit, func(item *ent.ImportJob) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	redacted := make([]*ent.ImportJob, len(page))
+	for i, item := range page {
 		redacted[i] = redactedImportJob(item)
 	}
-	return list(c, redacted, limit, "")
+	return list(c, redacted, limit, next)
 }
 
 func (h *Handler) getImport(c fiber.Ctx) error {

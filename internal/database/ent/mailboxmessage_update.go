@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
@@ -67,6 +68,27 @@ func (_u *MailboxMessageUpdate) SetNillableFolderID(v *string) *MailboxMessageUp
 	if v != nil {
 		_u.SetFolderID(*v)
 	}
+	return _u
+}
+
+// SetUID sets the "uid" field.
+func (_u *MailboxMessageUpdate) SetUID(v uint32) *MailboxMessageUpdate {
+	_u.mutation.ResetUID()
+	_u.mutation.SetUID(v)
+	return _u
+}
+
+// SetNillableUID sets the "uid" field if the given value is not nil.
+func (_u *MailboxMessageUpdate) SetNillableUID(v *uint32) *MailboxMessageUpdate {
+	if v != nil {
+		_u.SetUID(*v)
+	}
+	return _u
+}
+
+// AddUID adds value to the "uid" field.
+func (_u *MailboxMessageUpdate) AddUID(v int32) *MailboxMessageUpdate {
+	_u.mutation.AddUID(v)
 	return _u
 }
 
@@ -166,6 +188,34 @@ func (_u *MailboxMessageUpdate) SetNillableFlagged(v *bool) *MailboxMessageUpdat
 	return _u
 }
 
+// SetAnswered sets the "answered" field.
+func (_u *MailboxMessageUpdate) SetAnswered(v bool) *MailboxMessageUpdate {
+	_u.mutation.SetAnswered(v)
+	return _u
+}
+
+// SetNillableAnswered sets the "answered" field if the given value is not nil.
+func (_u *MailboxMessageUpdate) SetNillableAnswered(v *bool) *MailboxMessageUpdate {
+	if v != nil {
+		_u.SetAnswered(*v)
+	}
+	return _u
+}
+
+// SetDraft sets the "draft" field.
+func (_u *MailboxMessageUpdate) SetDraft(v bool) *MailboxMessageUpdate {
+	_u.mutation.SetDraft(v)
+	return _u
+}
+
+// SetNillableDraft sets the "draft" field if the given value is not nil.
+func (_u *MailboxMessageUpdate) SetNillableDraft(v *bool) *MailboxMessageUpdate {
+	if v != nil {
+		_u.SetDraft(*v)
+	}
+	return _u
+}
+
 // SetImapDeleted sets the "imap_deleted" field.
 func (_u *MailboxMessageUpdate) SetImapDeleted(v bool) *MailboxMessageUpdate {
 	_u.mutation.SetImapDeleted(v)
@@ -177,6 +227,24 @@ func (_u *MailboxMessageUpdate) SetNillableImapDeleted(v *bool) *MailboxMessageU
 	if v != nil {
 		_u.SetImapDeleted(*v)
 	}
+	return _u
+}
+
+// SetKeywords sets the "keywords" field.
+func (_u *MailboxMessageUpdate) SetKeywords(v []string) *MailboxMessageUpdate {
+	_u.mutation.SetKeywords(v)
+	return _u
+}
+
+// AppendKeywords appends value to the "keywords" field.
+func (_u *MailboxMessageUpdate) AppendKeywords(v []string) *MailboxMessageUpdate {
+	_u.mutation.AppendKeywords(v)
+	return _u
+}
+
+// ClearKeywords clears the value of the "keywords" field.
+func (_u *MailboxMessageUpdate) ClearKeywords() *MailboxMessageUpdate {
+	_u.mutation.ClearKeywords()
 	return _u
 }
 
@@ -265,6 +333,12 @@ func (_u *MailboxMessageUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.FolderID(); ok {
 		_spec.SetField(mailboxmessage.FieldFolderID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.UID(); ok {
+		_spec.SetField(mailboxmessage.FieldUID, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUID(); ok {
+		_spec.AddField(mailboxmessage.FieldUID, field.TypeUint32, value)
+	}
 	if value, ok := _u.mutation.OriginalRcpt(); ok {
 		_spec.SetField(mailboxmessage.FieldOriginalRcpt, field.TypeString, value)
 	}
@@ -289,8 +363,25 @@ func (_u *MailboxMessageUpdate) sqlSave(ctx context.Context) (_node int, err err
 	if value, ok := _u.mutation.Flagged(); ok {
 		_spec.SetField(mailboxmessage.FieldFlagged, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.Answered(); ok {
+		_spec.SetField(mailboxmessage.FieldAnswered, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Draft(); ok {
+		_spec.SetField(mailboxmessage.FieldDraft, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.ImapDeleted(); ok {
 		_spec.SetField(mailboxmessage.FieldImapDeleted, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Keywords(); ok {
+		_spec.SetField(mailboxmessage.FieldKeywords, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedKeywords(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, mailboxmessage.FieldKeywords, value)
+		})
+	}
+	if _u.mutation.KeywordsCleared() {
+		_spec.ClearField(mailboxmessage.FieldKeywords, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mailboxmessage.FieldUpdatedAt, field.TypeTime, value)
@@ -360,6 +451,27 @@ func (_u *MailboxMessageUpdateOne) SetNillableFolderID(v *string) *MailboxMessag
 	if v != nil {
 		_u.SetFolderID(*v)
 	}
+	return _u
+}
+
+// SetUID sets the "uid" field.
+func (_u *MailboxMessageUpdateOne) SetUID(v uint32) *MailboxMessageUpdateOne {
+	_u.mutation.ResetUID()
+	_u.mutation.SetUID(v)
+	return _u
+}
+
+// SetNillableUID sets the "uid" field if the given value is not nil.
+func (_u *MailboxMessageUpdateOne) SetNillableUID(v *uint32) *MailboxMessageUpdateOne {
+	if v != nil {
+		_u.SetUID(*v)
+	}
+	return _u
+}
+
+// AddUID adds value to the "uid" field.
+func (_u *MailboxMessageUpdateOne) AddUID(v int32) *MailboxMessageUpdateOne {
+	_u.mutation.AddUID(v)
 	return _u
 }
 
@@ -459,6 +571,34 @@ func (_u *MailboxMessageUpdateOne) SetNillableFlagged(v *bool) *MailboxMessageUp
 	return _u
 }
 
+// SetAnswered sets the "answered" field.
+func (_u *MailboxMessageUpdateOne) SetAnswered(v bool) *MailboxMessageUpdateOne {
+	_u.mutation.SetAnswered(v)
+	return _u
+}
+
+// SetNillableAnswered sets the "answered" field if the given value is not nil.
+func (_u *MailboxMessageUpdateOne) SetNillableAnswered(v *bool) *MailboxMessageUpdateOne {
+	if v != nil {
+		_u.SetAnswered(*v)
+	}
+	return _u
+}
+
+// SetDraft sets the "draft" field.
+func (_u *MailboxMessageUpdateOne) SetDraft(v bool) *MailboxMessageUpdateOne {
+	_u.mutation.SetDraft(v)
+	return _u
+}
+
+// SetNillableDraft sets the "draft" field if the given value is not nil.
+func (_u *MailboxMessageUpdateOne) SetNillableDraft(v *bool) *MailboxMessageUpdateOne {
+	if v != nil {
+		_u.SetDraft(*v)
+	}
+	return _u
+}
+
 // SetImapDeleted sets the "imap_deleted" field.
 func (_u *MailboxMessageUpdateOne) SetImapDeleted(v bool) *MailboxMessageUpdateOne {
 	_u.mutation.SetImapDeleted(v)
@@ -470,6 +610,24 @@ func (_u *MailboxMessageUpdateOne) SetNillableImapDeleted(v *bool) *MailboxMessa
 	if v != nil {
 		_u.SetImapDeleted(*v)
 	}
+	return _u
+}
+
+// SetKeywords sets the "keywords" field.
+func (_u *MailboxMessageUpdateOne) SetKeywords(v []string) *MailboxMessageUpdateOne {
+	_u.mutation.SetKeywords(v)
+	return _u
+}
+
+// AppendKeywords appends value to the "keywords" field.
+func (_u *MailboxMessageUpdateOne) AppendKeywords(v []string) *MailboxMessageUpdateOne {
+	_u.mutation.AppendKeywords(v)
+	return _u
+}
+
+// ClearKeywords clears the value of the "keywords" field.
+func (_u *MailboxMessageUpdateOne) ClearKeywords() *MailboxMessageUpdateOne {
+	_u.mutation.ClearKeywords()
 	return _u
 }
 
@@ -588,6 +746,12 @@ func (_u *MailboxMessageUpdateOne) sqlSave(ctx context.Context) (_node *MailboxM
 	if value, ok := _u.mutation.FolderID(); ok {
 		_spec.SetField(mailboxmessage.FieldFolderID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.UID(); ok {
+		_spec.SetField(mailboxmessage.FieldUID, field.TypeUint32, value)
+	}
+	if value, ok := _u.mutation.AddedUID(); ok {
+		_spec.AddField(mailboxmessage.FieldUID, field.TypeUint32, value)
+	}
 	if value, ok := _u.mutation.OriginalRcpt(); ok {
 		_spec.SetField(mailboxmessage.FieldOriginalRcpt, field.TypeString, value)
 	}
@@ -612,8 +776,25 @@ func (_u *MailboxMessageUpdateOne) sqlSave(ctx context.Context) (_node *MailboxM
 	if value, ok := _u.mutation.Flagged(); ok {
 		_spec.SetField(mailboxmessage.FieldFlagged, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.Answered(); ok {
+		_spec.SetField(mailboxmessage.FieldAnswered, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Draft(); ok {
+		_spec.SetField(mailboxmessage.FieldDraft, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.ImapDeleted(); ok {
 		_spec.SetField(mailboxmessage.FieldImapDeleted, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Keywords(); ok {
+		_spec.SetField(mailboxmessage.FieldKeywords, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedKeywords(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, mailboxmessage.FieldKeywords, value)
+		})
+	}
+	if _u.mutation.KeywordsCleared() {
+		_spec.ClearField(mailboxmessage.FieldKeywords, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mailboxmessage.FieldUpdatedAt, field.TypeTime, value)

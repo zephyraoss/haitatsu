@@ -3,14 +3,24 @@ package api
 import (
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 )
 
 func (h *Handler) listEvents(c fiber.Ctx) error {
 	limit := requestLimit(c)
-	query := h.client.EventLog.Query().Limit(limit)
+	cur, hasCursor, ok := requestCursor(c)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
+	}
+	query := h.client.EventLog.Query().Order(eventlog.ByCreatedAt(entsql.OrderDesc()), eventlog.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if hasCursor {
+		query.Where(cursorPredicate[predicate.EventLog](eventlog.FieldCreatedAt, eventlog.FieldID, cur))
+	}
 	if mailboxID := c.Query("mailbox_id"); mailboxID != "" {
 		query.Where(eventlog.MailboxIDEQ(mailboxID))
 	}
@@ -41,5 +51,6 @@ func (h *Handler) listEvents(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "event_list_failed", "Failed to list events")
 	}
-	return list(c, items, limit, "")
+	page, next := nextCursor(items, limit, func(item *ent.EventLog) (string, string) { return cursorTime(item.CreatedAt), item.ID })
+	return list(c, page, limit, next)
 }

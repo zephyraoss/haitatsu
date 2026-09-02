@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
@@ -18,6 +20,7 @@ type MessageCreate struct {
 	config
 	mutation *MessageMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetTraceID sets the "trace_id" field.
@@ -333,6 +336,7 @@ func (_c *MessageCreate) createSpec() (*Message, *sqlgraph.CreateSpec) {
 		_node = &Message{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(message.Table, sqlgraph.NewFieldSpec(message.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -420,11 +424,839 @@ func (_c *MessageCreate) createSpec() (*Message, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Message.Create().
+//		SetTraceID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MessageUpsert) {
+//			SetTraceID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MessageCreate) OnConflict(opts ...sql.ConflictOption) *MessageUpsertOne {
+	_c.conflict = opts
+	return &MessageUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Message.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MessageCreate) OnConflictColumns(columns ...string) *MessageUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MessageUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// MessageUpsertOne is the builder for "upsert"-ing
+	//  one Message node.
+	MessageUpsertOne struct {
+		create *MessageCreate
+	}
+
+	// MessageUpsert is the "OnConflict" setter.
+	MessageUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetTraceID sets the "trace_id" field.
+func (u *MessageUpsert) SetTraceID(v string) *MessageUpsert {
+	u.Set(message.FieldTraceID, v)
+	return u
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateTraceID() *MessageUpsert {
+	u.SetExcluded(message.FieldTraceID)
+	return u
+}
+
+// SetRfcMessageID sets the "rfc_message_id" field.
+func (u *MessageUpsert) SetRfcMessageID(v string) *MessageUpsert {
+	u.Set(message.FieldRfcMessageID, v)
+	return u
+}
+
+// UpdateRfcMessageID sets the "rfc_message_id" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateRfcMessageID() *MessageUpsert {
+	u.SetExcluded(message.FieldRfcMessageID)
+	return u
+}
+
+// ClearRfcMessageID clears the value of the "rfc_message_id" field.
+func (u *MessageUpsert) ClearRfcMessageID() *MessageUpsert {
+	u.SetNull(message.FieldRfcMessageID)
+	return u
+}
+
+// SetBlobKey sets the "blob_key" field.
+func (u *MessageUpsert) SetBlobKey(v string) *MessageUpsert {
+	u.Set(message.FieldBlobKey, v)
+	return u
+}
+
+// UpdateBlobKey sets the "blob_key" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateBlobKey() *MessageUpsert {
+	u.SetExcluded(message.FieldBlobKey)
+	return u
+}
+
+// SetSha256 sets the "sha256" field.
+func (u *MessageUpsert) SetSha256(v string) *MessageUpsert {
+	u.Set(message.FieldSha256, v)
+	return u
+}
+
+// UpdateSha256 sets the "sha256" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateSha256() *MessageUpsert {
+	u.SetExcluded(message.FieldSha256)
+	return u
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *MessageUpsert) SetSizeBytes(v int64) *MessageUpsert {
+	u.Set(message.FieldSizeBytes, v)
+	return u
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateSizeBytes() *MessageUpsert {
+	u.SetExcluded(message.FieldSizeBytes)
+	return u
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *MessageUpsert) AddSizeBytes(v int64) *MessageUpsert {
+	u.Add(message.FieldSizeBytes, v)
+	return u
+}
+
+// SetHeaders sets the "headers" field.
+func (u *MessageUpsert) SetHeaders(v map[string][]string) *MessageUpsert {
+	u.Set(message.FieldHeaders, v)
+	return u
+}
+
+// UpdateHeaders sets the "headers" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateHeaders() *MessageUpsert {
+	u.SetExcluded(message.FieldHeaders)
+	return u
+}
+
+// ClearHeaders clears the value of the "headers" field.
+func (u *MessageUpsert) ClearHeaders() *MessageUpsert {
+	u.SetNull(message.FieldHeaders)
+	return u
+}
+
+// SetFromAddresses sets the "from_addresses" field.
+func (u *MessageUpsert) SetFromAddresses(v []string) *MessageUpsert {
+	u.Set(message.FieldFromAddresses, v)
+	return u
+}
+
+// UpdateFromAddresses sets the "from_addresses" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateFromAddresses() *MessageUpsert {
+	u.SetExcluded(message.FieldFromAddresses)
+	return u
+}
+
+// ClearFromAddresses clears the value of the "from_addresses" field.
+func (u *MessageUpsert) ClearFromAddresses() *MessageUpsert {
+	u.SetNull(message.FieldFromAddresses)
+	return u
+}
+
+// SetToAddresses sets the "to_addresses" field.
+func (u *MessageUpsert) SetToAddresses(v []string) *MessageUpsert {
+	u.Set(message.FieldToAddresses, v)
+	return u
+}
+
+// UpdateToAddresses sets the "to_addresses" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateToAddresses() *MessageUpsert {
+	u.SetExcluded(message.FieldToAddresses)
+	return u
+}
+
+// ClearToAddresses clears the value of the "to_addresses" field.
+func (u *MessageUpsert) ClearToAddresses() *MessageUpsert {
+	u.SetNull(message.FieldToAddresses)
+	return u
+}
+
+// SetCcAddresses sets the "cc_addresses" field.
+func (u *MessageUpsert) SetCcAddresses(v []string) *MessageUpsert {
+	u.Set(message.FieldCcAddresses, v)
+	return u
+}
+
+// UpdateCcAddresses sets the "cc_addresses" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateCcAddresses() *MessageUpsert {
+	u.SetExcluded(message.FieldCcAddresses)
+	return u
+}
+
+// ClearCcAddresses clears the value of the "cc_addresses" field.
+func (u *MessageUpsert) ClearCcAddresses() *MessageUpsert {
+	u.SetNull(message.FieldCcAddresses)
+	return u
+}
+
+// SetBccAddresses sets the "bcc_addresses" field.
+func (u *MessageUpsert) SetBccAddresses(v []string) *MessageUpsert {
+	u.Set(message.FieldBccAddresses, v)
+	return u
+}
+
+// UpdateBccAddresses sets the "bcc_addresses" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateBccAddresses() *MessageUpsert {
+	u.SetExcluded(message.FieldBccAddresses)
+	return u
+}
+
+// ClearBccAddresses clears the value of the "bcc_addresses" field.
+func (u *MessageUpsert) ClearBccAddresses() *MessageUpsert {
+	u.SetNull(message.FieldBccAddresses)
+	return u
+}
+
+// SetSubject sets the "subject" field.
+func (u *MessageUpsert) SetSubject(v string) *MessageUpsert {
+	u.Set(message.FieldSubject, v)
+	return u
+}
+
+// UpdateSubject sets the "subject" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateSubject() *MessageUpsert {
+	u.SetExcluded(message.FieldSubject)
+	return u
+}
+
+// ClearSubject clears the value of the "subject" field.
+func (u *MessageUpsert) ClearSubject() *MessageUpsert {
+	u.SetNull(message.FieldSubject)
+	return u
+}
+
+// SetDate sets the "date" field.
+func (u *MessageUpsert) SetDate(v time.Time) *MessageUpsert {
+	u.Set(message.FieldDate, v)
+	return u
+}
+
+// UpdateDate sets the "date" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateDate() *MessageUpsert {
+	u.SetExcluded(message.FieldDate)
+	return u
+}
+
+// ClearDate clears the value of the "date" field.
+func (u *MessageUpsert) ClearDate() *MessageUpsert {
+	u.SetNull(message.FieldDate)
+	return u
+}
+
+// SetTextBodyExtract sets the "text_body_extract" field.
+func (u *MessageUpsert) SetTextBodyExtract(v string) *MessageUpsert {
+	u.Set(message.FieldTextBodyExtract, v)
+	return u
+}
+
+// UpdateTextBodyExtract sets the "text_body_extract" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateTextBodyExtract() *MessageUpsert {
+	u.SetExcluded(message.FieldTextBodyExtract)
+	return u
+}
+
+// ClearTextBodyExtract clears the value of the "text_body_extract" field.
+func (u *MessageUpsert) ClearTextBodyExtract() *MessageUpsert {
+	u.SetNull(message.FieldTextBodyExtract)
+	return u
+}
+
+// SetHTMLBodyExtract sets the "html_body_extract" field.
+func (u *MessageUpsert) SetHTMLBodyExtract(v string) *MessageUpsert {
+	u.Set(message.FieldHTMLBodyExtract, v)
+	return u
+}
+
+// UpdateHTMLBodyExtract sets the "html_body_extract" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateHTMLBodyExtract() *MessageUpsert {
+	u.SetExcluded(message.FieldHTMLBodyExtract)
+	return u
+}
+
+// ClearHTMLBodyExtract clears the value of the "html_body_extract" field.
+func (u *MessageUpsert) ClearHTMLBodyExtract() *MessageUpsert {
+	u.SetNull(message.FieldHTMLBodyExtract)
+	return u
+}
+
+// SetAttachments sets the "attachments" field.
+func (u *MessageUpsert) SetAttachments(v []map[string]interface{}) *MessageUpsert {
+	u.Set(message.FieldAttachments, v)
+	return u
+}
+
+// UpdateAttachments sets the "attachments" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateAttachments() *MessageUpsert {
+	u.SetExcluded(message.FieldAttachments)
+	return u
+}
+
+// ClearAttachments clears the value of the "attachments" field.
+func (u *MessageUpsert) ClearAttachments() *MessageUpsert {
+	u.SetNull(message.FieldAttachments)
+	return u
+}
+
+// SetSpamScore sets the "spam_score" field.
+func (u *MessageUpsert) SetSpamScore(v float64) *MessageUpsert {
+	u.Set(message.FieldSpamScore, v)
+	return u
+}
+
+// UpdateSpamScore sets the "spam_score" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateSpamScore() *MessageUpsert {
+	u.SetExcluded(message.FieldSpamScore)
+	return u
+}
+
+// AddSpamScore adds v to the "spam_score" field.
+func (u *MessageUpsert) AddSpamScore(v float64) *MessageUpsert {
+	u.Add(message.FieldSpamScore, v)
+	return u
+}
+
+// SetAuthResults sets the "auth_results" field.
+func (u *MessageUpsert) SetAuthResults(v map[string]interface{}) *MessageUpsert {
+	u.Set(message.FieldAuthResults, v)
+	return u
+}
+
+// UpdateAuthResults sets the "auth_results" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateAuthResults() *MessageUpsert {
+	u.SetExcluded(message.FieldAuthResults)
+	return u
+}
+
+// ClearAuthResults clears the value of the "auth_results" field.
+func (u *MessageUpsert) ClearAuthResults() *MessageUpsert {
+	u.SetNull(message.FieldAuthResults)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MessageUpsert) SetUpdatedAt(v time.Time) *MessageUpsert {
+	u.Set(message.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateUpdatedAt() *MessageUpsert {
+	u.SetExcluded(message.FieldUpdatedAt)
+	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MessageUpsert) SetDeletedAt(v time.Time) *MessageUpsert {
+	u.Set(message.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MessageUpsert) UpdateDeletedAt() *MessageUpsert {
+	u.SetExcluded(message.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MessageUpsert) ClearDeletedAt() *MessageUpsert {
+	u.SetNull(message.FieldDeletedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.Message.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(message.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *MessageUpsertOne) UpdateNewValues() *MessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(message.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(message.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Message.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *MessageUpsertOne) Ignore() *MessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MessageUpsertOne) DoNothing() *MessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MessageCreate.OnConflict
+// documentation for more info.
+func (u *MessageUpsertOne) Update(set func(*MessageUpsert)) *MessageUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MessageUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *MessageUpsertOne) SetTraceID(v string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateTraceID() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// SetRfcMessageID sets the "rfc_message_id" field.
+func (u *MessageUpsertOne) SetRfcMessageID(v string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetRfcMessageID(v)
+	})
+}
+
+// UpdateRfcMessageID sets the "rfc_message_id" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateRfcMessageID() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateRfcMessageID()
+	})
+}
+
+// ClearRfcMessageID clears the value of the "rfc_message_id" field.
+func (u *MessageUpsertOne) ClearRfcMessageID() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearRfcMessageID()
+	})
+}
+
+// SetBlobKey sets the "blob_key" field.
+func (u *MessageUpsertOne) SetBlobKey(v string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetBlobKey(v)
+	})
+}
+
+// UpdateBlobKey sets the "blob_key" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateBlobKey() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateBlobKey()
+	})
+}
+
+// SetSha256 sets the "sha256" field.
+func (u *MessageUpsertOne) SetSha256(v string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSha256(v)
+	})
+}
+
+// UpdateSha256 sets the "sha256" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateSha256() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSha256()
+	})
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *MessageUpsertOne) SetSizeBytes(v int64) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSizeBytes(v)
+	})
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *MessageUpsertOne) AddSizeBytes(v int64) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.AddSizeBytes(v)
+	})
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateSizeBytes() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSizeBytes()
+	})
+}
+
+// SetHeaders sets the "headers" field.
+func (u *MessageUpsertOne) SetHeaders(v map[string][]string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetHeaders(v)
+	})
+}
+
+// UpdateHeaders sets the "headers" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateHeaders() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateHeaders()
+	})
+}
+
+// ClearHeaders clears the value of the "headers" field.
+func (u *MessageUpsertOne) ClearHeaders() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearHeaders()
+	})
+}
+
+// SetFromAddresses sets the "from_addresses" field.
+func (u *MessageUpsertOne) SetFromAddresses(v []string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetFromAddresses(v)
+	})
+}
+
+// UpdateFromAddresses sets the "from_addresses" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateFromAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateFromAddresses()
+	})
+}
+
+// ClearFromAddresses clears the value of the "from_addresses" field.
+func (u *MessageUpsertOne) ClearFromAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearFromAddresses()
+	})
+}
+
+// SetToAddresses sets the "to_addresses" field.
+func (u *MessageUpsertOne) SetToAddresses(v []string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetToAddresses(v)
+	})
+}
+
+// UpdateToAddresses sets the "to_addresses" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateToAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateToAddresses()
+	})
+}
+
+// ClearToAddresses clears the value of the "to_addresses" field.
+func (u *MessageUpsertOne) ClearToAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearToAddresses()
+	})
+}
+
+// SetCcAddresses sets the "cc_addresses" field.
+func (u *MessageUpsertOne) SetCcAddresses(v []string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetCcAddresses(v)
+	})
+}
+
+// UpdateCcAddresses sets the "cc_addresses" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateCcAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateCcAddresses()
+	})
+}
+
+// ClearCcAddresses clears the value of the "cc_addresses" field.
+func (u *MessageUpsertOne) ClearCcAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearCcAddresses()
+	})
+}
+
+// SetBccAddresses sets the "bcc_addresses" field.
+func (u *MessageUpsertOne) SetBccAddresses(v []string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetBccAddresses(v)
+	})
+}
+
+// UpdateBccAddresses sets the "bcc_addresses" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateBccAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateBccAddresses()
+	})
+}
+
+// ClearBccAddresses clears the value of the "bcc_addresses" field.
+func (u *MessageUpsertOne) ClearBccAddresses() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearBccAddresses()
+	})
+}
+
+// SetSubject sets the "subject" field.
+func (u *MessageUpsertOne) SetSubject(v string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSubject(v)
+	})
+}
+
+// UpdateSubject sets the "subject" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateSubject() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSubject()
+	})
+}
+
+// ClearSubject clears the value of the "subject" field.
+func (u *MessageUpsertOne) ClearSubject() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearSubject()
+	})
+}
+
+// SetDate sets the "date" field.
+func (u *MessageUpsertOne) SetDate(v time.Time) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetDate(v)
+	})
+}
+
+// UpdateDate sets the "date" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateDate() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateDate()
+	})
+}
+
+// ClearDate clears the value of the "date" field.
+func (u *MessageUpsertOne) ClearDate() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearDate()
+	})
+}
+
+// SetTextBodyExtract sets the "text_body_extract" field.
+func (u *MessageUpsertOne) SetTextBodyExtract(v string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetTextBodyExtract(v)
+	})
+}
+
+// UpdateTextBodyExtract sets the "text_body_extract" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateTextBodyExtract() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateTextBodyExtract()
+	})
+}
+
+// ClearTextBodyExtract clears the value of the "text_body_extract" field.
+func (u *MessageUpsertOne) ClearTextBodyExtract() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearTextBodyExtract()
+	})
+}
+
+// SetHTMLBodyExtract sets the "html_body_extract" field.
+func (u *MessageUpsertOne) SetHTMLBodyExtract(v string) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetHTMLBodyExtract(v)
+	})
+}
+
+// UpdateHTMLBodyExtract sets the "html_body_extract" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateHTMLBodyExtract() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateHTMLBodyExtract()
+	})
+}
+
+// ClearHTMLBodyExtract clears the value of the "html_body_extract" field.
+func (u *MessageUpsertOne) ClearHTMLBodyExtract() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearHTMLBodyExtract()
+	})
+}
+
+// SetAttachments sets the "attachments" field.
+func (u *MessageUpsertOne) SetAttachments(v []map[string]interface{}) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetAttachments(v)
+	})
+}
+
+// UpdateAttachments sets the "attachments" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateAttachments() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateAttachments()
+	})
+}
+
+// ClearAttachments clears the value of the "attachments" field.
+func (u *MessageUpsertOne) ClearAttachments() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearAttachments()
+	})
+}
+
+// SetSpamScore sets the "spam_score" field.
+func (u *MessageUpsertOne) SetSpamScore(v float64) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSpamScore(v)
+	})
+}
+
+// AddSpamScore adds v to the "spam_score" field.
+func (u *MessageUpsertOne) AddSpamScore(v float64) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.AddSpamScore(v)
+	})
+}
+
+// UpdateSpamScore sets the "spam_score" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateSpamScore() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSpamScore()
+	})
+}
+
+// SetAuthResults sets the "auth_results" field.
+func (u *MessageUpsertOne) SetAuthResults(v map[string]interface{}) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetAuthResults(v)
+	})
+}
+
+// UpdateAuthResults sets the "auth_results" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateAuthResults() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateAuthResults()
+	})
+}
+
+// ClearAuthResults clears the value of the "auth_results" field.
+func (u *MessageUpsertOne) ClearAuthResults() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearAuthResults()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MessageUpsertOne) SetUpdatedAt(v time.Time) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateUpdatedAt() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MessageUpsertOne) SetDeletedAt(v time.Time) *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MessageUpsertOne) UpdateDeletedAt() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MessageUpsertOne) ClearDeletedAt() *MessageUpsertOne {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MessageUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MessageCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MessageUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *MessageUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: MessageUpsertOne.ID is not supported by MySQL driver. Use MessageUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *MessageUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // MessageCreateBulk is the builder for creating many Message entities in bulk.
 type MessageCreateBulk struct {
 	config
 	err      error
 	builders []*MessageCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Message entities in the database.
@@ -454,6 +1286,7 @@ func (_c *MessageCreateBulk) Save(ctx context.Context) ([]*Message, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -500,6 +1333,494 @@ func (_c *MessageCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *MessageCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Message.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MessageUpsert) {
+//			SetTraceID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MessageCreateBulk) OnConflict(opts ...sql.ConflictOption) *MessageUpsertBulk {
+	_c.conflict = opts
+	return &MessageUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Message.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MessageCreateBulk) OnConflictColumns(columns ...string) *MessageUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MessageUpsertBulk{
+		create: _c,
+	}
+}
+
+// MessageUpsertBulk is the builder for "upsert"-ing
+// a bulk of Message nodes.
+type MessageUpsertBulk struct {
+	create *MessageCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Message.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(message.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *MessageUpsertBulk) UpdateNewValues() *MessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(message.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(message.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Message.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *MessageUpsertBulk) Ignore() *MessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MessageUpsertBulk) DoNothing() *MessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MessageCreateBulk.OnConflict
+// documentation for more info.
+func (u *MessageUpsertBulk) Update(set func(*MessageUpsert)) *MessageUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MessageUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetTraceID sets the "trace_id" field.
+func (u *MessageUpsertBulk) SetTraceID(v string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetTraceID(v)
+	})
+}
+
+// UpdateTraceID sets the "trace_id" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateTraceID() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateTraceID()
+	})
+}
+
+// SetRfcMessageID sets the "rfc_message_id" field.
+func (u *MessageUpsertBulk) SetRfcMessageID(v string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetRfcMessageID(v)
+	})
+}
+
+// UpdateRfcMessageID sets the "rfc_message_id" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateRfcMessageID() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateRfcMessageID()
+	})
+}
+
+// ClearRfcMessageID clears the value of the "rfc_message_id" field.
+func (u *MessageUpsertBulk) ClearRfcMessageID() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearRfcMessageID()
+	})
+}
+
+// SetBlobKey sets the "blob_key" field.
+func (u *MessageUpsertBulk) SetBlobKey(v string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetBlobKey(v)
+	})
+}
+
+// UpdateBlobKey sets the "blob_key" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateBlobKey() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateBlobKey()
+	})
+}
+
+// SetSha256 sets the "sha256" field.
+func (u *MessageUpsertBulk) SetSha256(v string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSha256(v)
+	})
+}
+
+// UpdateSha256 sets the "sha256" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateSha256() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSha256()
+	})
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *MessageUpsertBulk) SetSizeBytes(v int64) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSizeBytes(v)
+	})
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *MessageUpsertBulk) AddSizeBytes(v int64) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.AddSizeBytes(v)
+	})
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateSizeBytes() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSizeBytes()
+	})
+}
+
+// SetHeaders sets the "headers" field.
+func (u *MessageUpsertBulk) SetHeaders(v map[string][]string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetHeaders(v)
+	})
+}
+
+// UpdateHeaders sets the "headers" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateHeaders() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateHeaders()
+	})
+}
+
+// ClearHeaders clears the value of the "headers" field.
+func (u *MessageUpsertBulk) ClearHeaders() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearHeaders()
+	})
+}
+
+// SetFromAddresses sets the "from_addresses" field.
+func (u *MessageUpsertBulk) SetFromAddresses(v []string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetFromAddresses(v)
+	})
+}
+
+// UpdateFromAddresses sets the "from_addresses" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateFromAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateFromAddresses()
+	})
+}
+
+// ClearFromAddresses clears the value of the "from_addresses" field.
+func (u *MessageUpsertBulk) ClearFromAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearFromAddresses()
+	})
+}
+
+// SetToAddresses sets the "to_addresses" field.
+func (u *MessageUpsertBulk) SetToAddresses(v []string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetToAddresses(v)
+	})
+}
+
+// UpdateToAddresses sets the "to_addresses" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateToAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateToAddresses()
+	})
+}
+
+// ClearToAddresses clears the value of the "to_addresses" field.
+func (u *MessageUpsertBulk) ClearToAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearToAddresses()
+	})
+}
+
+// SetCcAddresses sets the "cc_addresses" field.
+func (u *MessageUpsertBulk) SetCcAddresses(v []string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetCcAddresses(v)
+	})
+}
+
+// UpdateCcAddresses sets the "cc_addresses" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateCcAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateCcAddresses()
+	})
+}
+
+// ClearCcAddresses clears the value of the "cc_addresses" field.
+func (u *MessageUpsertBulk) ClearCcAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearCcAddresses()
+	})
+}
+
+// SetBccAddresses sets the "bcc_addresses" field.
+func (u *MessageUpsertBulk) SetBccAddresses(v []string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetBccAddresses(v)
+	})
+}
+
+// UpdateBccAddresses sets the "bcc_addresses" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateBccAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateBccAddresses()
+	})
+}
+
+// ClearBccAddresses clears the value of the "bcc_addresses" field.
+func (u *MessageUpsertBulk) ClearBccAddresses() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearBccAddresses()
+	})
+}
+
+// SetSubject sets the "subject" field.
+func (u *MessageUpsertBulk) SetSubject(v string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSubject(v)
+	})
+}
+
+// UpdateSubject sets the "subject" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateSubject() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSubject()
+	})
+}
+
+// ClearSubject clears the value of the "subject" field.
+func (u *MessageUpsertBulk) ClearSubject() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearSubject()
+	})
+}
+
+// SetDate sets the "date" field.
+func (u *MessageUpsertBulk) SetDate(v time.Time) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetDate(v)
+	})
+}
+
+// UpdateDate sets the "date" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateDate() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateDate()
+	})
+}
+
+// ClearDate clears the value of the "date" field.
+func (u *MessageUpsertBulk) ClearDate() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearDate()
+	})
+}
+
+// SetTextBodyExtract sets the "text_body_extract" field.
+func (u *MessageUpsertBulk) SetTextBodyExtract(v string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetTextBodyExtract(v)
+	})
+}
+
+// UpdateTextBodyExtract sets the "text_body_extract" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateTextBodyExtract() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateTextBodyExtract()
+	})
+}
+
+// ClearTextBodyExtract clears the value of the "text_body_extract" field.
+func (u *MessageUpsertBulk) ClearTextBodyExtract() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearTextBodyExtract()
+	})
+}
+
+// SetHTMLBodyExtract sets the "html_body_extract" field.
+func (u *MessageUpsertBulk) SetHTMLBodyExtract(v string) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetHTMLBodyExtract(v)
+	})
+}
+
+// UpdateHTMLBodyExtract sets the "html_body_extract" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateHTMLBodyExtract() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateHTMLBodyExtract()
+	})
+}
+
+// ClearHTMLBodyExtract clears the value of the "html_body_extract" field.
+func (u *MessageUpsertBulk) ClearHTMLBodyExtract() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearHTMLBodyExtract()
+	})
+}
+
+// SetAttachments sets the "attachments" field.
+func (u *MessageUpsertBulk) SetAttachments(v []map[string]interface{}) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetAttachments(v)
+	})
+}
+
+// UpdateAttachments sets the "attachments" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateAttachments() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateAttachments()
+	})
+}
+
+// ClearAttachments clears the value of the "attachments" field.
+func (u *MessageUpsertBulk) ClearAttachments() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearAttachments()
+	})
+}
+
+// SetSpamScore sets the "spam_score" field.
+func (u *MessageUpsertBulk) SetSpamScore(v float64) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetSpamScore(v)
+	})
+}
+
+// AddSpamScore adds v to the "spam_score" field.
+func (u *MessageUpsertBulk) AddSpamScore(v float64) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.AddSpamScore(v)
+	})
+}
+
+// UpdateSpamScore sets the "spam_score" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateSpamScore() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateSpamScore()
+	})
+}
+
+// SetAuthResults sets the "auth_results" field.
+func (u *MessageUpsertBulk) SetAuthResults(v map[string]interface{}) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetAuthResults(v)
+	})
+}
+
+// UpdateAuthResults sets the "auth_results" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateAuthResults() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateAuthResults()
+	})
+}
+
+// ClearAuthResults clears the value of the "auth_results" field.
+func (u *MessageUpsertBulk) ClearAuthResults() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearAuthResults()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MessageUpsertBulk) SetUpdatedAt(v time.Time) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateUpdatedAt() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MessageUpsertBulk) SetDeletedAt(v time.Time) *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MessageUpsertBulk) UpdateDeletedAt() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MessageUpsertBulk) ClearDeletedAt() *MessageUpsertBulk {
+	return u.Update(func(s *MessageUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MessageUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the MessageCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MessageCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MessageUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
@@ -18,6 +20,7 @@ type MailboxCreate struct {
 	config
 	mutation *MailboxMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetPrimaryAddress sets the "primary_address" field.
@@ -242,6 +245,7 @@ func (_c *MailboxCreate) createSpec() (*Mailbox, *sqlgraph.CreateSpec) {
 		_node = &Mailbox{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(mailbox.Table, sqlgraph.NewFieldSpec(mailbox.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -281,11 +285,384 @@ func (_c *MailboxCreate) createSpec() (*Mailbox, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Mailbox.Create().
+//		SetPrimaryAddress(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MailboxUpsert) {
+//			SetPrimaryAddress(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MailboxCreate) OnConflict(opts ...sql.ConflictOption) *MailboxUpsertOne {
+	_c.conflict = opts
+	return &MailboxUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Mailbox.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MailboxCreate) OnConflictColumns(columns ...string) *MailboxUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MailboxUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// MailboxUpsertOne is the builder for "upsert"-ing
+	//  one Mailbox node.
+	MailboxUpsertOne struct {
+		create *MailboxCreate
+	}
+
+	// MailboxUpsert is the "OnConflict" setter.
+	MailboxUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetPrimaryAddress sets the "primary_address" field.
+func (u *MailboxUpsert) SetPrimaryAddress(v string) *MailboxUpsert {
+	u.Set(mailbox.FieldPrimaryAddress, v)
+	return u
+}
+
+// UpdatePrimaryAddress sets the "primary_address" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdatePrimaryAddress() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldPrimaryAddress)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *MailboxUpsert) SetStatus(v string) *MailboxUpsert {
+	u.Set(mailbox.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdateStatus() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldStatus)
+	return u
+}
+
+// SetQuotaBytes sets the "quota_bytes" field.
+func (u *MailboxUpsert) SetQuotaBytes(v int64) *MailboxUpsert {
+	u.Set(mailbox.FieldQuotaBytes, v)
+	return u
+}
+
+// UpdateQuotaBytes sets the "quota_bytes" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdateQuotaBytes() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldQuotaBytes)
+	return u
+}
+
+// AddQuotaBytes adds v to the "quota_bytes" field.
+func (u *MailboxUpsert) AddQuotaBytes(v int64) *MailboxUpsert {
+	u.Add(mailbox.FieldQuotaBytes, v)
+	return u
+}
+
+// SetUsedBytes sets the "used_bytes" field.
+func (u *MailboxUpsert) SetUsedBytes(v int64) *MailboxUpsert {
+	u.Set(mailbox.FieldUsedBytes, v)
+	return u
+}
+
+// UpdateUsedBytes sets the "used_bytes" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdateUsedBytes() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldUsedBytes)
+	return u
+}
+
+// AddUsedBytes adds v to the "used_bytes" field.
+func (u *MailboxUpsert) AddUsedBytes(v int64) *MailboxUpsert {
+	u.Add(mailbox.FieldUsedBytes, v)
+	return u
+}
+
+// SetOutboundLimits sets the "outbound_limits" field.
+func (u *MailboxUpsert) SetOutboundLimits(v map[string]int64) *MailboxUpsert {
+	u.Set(mailbox.FieldOutboundLimits, v)
+	return u
+}
+
+// UpdateOutboundLimits sets the "outbound_limits" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdateOutboundLimits() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldOutboundLimits)
+	return u
+}
+
+// ClearOutboundLimits clears the value of the "outbound_limits" field.
+func (u *MailboxUpsert) ClearOutboundLimits() *MailboxUpsert {
+	u.SetNull(mailbox.FieldOutboundLimits)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MailboxUpsert) SetUpdatedAt(v time.Time) *MailboxUpsert {
+	u.Set(mailbox.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdateUpdatedAt() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldUpdatedAt)
+	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MailboxUpsert) SetDeletedAt(v time.Time) *MailboxUpsert {
+	u.Set(mailbox.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdateDeletedAt() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MailboxUpsert) ClearDeletedAt() *MailboxUpsert {
+	u.SetNull(mailbox.FieldDeletedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.Mailbox.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(mailbox.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *MailboxUpsertOne) UpdateNewValues() *MailboxUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(mailbox.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(mailbox.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Mailbox.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *MailboxUpsertOne) Ignore() *MailboxUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MailboxUpsertOne) DoNothing() *MailboxUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MailboxCreate.OnConflict
+// documentation for more info.
+func (u *MailboxUpsertOne) Update(set func(*MailboxUpsert)) *MailboxUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MailboxUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetPrimaryAddress sets the "primary_address" field.
+func (u *MailboxUpsertOne) SetPrimaryAddress(v string) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetPrimaryAddress(v)
+	})
+}
+
+// UpdatePrimaryAddress sets the "primary_address" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdatePrimaryAddress() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdatePrimaryAddress()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *MailboxUpsertOne) SetStatus(v string) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdateStatus() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetQuotaBytes sets the "quota_bytes" field.
+func (u *MailboxUpsertOne) SetQuotaBytes(v int64) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetQuotaBytes(v)
+	})
+}
+
+// AddQuotaBytes adds v to the "quota_bytes" field.
+func (u *MailboxUpsertOne) AddQuotaBytes(v int64) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.AddQuotaBytes(v)
+	})
+}
+
+// UpdateQuotaBytes sets the "quota_bytes" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdateQuotaBytes() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateQuotaBytes()
+	})
+}
+
+// SetUsedBytes sets the "used_bytes" field.
+func (u *MailboxUpsertOne) SetUsedBytes(v int64) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetUsedBytes(v)
+	})
+}
+
+// AddUsedBytes adds v to the "used_bytes" field.
+func (u *MailboxUpsertOne) AddUsedBytes(v int64) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.AddUsedBytes(v)
+	})
+}
+
+// UpdateUsedBytes sets the "used_bytes" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdateUsedBytes() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateUsedBytes()
+	})
+}
+
+// SetOutboundLimits sets the "outbound_limits" field.
+func (u *MailboxUpsertOne) SetOutboundLimits(v map[string]int64) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetOutboundLimits(v)
+	})
+}
+
+// UpdateOutboundLimits sets the "outbound_limits" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdateOutboundLimits() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateOutboundLimits()
+	})
+}
+
+// ClearOutboundLimits clears the value of the "outbound_limits" field.
+func (u *MailboxUpsertOne) ClearOutboundLimits() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.ClearOutboundLimits()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MailboxUpsertOne) SetUpdatedAt(v time.Time) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdateUpdatedAt() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MailboxUpsertOne) SetDeletedAt(v time.Time) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdateDeletedAt() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MailboxUpsertOne) ClearDeletedAt() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MailboxUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MailboxCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MailboxUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *MailboxUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: MailboxUpsertOne.ID is not supported by MySQL driver. Use MailboxUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *MailboxUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // MailboxCreateBulk is the builder for creating many Mailbox entities in bulk.
 type MailboxCreateBulk struct {
 	config
 	err      error
 	builders []*MailboxCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Mailbox entities in the database.
@@ -315,6 +692,7 @@ func (_c *MailboxCreateBulk) Save(ctx context.Context) ([]*Mailbox, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -361,6 +739,249 @@ func (_c *MailboxCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *MailboxCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Mailbox.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MailboxUpsert) {
+//			SetPrimaryAddress(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MailboxCreateBulk) OnConflict(opts ...sql.ConflictOption) *MailboxUpsertBulk {
+	_c.conflict = opts
+	return &MailboxUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Mailbox.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MailboxCreateBulk) OnConflictColumns(columns ...string) *MailboxUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MailboxUpsertBulk{
+		create: _c,
+	}
+}
+
+// MailboxUpsertBulk is the builder for "upsert"-ing
+// a bulk of Mailbox nodes.
+type MailboxUpsertBulk struct {
+	create *MailboxCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Mailbox.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(mailbox.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *MailboxUpsertBulk) UpdateNewValues() *MailboxUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(mailbox.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(mailbox.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Mailbox.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *MailboxUpsertBulk) Ignore() *MailboxUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MailboxUpsertBulk) DoNothing() *MailboxUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MailboxCreateBulk.OnConflict
+// documentation for more info.
+func (u *MailboxUpsertBulk) Update(set func(*MailboxUpsert)) *MailboxUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MailboxUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetPrimaryAddress sets the "primary_address" field.
+func (u *MailboxUpsertBulk) SetPrimaryAddress(v string) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetPrimaryAddress(v)
+	})
+}
+
+// UpdatePrimaryAddress sets the "primary_address" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdatePrimaryAddress() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdatePrimaryAddress()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *MailboxUpsertBulk) SetStatus(v string) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdateStatus() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetQuotaBytes sets the "quota_bytes" field.
+func (u *MailboxUpsertBulk) SetQuotaBytes(v int64) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetQuotaBytes(v)
+	})
+}
+
+// AddQuotaBytes adds v to the "quota_bytes" field.
+func (u *MailboxUpsertBulk) AddQuotaBytes(v int64) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.AddQuotaBytes(v)
+	})
+}
+
+// UpdateQuotaBytes sets the "quota_bytes" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdateQuotaBytes() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateQuotaBytes()
+	})
+}
+
+// SetUsedBytes sets the "used_bytes" field.
+func (u *MailboxUpsertBulk) SetUsedBytes(v int64) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetUsedBytes(v)
+	})
+}
+
+// AddUsedBytes adds v to the "used_bytes" field.
+func (u *MailboxUpsertBulk) AddUsedBytes(v int64) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.AddUsedBytes(v)
+	})
+}
+
+// UpdateUsedBytes sets the "used_bytes" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdateUsedBytes() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateUsedBytes()
+	})
+}
+
+// SetOutboundLimits sets the "outbound_limits" field.
+func (u *MailboxUpsertBulk) SetOutboundLimits(v map[string]int64) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetOutboundLimits(v)
+	})
+}
+
+// UpdateOutboundLimits sets the "outbound_limits" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdateOutboundLimits() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateOutboundLimits()
+	})
+}
+
+// ClearOutboundLimits clears the value of the "outbound_limits" field.
+func (u *MailboxUpsertBulk) ClearOutboundLimits() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.ClearOutboundLimits()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *MailboxUpsertBulk) SetUpdatedAt(v time.Time) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdateUpdatedAt() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *MailboxUpsertBulk) SetDeletedAt(v time.Time) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdateDeletedAt() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *MailboxUpsertBulk) ClearDeletedAt() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.ClearDeletedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MailboxUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the MailboxCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MailboxCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MailboxUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

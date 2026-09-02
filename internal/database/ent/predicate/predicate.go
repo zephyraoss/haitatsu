@@ -12,6 +12,9 @@ type AppPassword func(*sql.Selector)
 // AuditEvent is the predicate function for auditevent builders.
 type AuditEvent func(*sql.Selector)
 
+// AuthLockout is the predicate function for authlockout builders.
+type AuthLockout func(*sql.Selector)
+
 // BounceEvent is the predicate function for bounceevent builders.
 type BounceEvent func(*sql.Selector)
 
@@ -56,6 +59,9 @@ type Route func(*sql.Selector)
 
 // RoutingRule is the predicate function for routingrule builders.
 type RoutingRule func(*sql.Selector)
+
+// SchemaMigration is the predicate function for schemamigration builders.
+type SchemaMigration func(*sql.Selector)
 
 // SenderRule is the predicate function for senderrule builders.
 type SenderRule func(*sql.Selector)

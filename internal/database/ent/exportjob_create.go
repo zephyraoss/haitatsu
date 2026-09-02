@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
@@ -18,6 +20,7 @@ type ExportJobCreate struct {
 	config
 	mutation *ExportJobMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetMailboxID sets the "mailbox_id" field.
@@ -263,6 +266,7 @@ func (_c *ExportJobCreate) createSpec() (*ExportJob, *sqlgraph.CreateSpec) {
 		_node = &ExportJob{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(exportjob.Table, sqlgraph.NewFieldSpec(exportjob.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -310,11 +314,462 @@ func (_c *ExportJobCreate) createSpec() (*ExportJob, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.ExportJob.Create().
+//		SetMailboxID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.ExportJobUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *ExportJobCreate) OnConflict(opts ...sql.ConflictOption) *ExportJobUpsertOne {
+	_c.conflict = opts
+	return &ExportJobUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.ExportJob.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *ExportJobCreate) OnConflictColumns(columns ...string) *ExportJobUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &ExportJobUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// ExportJobUpsertOne is the builder for "upsert"-ing
+	//  one ExportJob node.
+	ExportJobUpsertOne struct {
+		create *ExportJobCreate
+	}
+
+	// ExportJobUpsert is the "OnConflict" setter.
+	ExportJobUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *ExportJobUpsert) SetMailboxID(v string) *ExportJobUpsert {
+	u.Set(exportjob.FieldMailboxID, v)
+	return u
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateMailboxID() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldMailboxID)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *ExportJobUpsert) SetStatus(v string) *ExportJobUpsert {
+	u.Set(exportjob.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateStatus() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldStatus)
+	return u
+}
+
+// SetObjectKey sets the "object_key" field.
+func (u *ExportJobUpsert) SetObjectKey(v string) *ExportJobUpsert {
+	u.Set(exportjob.FieldObjectKey, v)
+	return u
+}
+
+// UpdateObjectKey sets the "object_key" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateObjectKey() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldObjectKey)
+	return u
+}
+
+// ClearObjectKey clears the value of the "object_key" field.
+func (u *ExportJobUpsert) ClearObjectKey() *ExportJobUpsert {
+	u.SetNull(exportjob.FieldObjectKey)
+	return u
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *ExportJobUpsert) SetSizeBytes(v int64) *ExportJobUpsert {
+	u.Set(exportjob.FieldSizeBytes, v)
+	return u
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateSizeBytes() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldSizeBytes)
+	return u
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *ExportJobUpsert) AddSizeBytes(v int64) *ExportJobUpsert {
+	u.Add(exportjob.FieldSizeBytes, v)
+	return u
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *ExportJobUpsert) SetLockedBy(v string) *ExportJobUpsert {
+	u.Set(exportjob.FieldLockedBy, v)
+	return u
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateLockedBy() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldLockedBy)
+	return u
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *ExportJobUpsert) ClearLockedBy() *ExportJobUpsert {
+	u.SetNull(exportjob.FieldLockedBy)
+	return u
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *ExportJobUpsert) SetLockedUntil(v time.Time) *ExportJobUpsert {
+	u.Set(exportjob.FieldLockedUntil, v)
+	return u
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateLockedUntil() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldLockedUntil)
+	return u
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *ExportJobUpsert) ClearLockedUntil() *ExportJobUpsert {
+	u.SetNull(exportjob.FieldLockedUntil)
+	return u
+}
+
+// SetLastError sets the "last_error" field.
+func (u *ExportJobUpsert) SetLastError(v map[string]interface{}) *ExportJobUpsert {
+	u.Set(exportjob.FieldLastError, v)
+	return u
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateLastError() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldLastError)
+	return u
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *ExportJobUpsert) ClearLastError() *ExportJobUpsert {
+	u.SetNull(exportjob.FieldLastError)
+	return u
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ExportJobUpsert) SetExpiresAt(v time.Time) *ExportJobUpsert {
+	u.Set(exportjob.FieldExpiresAt, v)
+	return u
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateExpiresAt() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldExpiresAt)
+	return u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *ExportJobUpsert) ClearExpiresAt() *ExportJobUpsert {
+	u.SetNull(exportjob.FieldExpiresAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *ExportJobUpsert) SetUpdatedAt(v time.Time) *ExportJobUpsert {
+	u.Set(exportjob.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *ExportJobUpsert) UpdateUpdatedAt() *ExportJobUpsert {
+	u.SetExcluded(exportjob.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.ExportJob.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(exportjob.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *ExportJobUpsertOne) UpdateNewValues() *ExportJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(exportjob.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(exportjob.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.ExportJob.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *ExportJobUpsertOne) Ignore() *ExportJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *ExportJobUpsertOne) DoNothing() *ExportJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the ExportJobCreate.OnConflict
+// documentation for more info.
+func (u *ExportJobUpsertOne) Update(set func(*ExportJobUpsert)) *ExportJobUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&ExportJobUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *ExportJobUpsertOne) SetMailboxID(v string) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateMailboxID() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *ExportJobUpsertOne) SetStatus(v string) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateStatus() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetObjectKey sets the "object_key" field.
+func (u *ExportJobUpsertOne) SetObjectKey(v string) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetObjectKey(v)
+	})
+}
+
+// UpdateObjectKey sets the "object_key" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateObjectKey() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateObjectKey()
+	})
+}
+
+// ClearObjectKey clears the value of the "object_key" field.
+func (u *ExportJobUpsertOne) ClearObjectKey() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearObjectKey()
+	})
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *ExportJobUpsertOne) SetSizeBytes(v int64) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetSizeBytes(v)
+	})
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *ExportJobUpsertOne) AddSizeBytes(v int64) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.AddSizeBytes(v)
+	})
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateSizeBytes() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateSizeBytes()
+	})
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *ExportJobUpsertOne) SetLockedBy(v string) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetLockedBy(v)
+	})
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateLockedBy() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateLockedBy()
+	})
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *ExportJobUpsertOne) ClearLockedBy() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearLockedBy()
+	})
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *ExportJobUpsertOne) SetLockedUntil(v time.Time) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetLockedUntil(v)
+	})
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateLockedUntil() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateLockedUntil()
+	})
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *ExportJobUpsertOne) ClearLockedUntil() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearLockedUntil()
+	})
+}
+
+// SetLastError sets the "last_error" field.
+func (u *ExportJobUpsertOne) SetLastError(v map[string]interface{}) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetLastError(v)
+	})
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateLastError() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateLastError()
+	})
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *ExportJobUpsertOne) ClearLastError() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearLastError()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ExportJobUpsertOne) SetExpiresAt(v time.Time) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateExpiresAt() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateExpiresAt()
+	})
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *ExportJobUpsertOne) ClearExpiresAt() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearExpiresAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *ExportJobUpsertOne) SetUpdatedAt(v time.Time) *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *ExportJobUpsertOne) UpdateUpdatedAt() *ExportJobUpsertOne {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *ExportJobUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for ExportJobCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *ExportJobUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *ExportJobUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: ExportJobUpsertOne.ID is not supported by MySQL driver. Use ExportJobUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *ExportJobUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // ExportJobCreateBulk is the builder for creating many ExportJob entities in bulk.
 type ExportJobCreateBulk struct {
 	config
 	err      error
 	builders []*ExportJobCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the ExportJob entities in the database.
@@ -344,6 +799,7 @@ func (_c *ExportJobCreateBulk) Save(ctx context.Context) ([]*ExportJob, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -390,6 +846,291 @@ func (_c *ExportJobCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *ExportJobCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.ExportJob.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.ExportJobUpsert) {
+//			SetMailboxID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *ExportJobCreateBulk) OnConflict(opts ...sql.ConflictOption) *ExportJobUpsertBulk {
+	_c.conflict = opts
+	return &ExportJobUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.ExportJob.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *ExportJobCreateBulk) OnConflictColumns(columns ...string) *ExportJobUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &ExportJobUpsertBulk{
+		create: _c,
+	}
+}
+
+// ExportJobUpsertBulk is the builder for "upsert"-ing
+// a bulk of ExportJob nodes.
+type ExportJobUpsertBulk struct {
+	create *ExportJobCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.ExportJob.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(exportjob.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *ExportJobUpsertBulk) UpdateNewValues() *ExportJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(exportjob.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(exportjob.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.ExportJob.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *ExportJobUpsertBulk) Ignore() *ExportJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *ExportJobUpsertBulk) DoNothing() *ExportJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the ExportJobCreateBulk.OnConflict
+// documentation for more info.
+func (u *ExportJobUpsertBulk) Update(set func(*ExportJobUpsert)) *ExportJobUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&ExportJobUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMailboxID sets the "mailbox_id" field.
+func (u *ExportJobUpsertBulk) SetMailboxID(v string) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetMailboxID(v)
+	})
+}
+
+// UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateMailboxID() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateMailboxID()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *ExportJobUpsertBulk) SetStatus(v string) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateStatus() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetObjectKey sets the "object_key" field.
+func (u *ExportJobUpsertBulk) SetObjectKey(v string) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetObjectKey(v)
+	})
+}
+
+// UpdateObjectKey sets the "object_key" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateObjectKey() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateObjectKey()
+	})
+}
+
+// ClearObjectKey clears the value of the "object_key" field.
+func (u *ExportJobUpsertBulk) ClearObjectKey() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearObjectKey()
+	})
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *ExportJobUpsertBulk) SetSizeBytes(v int64) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetSizeBytes(v)
+	})
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *ExportJobUpsertBulk) AddSizeBytes(v int64) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.AddSizeBytes(v)
+	})
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateSizeBytes() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateSizeBytes()
+	})
+}
+
+// SetLockedBy sets the "locked_by" field.
+func (u *ExportJobUpsertBulk) SetLockedBy(v string) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetLockedBy(v)
+	})
+}
+
+// UpdateLockedBy sets the "locked_by" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateLockedBy() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateLockedBy()
+	})
+}
+
+// ClearLockedBy clears the value of the "locked_by" field.
+func (u *ExportJobUpsertBulk) ClearLockedBy() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearLockedBy()
+	})
+}
+
+// SetLockedUntil sets the "locked_until" field.
+func (u *ExportJobUpsertBulk) SetLockedUntil(v time.Time) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetLockedUntil(v)
+	})
+}
+
+// UpdateLockedUntil sets the "locked_until" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateLockedUntil() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateLockedUntil()
+	})
+}
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (u *ExportJobUpsertBulk) ClearLockedUntil() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearLockedUntil()
+	})
+}
+
+// SetLastError sets the "last_error" field.
+func (u *ExportJobUpsertBulk) SetLastError(v map[string]interface{}) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetLastError(v)
+	})
+}
+
+// UpdateLastError sets the "last_error" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateLastError() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateLastError()
+	})
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (u *ExportJobUpsertBulk) ClearLastError() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearLastError()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ExportJobUpsertBulk) SetExpiresAt(v time.Time) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateExpiresAt() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateExpiresAt()
+	})
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (u *ExportJobUpsertBulk) ClearExpiresAt() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.ClearExpiresAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *ExportJobUpsertBulk) SetUpdatedAt(v time.Time) *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *ExportJobUpsertBulk) UpdateUpdatedAt() *ExportJobUpsertBulk {
+	return u.Update(func(s *ExportJobUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *ExportJobUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the ExportJobCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for ExportJobCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *ExportJobUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

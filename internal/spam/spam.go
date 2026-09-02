@@ -37,11 +37,14 @@ type Assessment struct {
 
 type Checker struct {
 	client *ent.Client
-	cfg    config.SpamConfig
+	cfg    func() config.SpamConfig
 	authID string
 }
 
-func NewChecker(client *ent.Client, cfg config.SpamConfig, authID string) *Checker {
+func NewChecker(client *ent.Client, cfg func() config.SpamConfig, authID string) *Checker {
+	if cfg == nil {
+		cfg = func() config.SpamConfig { return config.SpamConfig{} }
+	}
 	return &Checker{client: client, cfg: cfg, authID: authID}
 }
 
@@ -52,8 +55,26 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
 	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain, spfResult, spfDomain)
 	listKind, listAction := c.senderRuleMatch(ctx, metadata, smtp, recipients)
+	cfg := c.cfg()
+	listed, dnsblZone := dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
 
 	score, reasons := score(spfResult, dkimResult, dmarcResult, dmarcPolicy, listKind)
+	if listed {
+		score += dnsblScore(cfg)
+		reasons = append(reasons, "dnsbl:"+dnsblZone)
+	}
+	if cfg.RequireHELO && strings.TrimSpace(smtp.HELO) == "" {
+		score += 1
+		reasons = append(reasons, "missing_helo")
+	}
+	if len(metadata.From) == 0 {
+		score += 2
+		reasons = append(reasons, "missing_from")
+	}
+	if metadata.RFCMessageID == "" {
+		score += 1
+		reasons = append(reasons, "missing_message_id")
+	}
 	if listKind == "allow" {
 		score -= 5
 	}
@@ -78,12 +99,13 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 			"spam_reasons": reasons,
 			"list_kind":    listKind,
 			"list_action":  listAction,
+			"dnsbl":        dnsblZone,
 		},
 	}
 	assessment.Header = c.authResultsHeader(spfResult, dkimResult, dmarcResult, smtp, metadata)
 	dmarcFailed := dmarcResult == authres.ResultFail
-	assessment.Junk = score >= c.junkThreshold() || (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
-	assessment.Reject = score >= c.rejectThreshold() || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
+	assessment.Junk = score >= junkThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
+	assessment.Reject = score >= rejectThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
 	return assessment
 }
 
@@ -120,8 +142,11 @@ func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metada
 }
 
 func verifyDKIM(raw []byte) (authres.ResultValue, string) {
-	verifications, err := dkim.Verify(bytes.NewReader(raw))
-	if err != nil || len(verifications) == 0 {
+	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(raw), &dkim.VerifyOptions{MaxVerifications: 10})
+	if len(verifications) == 0 {
+		if err != nil && !errors.Is(err, dkim.ErrTooManySignatures) {
+			return authres.ResultNone, ""
+		}
 		return authres.ResultNone, ""
 	}
 	for _, verification := range verifications {
@@ -143,10 +168,10 @@ func checkDMARC(fromDomain string, dkimResult authres.ResultValue, dkimDomain st
 		}
 		return authres.ResultTempError, dmarc.PolicyNone
 	}
-	if dkimResult == authres.ResultPass && strings.EqualFold(fromDomain, dkimDomain) {
+	if dkimResult == authres.ResultPass && aligned(record.DKIMAlignment, fromDomain, dkimDomain) {
 		return authres.ResultPass, record.Policy
 	}
-	if spfResult == authres.ResultPass && strings.EqualFold(fromDomain, spfDomain) {
+	if spfResult == authres.ResultPass && aligned(record.SPFAlignment, fromDomain, spfDomain) {
 		return authres.ResultPass, record.Policy
 	}
 	return authres.ResultFail, record.Policy
@@ -243,16 +268,23 @@ func recipientMailboxIDs(recipients []routing.Result) []string {
 	return ids
 }
 
-func (c *Checker) junkThreshold() float64 {
-	if c.cfg.JunkThreshold == 0 {
+func junkThreshold(cfg config.SpamConfig) float64 {
+	if cfg.JunkThreshold == 0 {
 		return 5
 	}
-	return c.cfg.JunkThreshold
+	return cfg.JunkThreshold
 }
 
-func (c *Checker) rejectThreshold() float64 {
-	if c.cfg.RejectThreshold == 0 {
+func dnsblScore(cfg config.SpamConfig) float64 {
+	if cfg.DNSBLScore == 0 {
+		return 4
+	}
+	return cfg.DNSBLScore
+}
+
+func rejectThreshold(cfg config.SpamConfig) float64 {
+	if cfg.RejectThreshold == 0 {
 		return 10
 	}
-	return c.cfg.RejectThreshold
+	return cfg.RejectThreshold
 }

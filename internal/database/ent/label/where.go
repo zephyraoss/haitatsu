@@ -74,6 +74,16 @@ func Name(v string) predicate.Label {
 	return predicate.Label(sql.FieldEQ(FieldName, v))
 }
 
+// UIDValidity applies equality check predicate on the "uid_validity" field. It's identical to UIDValidityEQ.
+func UIDValidity(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldEQ(FieldUIDValidity, v))
+}
+
+// UIDNext applies equality check predicate on the "uid_next" field. It's identical to UIDNextEQ.
+func UIDNext(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldEQ(FieldUIDNext, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Label {
 	return predicate.Label(sql.FieldEQ(FieldCreatedAt, v))
@@ -212,6 +222,86 @@ func NameEqualFold(v string) predicate.Label {
 // NameContainsFold applies the ContainsFold predicate on the "name" field.
 func NameContainsFold(v string) predicate.Label {
 	return predicate.Label(sql.FieldContainsFold(FieldName, v))
+}
+
+// UIDValidityEQ applies the EQ predicate on the "uid_validity" field.
+func UIDValidityEQ(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldEQ(FieldUIDValidity, v))
+}
+
+// UIDValidityNEQ applies the NEQ predicate on the "uid_validity" field.
+func UIDValidityNEQ(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldNEQ(FieldUIDValidity, v))
+}
+
+// UIDValidityIn applies the In predicate on the "uid_validity" field.
+func UIDValidityIn(vs ...uint32) predicate.Label {
+	return predicate.Label(sql.FieldIn(FieldUIDValidity, vs...))
+}
+
+// UIDValidityNotIn applies the NotIn predicate on the "uid_validity" field.
+func UIDValidityNotIn(vs ...uint32) predicate.Label {
+	return predicate.Label(sql.FieldNotIn(FieldUIDValidity, vs...))
+}
+
+// UIDValidityGT applies the GT predicate on the "uid_validity" field.
+func UIDValidityGT(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldGT(FieldUIDValidity, v))
+}
+
+// UIDValidityGTE applies the GTE predicate on the "uid_validity" field.
+func UIDValidityGTE(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldGTE(FieldUIDValidity, v))
+}
+
+// UIDValidityLT applies the LT predicate on the "uid_validity" field.
+func UIDValidityLT(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldLT(FieldUIDValidity, v))
+}
+
+// UIDValidityLTE applies the LTE predicate on the "uid_validity" field.
+func UIDValidityLTE(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldLTE(FieldUIDValidity, v))
+}
+
+// UIDNextEQ applies the EQ predicate on the "uid_next" field.
+func UIDNextEQ(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldEQ(FieldUIDNext, v))
+}
+
+// UIDNextNEQ applies the NEQ predicate on the "uid_next" field.
+func UIDNextNEQ(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldNEQ(FieldUIDNext, v))
+}
+
+// UIDNextIn applies the In predicate on the "uid_next" field.
+func UIDNextIn(vs ...uint32) predicate.Label {
+	return predicate.Label(sql.FieldIn(FieldUIDNext, vs...))
+}
+
+// UIDNextNotIn applies the NotIn predicate on the "uid_next" field.
+func UIDNextNotIn(vs ...uint32) predicate.Label {
+	return predicate.Label(sql.FieldNotIn(FieldUIDNext, vs...))
+}
+
+// UIDNextGT applies the GT predicate on the "uid_next" field.
+func UIDNextGT(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldGT(FieldUIDNext, v))
+}
+
+// UIDNextGTE applies the GTE predicate on the "uid_next" field.
+func UIDNextGTE(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldGTE(FieldUIDNext, v))
+}
+
+// UIDNextLT applies the LT predicate on the "uid_next" field.
+func UIDNextLT(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldLT(FieldUIDNext, v))
+}
+
+// UIDNextLTE applies the LTE predicate on the "uid_next" field.
+func UIDNextLTE(v uint32) predicate.Label {
+	return predicate.Label(sql.FieldLTE(FieldUIDNext, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

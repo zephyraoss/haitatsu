@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
@@ -18,6 +20,7 @@ type BounceEventCreate struct {
 	config
 	mutation *BounceEventMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetMessageID sets the "message_id" field.
@@ -180,6 +183,7 @@ func (_c *BounceEventCreate) createSpec() (*BounceEvent, *sqlgraph.CreateSpec) {
 		_node = &BounceEvent{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(bounceevent.Table, sqlgraph.NewFieldSpec(bounceevent.FieldID, field.TypeString))
 	)
+	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = id
@@ -215,11 +219,332 @@ func (_c *BounceEventCreate) createSpec() (*BounceEvent, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.BounceEvent.Create().
+//		SetMessageID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.BounceEventUpsert) {
+//			SetMessageID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *BounceEventCreate) OnConflict(opts ...sql.ConflictOption) *BounceEventUpsertOne {
+	_c.conflict = opts
+	return &BounceEventUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.BounceEvent.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *BounceEventCreate) OnConflictColumns(columns ...string) *BounceEventUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &BounceEventUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// BounceEventUpsertOne is the builder for "upsert"-ing
+	//  one BounceEvent node.
+	BounceEventUpsertOne struct {
+		create *BounceEventCreate
+	}
+
+	// BounceEventUpsert is the "OnConflict" setter.
+	BounceEventUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetMessageID sets the "message_id" field.
+func (u *BounceEventUpsert) SetMessageID(v string) *BounceEventUpsert {
+	u.Set(bounceevent.FieldMessageID, v)
+	return u
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *BounceEventUpsert) UpdateMessageID() *BounceEventUpsert {
+	u.SetExcluded(bounceevent.FieldMessageID)
+	return u
+}
+
+// SetRecipient sets the "recipient" field.
+func (u *BounceEventUpsert) SetRecipient(v string) *BounceEventUpsert {
+	u.Set(bounceevent.FieldRecipient, v)
+	return u
+}
+
+// UpdateRecipient sets the "recipient" field to the value that was provided on create.
+func (u *BounceEventUpsert) UpdateRecipient() *BounceEventUpsert {
+	u.SetExcluded(bounceevent.FieldRecipient)
+	return u
+}
+
+// SetBlobKey sets the "blob_key" field.
+func (u *BounceEventUpsert) SetBlobKey(v string) *BounceEventUpsert {
+	u.Set(bounceevent.FieldBlobKey, v)
+	return u
+}
+
+// UpdateBlobKey sets the "blob_key" field to the value that was provided on create.
+func (u *BounceEventUpsert) UpdateBlobKey() *BounceEventUpsert {
+	u.SetExcluded(bounceevent.FieldBlobKey)
+	return u
+}
+
+// SetSha256 sets the "sha256" field.
+func (u *BounceEventUpsert) SetSha256(v string) *BounceEventUpsert {
+	u.Set(bounceevent.FieldSha256, v)
+	return u
+}
+
+// UpdateSha256 sets the "sha256" field to the value that was provided on create.
+func (u *BounceEventUpsert) UpdateSha256() *BounceEventUpsert {
+	u.SetExcluded(bounceevent.FieldSha256)
+	return u
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *BounceEventUpsert) SetSizeBytes(v int64) *BounceEventUpsert {
+	u.Set(bounceevent.FieldSizeBytes, v)
+	return u
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *BounceEventUpsert) UpdateSizeBytes() *BounceEventUpsert {
+	u.SetExcluded(bounceevent.FieldSizeBytes)
+	return u
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *BounceEventUpsert) AddSizeBytes(v int64) *BounceEventUpsert {
+	u.Add(bounceevent.FieldSizeBytes, v)
+	return u
+}
+
+// SetDetails sets the "details" field.
+func (u *BounceEventUpsert) SetDetails(v map[string]interface{}) *BounceEventUpsert {
+	u.Set(bounceevent.FieldDetails, v)
+	return u
+}
+
+// UpdateDetails sets the "details" field to the value that was provided on create.
+func (u *BounceEventUpsert) UpdateDetails() *BounceEventUpsert {
+	u.SetExcluded(bounceevent.FieldDetails)
+	return u
+}
+
+// ClearDetails clears the value of the "details" field.
+func (u *BounceEventUpsert) ClearDetails() *BounceEventUpsert {
+	u.SetNull(bounceevent.FieldDetails)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
+// Using this option is equivalent to using:
+//
+//	client.BounceEvent.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(bounceevent.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *BounceEventUpsertOne) UpdateNewValues() *BounceEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		if _, exists := u.create.mutation.ID(); exists {
+			s.SetIgnore(bounceevent.FieldID)
+		}
+		if _, exists := u.create.mutation.CreatedAt(); exists {
+			s.SetIgnore(bounceevent.FieldCreatedAt)
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.BounceEvent.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *BounceEventUpsertOne) Ignore() *BounceEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *BounceEventUpsertOne) DoNothing() *BounceEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the BounceEventCreate.OnConflict
+// documentation for more info.
+func (u *BounceEventUpsertOne) Update(set func(*BounceEventUpsert)) *BounceEventUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&BounceEventUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *BounceEventUpsertOne) SetMessageID(v string) *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *BounceEventUpsertOne) UpdateMessageID() *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// SetRecipient sets the "recipient" field.
+func (u *BounceEventUpsertOne) SetRecipient(v string) *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetRecipient(v)
+	})
+}
+
+// UpdateRecipient sets the "recipient" field to the value that was provided on create.
+func (u *BounceEventUpsertOne) UpdateRecipient() *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateRecipient()
+	})
+}
+
+// SetBlobKey sets the "blob_key" field.
+func (u *BounceEventUpsertOne) SetBlobKey(v string) *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetBlobKey(v)
+	})
+}
+
+// UpdateBlobKey sets the "blob_key" field to the value that was provided on create.
+func (u *BounceEventUpsertOne) UpdateBlobKey() *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateBlobKey()
+	})
+}
+
+// SetSha256 sets the "sha256" field.
+func (u *BounceEventUpsertOne) SetSha256(v string) *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetSha256(v)
+	})
+}
+
+// UpdateSha256 sets the "sha256" field to the value that was provided on create.
+func (u *BounceEventUpsertOne) UpdateSha256() *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateSha256()
+	})
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *BounceEventUpsertOne) SetSizeBytes(v int64) *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetSizeBytes(v)
+	})
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *BounceEventUpsertOne) AddSizeBytes(v int64) *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.AddSizeBytes(v)
+	})
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *BounceEventUpsertOne) UpdateSizeBytes() *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateSizeBytes()
+	})
+}
+
+// SetDetails sets the "details" field.
+func (u *BounceEventUpsertOne) SetDetails(v map[string]interface{}) *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetDetails(v)
+	})
+}
+
+// UpdateDetails sets the "details" field to the value that was provided on create.
+func (u *BounceEventUpsertOne) UpdateDetails() *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateDetails()
+	})
+}
+
+// ClearDetails clears the value of the "details" field.
+func (u *BounceEventUpsertOne) ClearDetails() *BounceEventUpsertOne {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.ClearDetails()
+	})
+}
+
+// Exec executes the query.
+func (u *BounceEventUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for BounceEventCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *BounceEventUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *BounceEventUpsertOne) ID(ctx context.Context) (id string, err error) {
+	if u.create.driver.Dialect() == dialect.MySQL {
+		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
+		// fields from the database since MySQL does not support the RETURNING clause.
+		return id, errors.New("ent: BounceEventUpsertOne.ID is not supported by MySQL driver. Use BounceEventUpsertOne.Exec instead")
+	}
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *BounceEventUpsertOne) IDX(ctx context.Context) string {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // BounceEventCreateBulk is the builder for creating many BounceEvent entities in bulk.
 type BounceEventCreateBulk struct {
 	config
 	err      error
 	builders []*BounceEventCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the BounceEvent entities in the database.
@@ -249,6 +574,7 @@ func (_c *BounceEventCreateBulk) Save(ctx context.Context) ([]*BounceEvent, erro
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -295,6 +621,221 @@ func (_c *BounceEventCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *BounceEventCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.BounceEvent.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.BounceEventUpsert) {
+//			SetMessageID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *BounceEventCreateBulk) OnConflict(opts ...sql.ConflictOption) *BounceEventUpsertBulk {
+	_c.conflict = opts
+	return &BounceEventUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.BounceEvent.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *BounceEventCreateBulk) OnConflictColumns(columns ...string) *BounceEventUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &BounceEventUpsertBulk{
+		create: _c,
+	}
+}
+
+// BounceEventUpsertBulk is the builder for "upsert"-ing
+// a bulk of BounceEvent nodes.
+type BounceEventUpsertBulk struct {
+	create *BounceEventCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.BounceEvent.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//			sql.ResolveWith(func(u *sql.UpdateSet) {
+//				u.SetIgnore(bounceevent.FieldID)
+//			}),
+//		).
+//		Exec(ctx)
+func (u *BounceEventUpsertBulk) UpdateNewValues() *BounceEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
+		for _, b := range u.create.builders {
+			if _, exists := b.mutation.ID(); exists {
+				s.SetIgnore(bounceevent.FieldID)
+			}
+			if _, exists := b.mutation.CreatedAt(); exists {
+				s.SetIgnore(bounceevent.FieldCreatedAt)
+			}
+		}
+	}))
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.BounceEvent.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *BounceEventUpsertBulk) Ignore() *BounceEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *BounceEventUpsertBulk) DoNothing() *BounceEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the BounceEventCreateBulk.OnConflict
+// documentation for more info.
+func (u *BounceEventUpsertBulk) Update(set func(*BounceEventUpsert)) *BounceEventUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&BounceEventUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetMessageID sets the "message_id" field.
+func (u *BounceEventUpsertBulk) SetMessageID(v string) *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetMessageID(v)
+	})
+}
+
+// UpdateMessageID sets the "message_id" field to the value that was provided on create.
+func (u *BounceEventUpsertBulk) UpdateMessageID() *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateMessageID()
+	})
+}
+
+// SetRecipient sets the "recipient" field.
+func (u *BounceEventUpsertBulk) SetRecipient(v string) *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetRecipient(v)
+	})
+}
+
+// UpdateRecipient sets the "recipient" field to the value that was provided on create.
+func (u *BounceEventUpsertBulk) UpdateRecipient() *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateRecipient()
+	})
+}
+
+// SetBlobKey sets the "blob_key" field.
+func (u *BounceEventUpsertBulk) SetBlobKey(v string) *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetBlobKey(v)
+	})
+}
+
+// UpdateBlobKey sets the "blob_key" field to the value that was provided on create.
+func (u *BounceEventUpsertBulk) UpdateBlobKey() *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateBlobKey()
+	})
+}
+
+// SetSha256 sets the "sha256" field.
+func (u *BounceEventUpsertBulk) SetSha256(v string) *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetSha256(v)
+	})
+}
+
+// UpdateSha256 sets the "sha256" field to the value that was provided on create.
+func (u *BounceEventUpsertBulk) UpdateSha256() *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateSha256()
+	})
+}
+
+// SetSizeBytes sets the "size_bytes" field.
+func (u *BounceEventUpsertBulk) SetSizeBytes(v int64) *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetSizeBytes(v)
+	})
+}
+
+// AddSizeBytes adds v to the "size_bytes" field.
+func (u *BounceEventUpsertBulk) AddSizeBytes(v int64) *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.AddSizeBytes(v)
+	})
+}
+
+// UpdateSizeBytes sets the "size_bytes" field to the value that was provided on create.
+func (u *BounceEventUpsertBulk) UpdateSizeBytes() *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateSizeBytes()
+	})
+}
+
+// SetDetails sets the "details" field.
+func (u *BounceEventUpsertBulk) SetDetails(v map[string]interface{}) *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.SetDetails(v)
+	})
+}
+
+// UpdateDetails sets the "details" field to the value that was provided on create.
+func (u *BounceEventUpsertBulk) UpdateDetails() *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.UpdateDetails()
+	})
+}
+
+// ClearDetails clears the value of the "details" field.
+func (u *BounceEventUpsertBulk) ClearDetails() *BounceEventUpsertBulk {
+	return u.Update(func(s *BounceEventUpsert) {
+		s.ClearDetails()
+	})
+}
+
+// Exec executes the query.
+func (u *BounceEventUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the BounceEventCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for BounceEventCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *BounceEventUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

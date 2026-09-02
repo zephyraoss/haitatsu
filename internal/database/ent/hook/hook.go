@@ -33,6 +33,18 @@ func (f AuditEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuditEventMutation", m)
 }
 
+// The AuthLockoutFunc type is an adapter to allow the use of ordinary
+// function as AuthLockout mutator.
+type AuthLockoutFunc func(context.Context, *ent.AuthLockoutMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AuthLockoutFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AuthLockoutMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AuthLockoutMutation", m)
+}
+
 // The BounceEventFunc type is an adapter to allow the use of ordinary
 // function as BounceEvent mutator.
 type BounceEventFunc func(context.Context, *ent.BounceEventMutation) (ent.Value, error)
@@ -211,6 +223,18 @@ func (f RoutingRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RoutingRuleMutation", m)
+}
+
+// The SchemaMigrationFunc type is an adapter to allow the use of ordinary
+// function as SchemaMigration mutator.
+type SchemaMigrationFunc func(context.Context, *ent.SchemaMigrationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SchemaMigrationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SchemaMigrationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SchemaMigrationMutation", m)
 }
 
 // The SenderRuleFunc type is an adapter to allow the use of ordinary

@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
@@ -31,7 +32,10 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/schemamigration"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
+
+	stdsql "database/sql"
 )
 
 // Client is the client that holds all ent builders.
@@ -43,6 +47,8 @@ type Client struct {
 	AppPassword *AppPasswordClient
 	// AuditEvent is the client for interacting with the AuditEvent builders.
 	AuditEvent *AuditEventClient
+	// AuthLockout is the client for interacting with the AuthLockout builders.
+	AuthLockout *AuthLockoutClient
 	// BounceEvent is the client for interacting with the BounceEvent builders.
 	BounceEvent *BounceEventClient
 	// DKIMKey is the client for interacting with the DKIMKey builders.
@@ -73,6 +79,8 @@ type Client struct {
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
+	// SchemaMigration is the client for interacting with the SchemaMigration builders.
+	SchemaMigration *SchemaMigrationClient
 	// SenderRule is the client for interacting with the SenderRule builders.
 	SenderRule *SenderRuleClient
 }
@@ -88,6 +96,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AppPassword = NewAppPasswordClient(c.config)
 	c.AuditEvent = NewAuditEventClient(c.config)
+	c.AuthLockout = NewAuthLockoutClient(c.config)
 	c.BounceEvent = NewBounceEventClient(c.config)
 	c.DKIMKey = NewDKIMKeyClient(c.config)
 	c.EventLog = NewEventLogClient(c.config)
@@ -103,6 +112,7 @@ func (c *Client) init() {
 	c.OutboundJob = NewOutboundJobClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
+	c.SchemaMigration = NewSchemaMigrationClient(c.config)
 	c.SenderRule = NewSenderRuleClient(c.config)
 }
 
@@ -198,6 +208,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:              cfg,
 		AppPassword:         NewAppPasswordClient(cfg),
 		AuditEvent:          NewAuditEventClient(cfg),
+		AuthLockout:         NewAuthLockoutClient(cfg),
 		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
 		EventLog:            NewEventLogClient(cfg),
@@ -213,6 +224,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
+		SchemaMigration:     NewSchemaMigrationClient(cfg),
 		SenderRule:          NewSenderRuleClient(cfg),
 	}, nil
 }
@@ -235,6 +247,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:              cfg,
 		AppPassword:         NewAppPasswordClient(cfg),
 		AuditEvent:          NewAuditEventClient(cfg),
+		AuthLockout:         NewAuthLockoutClient(cfg),
 		BounceEvent:         NewBounceEventClient(cfg),
 		DKIMKey:             NewDKIMKeyClient(cfg),
 		EventLog:            NewEventLogClient(cfg),
@@ -250,6 +263,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
+		SchemaMigration:     NewSchemaMigrationClient(cfg),
 		SenderRule:          NewSenderRuleClient(cfg),
 	}, nil
 }
@@ -280,10 +294,10 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.ExportJob,
-		c.Folder, c.ImportJob, c.Label, c.Mailbox, c.MailboxMessage,
-		c.MailboxMessageLabel, c.Message, c.OutboundAttempt, c.OutboundJob, c.Route,
-		c.RoutingRule, c.SenderRule,
+		c.AppPassword, c.AuditEvent, c.AuthLockout, c.BounceEvent, c.DKIMKey,
+		c.EventLog, c.ExportJob, c.Folder, c.ImportJob, c.Label, c.Mailbox,
+		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundAttempt,
+		c.OutboundJob, c.Route, c.RoutingRule, c.SchemaMigration, c.SenderRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -293,10 +307,10 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AppPassword, c.AuditEvent, c.BounceEvent, c.DKIMKey, c.EventLog, c.ExportJob,
-		c.Folder, c.ImportJob, c.Label, c.Mailbox, c.MailboxMessage,
-		c.MailboxMessageLabel, c.Message, c.OutboundAttempt, c.OutboundJob, c.Route,
-		c.RoutingRule, c.SenderRule,
+		c.AppPassword, c.AuditEvent, c.AuthLockout, c.BounceEvent, c.DKIMKey,
+		c.EventLog, c.ExportJob, c.Folder, c.ImportJob, c.Label, c.Mailbox,
+		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundAttempt,
+		c.OutboundJob, c.Route, c.RoutingRule, c.SchemaMigration, c.SenderRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -309,6 +323,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AppPassword.mutate(ctx, m)
 	case *AuditEventMutation:
 		return c.AuditEvent.mutate(ctx, m)
+	case *AuthLockoutMutation:
+		return c.AuthLockout.mutate(ctx, m)
 	case *BounceEventMutation:
 		return c.BounceEvent.mutate(ctx, m)
 	case *DKIMKeyMutation:
@@ -339,6 +355,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Route.mutate(ctx, m)
 	case *RoutingRuleMutation:
 		return c.RoutingRule.mutate(ctx, m)
+	case *SchemaMigrationMutation:
+		return c.SchemaMigration.mutate(ctx, m)
 	case *SenderRuleMutation:
 		return c.SenderRule.mutate(ctx, m)
 	default:
@@ -609,6 +627,139 @@ func (c *AuditEventClient) mutate(ctx context.Context, m *AuditEventMutation) (V
 		return (&AuditEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AuditEvent mutation op: %q", m.Op())
+	}
+}
+
+// AuthLockoutClient is a client for the AuthLockout schema.
+type AuthLockoutClient struct {
+	config
+}
+
+// NewAuthLockoutClient returns a client for the AuthLockout from the given config.
+func NewAuthLockoutClient(c config) *AuthLockoutClient {
+	return &AuthLockoutClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `authlockout.Hooks(f(g(h())))`.
+func (c *AuthLockoutClient) Use(hooks ...Hook) {
+	c.hooks.AuthLockout = append(c.hooks.AuthLockout, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `authlockout.Intercept(f(g(h())))`.
+func (c *AuthLockoutClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AuthLockout = append(c.inters.AuthLockout, interceptors...)
+}
+
+// Create returns a builder for creating a AuthLockout entity.
+func (c *AuthLockoutClient) Create() *AuthLockoutCreate {
+	mutation := newAuthLockoutMutation(c.config, OpCreate)
+	return &AuthLockoutCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AuthLockout entities.
+func (c *AuthLockoutClient) CreateBulk(builders ...*AuthLockoutCreate) *AuthLockoutCreateBulk {
+	return &AuthLockoutCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AuthLockoutClient) MapCreateBulk(slice any, setFunc func(*AuthLockoutCreate, int)) *AuthLockoutCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AuthLockoutCreateBulk{err: fmt.Errorf("calling to AuthLockoutClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AuthLockoutCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AuthLockoutCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AuthLockout.
+func (c *AuthLockoutClient) Update() *AuthLockoutUpdate {
+	mutation := newAuthLockoutMutation(c.config, OpUpdate)
+	return &AuthLockoutUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AuthLockoutClient) UpdateOne(_m *AuthLockout) *AuthLockoutUpdateOne {
+	mutation := newAuthLockoutMutation(c.config, OpUpdateOne, withAuthLockout(_m))
+	return &AuthLockoutUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AuthLockoutClient) UpdateOneID(id string) *AuthLockoutUpdateOne {
+	mutation := newAuthLockoutMutation(c.config, OpUpdateOne, withAuthLockoutID(id))
+	return &AuthLockoutUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AuthLockout.
+func (c *AuthLockoutClient) Delete() *AuthLockoutDelete {
+	mutation := newAuthLockoutMutation(c.config, OpDelete)
+	return &AuthLockoutDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AuthLockoutClient) DeleteOne(_m *AuthLockout) *AuthLockoutDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AuthLockoutClient) DeleteOneID(id string) *AuthLockoutDeleteOne {
+	builder := c.Delete().Where(authlockout.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AuthLockoutDeleteOne{builder}
+}
+
+// Query returns a query builder for AuthLockout.
+func (c *AuthLockoutClient) Query() *AuthLockoutQuery {
+	return &AuthLockoutQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAuthLockout},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AuthLockout entity by its id.
+func (c *AuthLockoutClient) Get(ctx context.Context, id string) (*AuthLockout, error) {
+	return c.Query().Where(authlockout.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AuthLockoutClient) GetX(ctx context.Context, id string) *AuthLockout {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AuthLockoutClient) Hooks() []Hook {
+	return c.hooks.AuthLockout
+}
+
+// Interceptors returns the client interceptors.
+func (c *AuthLockoutClient) Interceptors() []Interceptor {
+	return c.inters.AuthLockout
+}
+
+func (c *AuthLockoutClient) mutate(ctx context.Context, m *AuthLockoutMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AuthLockoutCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AuthLockoutUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AuthLockoutUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AuthLockoutDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AuthLockout mutation op: %q", m.Op())
 	}
 }
 
@@ -2607,6 +2758,139 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 	}
 }
 
+// SchemaMigrationClient is a client for the SchemaMigration schema.
+type SchemaMigrationClient struct {
+	config
+}
+
+// NewSchemaMigrationClient returns a client for the SchemaMigration from the given config.
+func NewSchemaMigrationClient(c config) *SchemaMigrationClient {
+	return &SchemaMigrationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `schemamigration.Hooks(f(g(h())))`.
+func (c *SchemaMigrationClient) Use(hooks ...Hook) {
+	c.hooks.SchemaMigration = append(c.hooks.SchemaMigration, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `schemamigration.Intercept(f(g(h())))`.
+func (c *SchemaMigrationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SchemaMigration = append(c.inters.SchemaMigration, interceptors...)
+}
+
+// Create returns a builder for creating a SchemaMigration entity.
+func (c *SchemaMigrationClient) Create() *SchemaMigrationCreate {
+	mutation := newSchemaMigrationMutation(c.config, OpCreate)
+	return &SchemaMigrationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SchemaMigration entities.
+func (c *SchemaMigrationClient) CreateBulk(builders ...*SchemaMigrationCreate) *SchemaMigrationCreateBulk {
+	return &SchemaMigrationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SchemaMigrationClient) MapCreateBulk(slice any, setFunc func(*SchemaMigrationCreate, int)) *SchemaMigrationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SchemaMigrationCreateBulk{err: fmt.Errorf("calling to SchemaMigrationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SchemaMigrationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SchemaMigrationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SchemaMigration.
+func (c *SchemaMigrationClient) Update() *SchemaMigrationUpdate {
+	mutation := newSchemaMigrationMutation(c.config, OpUpdate)
+	return &SchemaMigrationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SchemaMigrationClient) UpdateOne(_m *SchemaMigration) *SchemaMigrationUpdateOne {
+	mutation := newSchemaMigrationMutation(c.config, OpUpdateOne, withSchemaMigration(_m))
+	return &SchemaMigrationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SchemaMigrationClient) UpdateOneID(id string) *SchemaMigrationUpdateOne {
+	mutation := newSchemaMigrationMutation(c.config, OpUpdateOne, withSchemaMigrationID(id))
+	return &SchemaMigrationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SchemaMigration.
+func (c *SchemaMigrationClient) Delete() *SchemaMigrationDelete {
+	mutation := newSchemaMigrationMutation(c.config, OpDelete)
+	return &SchemaMigrationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SchemaMigrationClient) DeleteOne(_m *SchemaMigration) *SchemaMigrationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SchemaMigrationClient) DeleteOneID(id string) *SchemaMigrationDeleteOne {
+	builder := c.Delete().Where(schemamigration.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SchemaMigrationDeleteOne{builder}
+}
+
+// Query returns a query builder for SchemaMigration.
+func (c *SchemaMigrationClient) Query() *SchemaMigrationQuery {
+	return &SchemaMigrationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSchemaMigration},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SchemaMigration entity by its id.
+func (c *SchemaMigrationClient) Get(ctx context.Context, id string) (*SchemaMigration, error) {
+	return c.Query().Where(schemamigration.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SchemaMigrationClient) GetX(ctx context.Context, id string) *SchemaMigration {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SchemaMigrationClient) Hooks() []Hook {
+	return c.hooks.SchemaMigration
+}
+
+// Interceptors returns the client interceptors.
+func (c *SchemaMigrationClient) Interceptors() []Interceptor {
+	return c.inters.SchemaMigration
+}
+
+func (c *SchemaMigrationClient) mutate(ctx context.Context, m *SchemaMigrationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SchemaMigrationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SchemaMigrationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SchemaMigrationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SchemaMigrationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SchemaMigration mutation op: %q", m.Op())
+	}
+}
+
 // SenderRuleClient is a client for the SenderRule schema.
 type SenderRuleClient struct {
 	config
@@ -2743,13 +3027,39 @@ func (c *SenderRuleClient) mutate(ctx context.Context, m *SenderRuleMutation) (V
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, ExportJob, Folder,
-		ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel, Message,
-		OutboundAttempt, OutboundJob, Route, RoutingRule, SenderRule []ent.Hook
+		AppPassword, AuditEvent, AuthLockout, BounceEvent, DKIMKey, EventLog, ExportJob,
+		Folder, ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel,
+		Message, OutboundAttempt, OutboundJob, Route, RoutingRule, SchemaMigration,
+		SenderRule []ent.Hook
 	}
 	inters struct {
-		AppPassword, AuditEvent, BounceEvent, DKIMKey, EventLog, ExportJob, Folder,
-		ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel, Message,
-		OutboundAttempt, OutboundJob, Route, RoutingRule, SenderRule []ent.Interceptor
+		AppPassword, AuditEvent, AuthLockout, BounceEvent, DKIMKey, EventLog, ExportJob,
+		Folder, ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel,
+		Message, OutboundAttempt, OutboundJob, Route, RoutingRule, SchemaMigration,
+		SenderRule []ent.Interceptor
 	}
 )
+
+// ExecContext allows calling the underlying ExecContext method of the driver if it is supported by it.
+// See, database/sql#DB.ExecContext for more information.
+func (c *config) ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error) {
+	ex, ok := c.driver.(interface {
+		ExecContext(context.Context, string, ...any) (stdsql.Result, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("Driver.ExecContext is not supported")
+	}
+	return ex.ExecContext(ctx, query, args...)
+}
+
+// QueryContext allows calling the underlying QueryContext method of the driver if it is supported by it.
+// See, database/sql#DB.QueryContext for more information.
+func (c *config) QueryContext(ctx context.Context, query string, args ...any) (*stdsql.Rows, error) {
+	q, ok := c.driver.(interface {
+		QueryContext(context.Context, string, ...any) (*stdsql.Rows, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("Driver.QueryContext is not supported")
+	}
+	return q.QueryContext(ctx, query, args...)
+}

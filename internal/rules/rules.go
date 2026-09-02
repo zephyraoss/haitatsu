@@ -2,20 +2,21 @@ package rules
 
 import (
 	"context"
+	"errors"
 	"strings"
-	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
-	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/routing"
 )
 
 type Engine struct {
 	client *ent.Client
+	store  *mailstore.Store
 	events EventSink
 }
 
@@ -28,8 +29,8 @@ type Delivery struct {
 	Route   routing.Result
 }
 
-func New(client *ent.Client, events ...EventSink) *Engine {
-	engine := &Engine{client: client}
+func New(client *ent.Client, store *mailstore.Store, events ...EventSink) *Engine {
+	engine := &Engine{client: client, store: store}
 	if len(events) > 0 {
 		engine.events = events[0]
 	}
@@ -123,8 +124,7 @@ func (e *Engine) applyAction(ctx context.Context, msg *ent.Message, rule *ent.Ro
 	case "junk", "quarantine":
 		return e.moveToFolder(ctx, item, "Junk")
 	case "delete", "drop":
-		_, err := e.client.MailboxMessage.UpdateOneID(item.ID).SetDeletedAt(time.Now()).Save(ctx)
-		return err
+		return e.store.SoftDelete(ctx, item)
 	case "copy_to_mailbox":
 		return e.copyToMailbox(ctx, item, actionString(action, "mailbox_id"))
 	case "webhook", "emit_webhook":
@@ -172,7 +172,7 @@ func webhookPayload(msg *ent.Message, rule *ent.RoutingRule, delivery Delivery, 
 
 func (e *Engine) move(ctx context.Context, item *ent.MailboxMessage, action map[string]any) error {
 	if folderID := actionString(action, "folder_id"); folderID != "" {
-		_, err := e.client.MailboxMessage.UpdateOneID(item.ID).SetFolderID(folderID).Save(ctx)
+		_, err := e.store.Move(ctx, item, folderID)
 		return err
 	}
 	folderName := actionString(action, "folder")
@@ -186,11 +186,7 @@ func (e *Engine) move(ctx context.Context, item *ent.MailboxMessage, action map[
 }
 
 func (e *Engine) moveToFolder(ctx context.Context, item *ent.MailboxMessage, folderName string) error {
-	folder, err := e.client.Folder.Query().Where(folder.MailboxIDEQ(item.MailboxID), folder.NameEQ(folderName)).Only(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = e.client.MailboxMessage.UpdateOneID(item.ID).SetFolderID(folder.ID).Save(ctx)
+	_, err := e.store.MoveToFolderName(ctx, item, folderName)
 	return err
 }
 
@@ -210,10 +206,7 @@ func (e *Engine) addLabel(ctx context.Context, item *ent.MailboxMessage, action 
 		}
 		labelID = labelItem.ID
 	}
-	_, err := e.client.MailboxMessageLabel.Create().SetMailboxMessageID(item.ID).SetLabelID(labelID).Save(ctx)
-	if ent.IsConstraintError(err) {
-		return nil
-	}
+	_, err := e.store.AddLabel(ctx, item, labelID)
 	return err
 }
 
@@ -221,18 +214,24 @@ func (e *Engine) copyToMailbox(ctx context.Context, item *ent.MailboxMessage, ma
 	if mailboxID == "" || mailboxID == item.MailboxID {
 		return nil
 	}
-	inbox, err := e.client.Folder.Query().Where(folder.MailboxIDEQ(mailboxID), folder.NameEQ("INBOX")).Only(ctx)
+	inbox, err := e.store.FolderByName(ctx, mailboxID, "INBOX")
 	if err != nil {
 		return err
 	}
-	_, err = e.client.MailboxMessage.Create().
-		SetMailboxID(mailboxID).
-		SetMessageID(item.MessageID).
-		SetFolderID(inbox.ID).
-		SetOriginalRcpt(item.OriginalRcpt).
-		SetBaseRcpt(item.BaseRcpt).
-		Save(ctx)
-	if ent.IsConstraintError(err) {
+	source, err := e.client.Message.Get(ctx, item.MessageID)
+	if err != nil {
+		return err
+	}
+	_, err = e.store.Attach(ctx, mailstore.Attach{
+		MailboxID:    mailboxID,
+		MessageID:    item.MessageID,
+		FolderID:     inbox.ID,
+		SizeBytes:    source.SizeBytes,
+		OriginalRcpt: item.OriginalRcpt,
+		BaseRcpt:     item.BaseRcpt,
+		EnforceQuota: true,
+	})
+	if ent.IsConstraintError(err) || errors.Is(err, mailstore.ErrOverQuota) {
 		return nil
 	}
 	return err
