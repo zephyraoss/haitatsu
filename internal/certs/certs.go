@@ -17,6 +17,7 @@ const defaultACMECachePath = "/var/lib/haitatsu/certmagic"
 type Options struct {
 	TLS            config.TLSConfig
 	PublicHostname string
+	Hostnames      []string
 }
 
 func TLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
@@ -46,7 +47,7 @@ func manualTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 }
 
 func storageTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
-	hostnames := storageHostnames(opts)
+	hostnames := opts.Hostnames
 	source, err := NewS3Source(opts.TLS.Storage)
 	if err != nil {
 		return nil, err
@@ -60,27 +61,6 @@ func storageTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 		MinVersion:     tls.VersionTLS12,
 		GetCertificate: store.GetCertificate,
 	}, nil
-}
-
-func storageHostnames(opts Options) []string {
-	seen := map[string]struct{}{}
-	var hostnames []string
-	add := func(name string) {
-		name = strings.ToLower(strings.TrimSpace(name))
-		if name == "" {
-			return
-		}
-		if _, ok := seen[name]; ok {
-			return
-		}
-		seen[name] = struct{}{}
-		hostnames = append(hostnames, name)
-	}
-	add(opts.PublicHostname)
-	for _, name := range opts.TLS.Storage.Hostnames {
-		add(name)
-	}
-	return hostnames
 }
 
 func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {

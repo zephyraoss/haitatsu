@@ -44,12 +44,23 @@ func (h *Handler) checkMX(domain string) dnsCheck {
 	if err != nil || len(mx) == 0 {
 		return dnsCheck{Name: "mx", Status: "missing", Message: "No MX records found"}
 	}
+	inbound := h.config.Get().InboundHostnames()
 	for _, record := range mx {
-		if strings.TrimSuffix(strings.ToLower(record.Host), ".") == strings.ToLower(h.config.Get().Server.PublicHostname) {
-			return dnsCheck{Name: "mx", Status: "ok", Message: "MX points to configured inbound host"}
+		if mxTargetsInboundHost(record.Host, inbound) {
+			return dnsCheck{Name: "mx", Status: "ok", Message: "MX points to a configured inbound host"}
 		}
 	}
-	return dnsCheck{Name: "mx", Status: "warning", Message: "MX records do not point to configured inbound host"}
+	return dnsCheck{Name: "mx", Status: "warning", Message: "MX records do not point to any configured inbound host (" + strings.Join(inbound, ", ") + ")"}
+}
+
+func mxTargetsInboundHost(target string, inbound []string) bool {
+	target = strings.TrimSuffix(strings.ToLower(target), ".")
+	for _, hostname := range inbound {
+		if target == hostname {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) checkDKIM(c fiber.Ctx, domain string) dnsCheck {

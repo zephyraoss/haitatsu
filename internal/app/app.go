@@ -113,13 +113,13 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
 	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname)
-	tlsConfig, err := certs.TLSConfig(ctx, certs.Options{TLS: cfg.TLS, PublicHostname: cfg.Server.PublicHostname})
+	tlsConfig, err := certs.TLSConfig(ctx, certs.Options{TLS: cfg.TLS, PublicHostname: cfg.Server.PublicHostname, Hostnames: cfg.InboundHostnames()})
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure listener tls: %w", err)
 	}
 	if strings.EqualFold(strings.TrimSpace(cfg.TLS.Mode), "storage") {
-		logger.Info("serving certificates from shared storage", "bucket", cfg.TLS.Storage.Bucket, "hostnames", append([]string{cfg.Server.PublicHostname}, cfg.TLS.Storage.Hostnames...))
+		logger.Info("serving certificates from shared storage", "bucket", cfg.TLS.Storage.Bucket, "hostnames", cfg.InboundHostnames())
 	}
 	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler, spamChecker, m, inboundsmtp.Options{
 		MaxMessageBytes:     cfg.InboundMessageSize(),

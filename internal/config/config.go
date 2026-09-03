@@ -239,6 +239,27 @@ type LimitsConfig struct {
 	DefaultOutboundRecipients     int64 `pkl:"default_outbound_recipients_per_message" json:"default_outbound_recipients_per_message"`
 }
 
+func (c Config) InboundHostnames() []string {
+	seen := map[string]struct{}{}
+	var hostnames []string
+	add := func(name string) {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		hostnames = append(hostnames, name)
+	}
+	add(c.Server.PublicHostname)
+	for _, name := range c.TLS.Storage.Hostnames {
+		add(name)
+	}
+	return hostnames
+}
+
 func (c Config) InboundMessageSize() int64 {
 	if c.Limits.MaxMessageSizeBytes > 0 {
 		return c.Limits.MaxMessageSizeBytes
