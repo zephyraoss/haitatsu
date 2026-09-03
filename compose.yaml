@@ -50,7 +50,7 @@ services:
       - "1465:465"
       - "1587:587"
     volumes:
-      - ./haitatsu.compose.pkl:/app/haitatsu.pkl:ro
+      - ./haitatsu.compose.pkl:/etc/haitatsu/haitatsu.pkl:ro
 
 volumes:
   postgres-data:

@@ -15,6 +15,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
+	"github.com/zephyraoss/haitatsu/internal/version"
 )
 
 type Server struct {
@@ -32,6 +33,10 @@ type Reloader interface {
 
 func New(cfg *config.Holder, entClient *ent.Client, db *sql.DB, store MessageStore, mail *mailstore.Store, submission *outbound.Submission, checker *health.Checker, m *metrics.Metrics, reloader Reloader) *Server {
 	app := fiber.New(fiber.Config{AppName: "Haitatsu", BodyLimit: 64 * 1024 * 1024})
+	app.Use(func(c fiber.Ctx) error {
+		c.Set("X-Haitatsu-Version", version.Version)
+		return c.Next()
+	})
 	app.Use(m.Middleware)
 
 	app.Get("/health", func(c fiber.Ctx) error {

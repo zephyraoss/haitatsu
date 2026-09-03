@@ -1,7 +1,7 @@
 server {
-  api_addr = "127.0.0.1:8080"
+  api_addr = "0.0.0.0:8080"
   public_hostname = "mail.zephyra.cloud"
-  instance_name = "dev-email-01"
+  instance_name = read("env:HOSTNAME")
   shutdown_timeout_seconds = 10
 }
 
@@ -23,31 +23,31 @@ submission {
 
 relay {
   addr = "smtp.mailbaby.net:587"
-  username = ""
-  password = ""
+  username = read("env:HAITATSU_RELAY_USERNAME")
+  password = read("env:HAITATSU_RELAY_PASSWORD")
   from_host = "smtp.mailbaby.net"
   max_attempts = 30
   max_retry_minutes = 240
 }
 
 postgres {
-  dsn = "postgres://haitatsu:haitatsu@localhost:5432/haitatsu?sslmode=disable"
+  dsn = read("env:HAITATSU_POSTGRES_DSN")
 }
 
 s3 {
-  endpoint = "localhost:9000"
-  region = "us-east-1"
+  endpoint = "100.80.1.1:3900"
+  region = "chi-us"
   bucket = "haitatsu"
-  access_key_id = "minioadmin"
-  secret_access_key = "minioadmin"
+  access_key_id = read("env:HAITATSU_S3_ACCESS_KEY")
+  secret_access_key = read("env:HAITATSU_S3_SECRET_KEY")
   use_ssl = false
 }
 
 logging {
   level = "info"
   axiom_enabled = false
-  axiom_dataset = ""
-  axiom_token = ""
+  axiom_dataset = "haitatsu"
+  axiom_token = read?("env:HAITATSU_AXIOM_TOKEN") ?? ""
   axiom_url = "https://api.axiom.co"
 }
 
@@ -56,7 +56,7 @@ metrics {
 }
 
 api {
-  service_token = "change-me"
+  service_token = read("env:HAITATSU_SERVICE_TOKEN")
 }
 
 workers {
@@ -65,31 +65,35 @@ workers {
 }
 
 tls {
-  mode = "manual"
+  mode = "acme"
   cert_file = ""
   key_file = ""
-  acme_email = ""
+  acme_email = "postmaster@zephyra.cloud"
   acme_ca = "letsencrypt"
-  acme_cache_path = ""
+  acme_cache_path = "/var/lib/haitatsu/certmagic"
   acme_listen_host = ""
   acme_http_port = 0
   acme_tls_alpn_port = 0
-  acme_disable_http_challenge = false
-  acme_disable_tls_alpn_challenge = false
-  acme_disable_distributed_solvers = false
+  acme_disable_http_challenge = true
+  acme_disable_tls_alpn_challenge = true
+  acme_disable_distributed_solvers = true
+  acme_dns_provider = "cloudflare"
+  acme_cloudflare_api_token = read("env:HAITATSU_CLOUDFLARE_API_TOKEN")
+  acme_storage = "s3"
+  acme_s3_prefix = "certmagic"
 }
 
 webhooks {
   default_timeout_seconds = 10
-  secret = ""
+  secret = read("env:HAITATSU_WEBHOOK_SECRET")
   endpoints = new Mapping<String, String> {}
   max_attempts = 10
 }
 
 notifications {
-  from_address = "postmaster@mail.example.com"
+  from_address = "postmaster@mail.zephyra.cloud"
   render_url = ""
-  render_secret = ""
+  render_secret = read("env:HAITATSU_NOTIFICATION_RENDER_SECRET")
   timeout_seconds = 10
   max_response_bytes = 65536
 }

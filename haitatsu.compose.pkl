@@ -70,13 +70,17 @@ tls {
   key_file = ""
   acme_email = ""
   acme_ca = "letsencrypt-staging"
-  acme_cache_path = "./cache/certmagic"
+  acme_cache_path = "/var/lib/haitatsu/certmagic"
   acme_listen_host = ""
   acme_http_port = 0
   acme_tls_alpn_port = 0
   acme_disable_http_challenge = true
   acme_disable_tls_alpn_challenge = true
   acme_disable_distributed_solvers = false
+  acme_dns_provider = ""
+  acme_cloudflare_api_token = ""
+  acme_storage = "file"
+  acme_s3_prefix = "certmagic"
 }
 
 webhooks {

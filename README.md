@@ -9,7 +9,7 @@ Haitatsu is a simple email server written in Go. It receives and stores mail, ex
 - SMTP submission with PLAIN and LOGIN auth, DKIM signing, Bcc stripping, per-mailbox outbound limits, send-as for routed aliases
 - Relay delivery with exponential backoff over roughly two days, permanent failure notifications
 - REST API with cursor pagination, constant-time service token auth
-- Automatic ACME certificates
+- Automatic ACME certificates, with HTTP-01, TLS-ALPN-01, or Cloudflare DNS-01 challenges and certificate storage on disk or in the S3 bucket shared by all replicas
 - App passwords for protocol access, with login throttling shared across nodes through Postgres
 - Quota accounting that tracks deletes and expunges, with a recompute endpoint
 - PostgreSQL for metadata, S3-compatible storage for message blobs, versioned migrations
@@ -32,7 +32,9 @@ Copy the example config and edit it for your environment:
 cp haitatsu.example.pkl haitatsu.pkl
 ```
 
-The server reads config from `haitatsu.pkl` by default. Override with `-config path/to/haitatsu.pkl`.
+The server reads config from `/etc/haitatsu/haitatsu.pkl` by default and refuses to start if nothing is there. Override with `-config path/to/haitatsu.pkl`. The Docker image ships no config, so mount one at that path.
+
+Any field can read from the environment with `read("env:NAME")`, and `read?("env:NAME") ?? ""` makes it optional. The example config does this for every secret (Postgres DSN, S3 keys, service token, relay credentials, webhook secret, notification render secret, Cloudflare token, Axiom token) and sets `instance_name` from `HOSTNAME`, so a deployment is the committed file plus a handful of environment variables. See `deploy/README.md` for the list.
 
 ## Local development
 
@@ -74,6 +76,8 @@ Listener addresses, Postgres, S3, TLS, and worker enablement require a restart. 
 | `spam` | `junk_threshold`, `reject_threshold`, `dnsbl_zones`, `dnsbl_score`, `require_helo` |
 | `imap` | `addr`, `max_connections_per_ip` |
 
+TLS in `acme` mode takes `acme_dns_provider` (`cloudflare` with `acme_cloudflare_api_token`) to solve DNS-01 when ports 80 and 443 belong to something else, and `acme_storage` (`file` under `acme_cache_path`, default `/var/lib/haitatsu/certmagic`, or `s3` under `acme_s3_prefix` in the configured bucket) to decide where certificates live. Use `s3` when several replicas serve the same hostname so they share one certificate.
+
 Per-mailbox outbound limits override the defaults through the `outbound_limits` field on the mailbox API using the keys `per_hour`, `per_day`, and `recipients_per_message`.
 
 ## API pagination
@@ -86,12 +90,17 @@ IMAP IDLE notifications and login throttling are shared between nodes through Po
 
 Stop the stack with `task compose:down`. Reset volumes with `task compose:reset`.
 
+## Deployment
+
+Cluster deployment lives in the `infra` repo, which builds the image with `uc deploy` and ships it to the machines through unregistry; see `deploy/README.md`.
+
 ## Common tasks
 
 | Task | Command |
 |------|---------|
 | Build binary | `task build` |
 | Build Docker image | `task docker:build` |
+| Print build version | `./haitatsu -version` |
 | Start compose stack | `task compose:up` |
 | Wipe database schema | `task db:wipe` |
 | Run tests | `task test` |

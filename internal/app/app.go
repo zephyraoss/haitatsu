@@ -31,6 +31,7 @@ import (
 	submissionsmtp "github.com/zephyraoss/haitatsu/internal/smtp/submission"
 	"github.com/zephyraoss/haitatsu/internal/spam"
 	"github.com/zephyraoss/haitatsu/internal/storage"
+	"github.com/zephyraoss/haitatsu/internal/version"
 	"github.com/zephyraoss/haitatsu/internal/webhooks"
 )
 
@@ -70,6 +71,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("configure logging: %w", err)
 	}
+	logger = logger.With("version", version.Version, "instance", cfg.Server.InstanceName)
 	slog.SetDefault(logger)
 
 	db, err := database.Open(ctx, cfg.Postgres)
@@ -111,7 +113,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
 	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname)
-	tlsConfig, err := certs.TLSConfig(ctx, cfg.TLS, cfg.Server.PublicHostname)
+	tlsConfig, err := certs.TLSConfig(ctx, certs.Options{TLS: cfg.TLS, S3: cfg.S3, PublicHostname: cfg.Server.PublicHostname})
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure listener tls: %w", err)

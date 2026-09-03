@@ -151,6 +151,10 @@ type TLSConfig struct {
 	ACMEDisableHTTPChallenge      bool   `pkl:"acme_disable_http_challenge" json:"acme_disable_http_challenge"`
 	ACMEDisableTLSALPNChallenge   bool   `pkl:"acme_disable_tls_alpn_challenge" json:"acme_disable_tls_alpn_challenge"`
 	ACMEDisableDistributedSolvers bool   `pkl:"acme_disable_distributed_solvers" json:"acme_disable_distributed_solvers"`
+	ACMEDNSProvider               string `pkl:"acme_dns_provider" json:"acme_dns_provider"`
+	ACMECloudflareAPIToken        string `pkl:"acme_cloudflare_api_token" json:"acme_cloudflare_api_token"`
+	ACMEStorage                   string `pkl:"acme_storage" json:"acme_storage"`
+	ACMES3Prefix                  string `pkl:"acme_s3_prefix" json:"acme_s3_prefix"`
 }
 
 type WebhookConfig struct {
@@ -336,6 +340,19 @@ func (c Config) Validate() error {
 	}
 	if strings.EqualFold(strings.TrimSpace(c.TLS.Mode), "acme") && strings.TrimSpace(c.TLS.ACMEEmail) == "" {
 		problems = append(problems, "tls.acme_email is required when ACME TLS is enabled")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.TLS.ACMEDNSProvider)) {
+	case "", "cloudflare":
+	default:
+		problems = append(problems, "tls.acme_dns_provider must be empty or cloudflare")
+	}
+	if strings.EqualFold(strings.TrimSpace(c.TLS.ACMEDNSProvider), "cloudflare") && strings.TrimSpace(c.TLS.ACMECloudflareAPIToken) == "" {
+		problems = append(problems, "tls.acme_cloudflare_api_token is required when tls.acme_dns_provider is cloudflare")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.TLS.ACMEStorage)) {
+	case "", "file", "s3":
+	default:
+		problems = append(problems, "tls.acme_storage must be file or s3")
 	}
 	if c.TLS.ACMEHTTPPort < 0 {
 		problems = append(problems, "tls.acme_http_port must be >= 0")
