@@ -77,10 +77,18 @@ tls {
   acme_disable_http_challenge = true
   acme_disable_tls_alpn_challenge = true
   acme_disable_distributed_solvers = false
-  acme_dns_provider = ""
-  acme_cloudflare_api_token = ""
-  acme_storage = "file"
-  acme_s3_prefix = "certmagic"
+  storage {
+    endpoint = ""
+    region = ""
+    bucket = ""
+    access_key_id = ""
+    secret_access_key = ""
+    use_ssl = false
+    prefix = ""
+    issuer = ""
+    hostnames = new Listing<String> {}
+    refresh_interval_minutes = 60
+  }
 }
 
 webhooks {

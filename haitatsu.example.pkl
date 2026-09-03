@@ -1,6 +1,6 @@
 server {
   api_addr = "0.0.0.0:8080"
-  public_hostname = "mail.zephyra.cloud"
+  public_hostname = "haitatsu.kessoku.zpr.ax"
   instance_name = read("env:HOSTNAME")
   shutdown_timeout_seconds = 10
 }
@@ -65,10 +65,10 @@ workers {
 }
 
 tls {
-  mode = "acme"
+  mode = "storage"
   cert_file = ""
   key_file = ""
-  acme_email = "postmaster@zephyra.cloud"
+  acme_email = "postmaster@zephyra.email"
   acme_ca = "letsencrypt"
   acme_cache_path = "/var/lib/haitatsu/certmagic"
   acme_listen_host = ""
@@ -76,11 +76,19 @@ tls {
   acme_tls_alpn_port = 0
   acme_disable_http_challenge = true
   acme_disable_tls_alpn_challenge = true
-  acme_disable_distributed_solvers = true
-  acme_dns_provider = "cloudflare"
-  acme_cloudflare_api_token = read("env:HAITATSU_CLOUDFLARE_API_TOKEN")
-  acme_storage = "s3"
-  acme_s3_prefix = "certmagic"
+  acme_disable_distributed_solvers = false
+  storage {
+    endpoint = "100.80.1.1:3900"
+    region = "chi-us"
+    bucket = "caddy-certs"
+    access_key_id = read("env:HAITATSU_CERTS_S3_ACCESS_KEY")
+    secret_access_key = read("env:HAITATSU_CERTS_S3_SECRET_KEY")
+    use_ssl = false
+    prefix = "certmagic"
+    issuer = "acme-v02.api.letsencrypt.org-directory"
+    hostnames = new Listing<String> { "mx.zephyra.email" }
+    refresh_interval_minutes = 60
+  }
 }
 
 webhooks {
@@ -91,7 +99,7 @@ webhooks {
 }
 
 notifications {
-  from_address = "postmaster@mail.zephyra.cloud"
+  from_address = "postmaster@zephyra.email"
   render_url = ""
   render_secret = read("env:HAITATSU_NOTIFICATION_RENDER_SECRET")
   timeout_seconds = 10

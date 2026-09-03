@@ -5,10 +5,8 @@ import (
 	"crypto/tls"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/caddyserver/certmagic"
-	"github.com/libdns/cloudflare"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
 )
@@ -17,7 +15,6 @@ const defaultACMECachePath = "/var/lib/haitatsu/certmagic"
 
 type Options struct {
 	TLS            config.TLSConfig
-	S3             config.S3Config
 	PublicHostname string
 }
 
@@ -27,6 +24,8 @@ func TLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 		return manualTLSConfig(opts.TLS)
 	case "acme":
 		return acmeTLSConfig(ctx, opts)
+	case "storage":
+		return storageTLSConfig(ctx, opts)
 	case "off", "disabled":
 		return nil, nil
 	default:
@@ -45,16 +44,50 @@ func manualTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
 }
 
+func storageTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
+	hostnames := storageHostnames(opts)
+	source, err := NewS3Source(opts.TLS.Storage)
+	if err != nil {
+		return nil, err
+	}
+	store := NewStore(source, hostnames, opts.TLS.Storage.IssuerKey())
+	if err := store.Refresh(ctx); err != nil {
+		return nil, fmt.Errorf("load certificates from storage: %w", err)
+	}
+	store.RefreshEvery(ctx, opts.TLS.Storage.RefreshInterval())
+	return &tls.Config{
+		MinVersion:     tls.VersionTLS12,
+		GetCertificate: store.GetCertificate,
+	}, nil
+}
+
+func storageHostnames(opts Options) []string {
+	seen := map[string]struct{}{}
+	var hostnames []string
+	add := func(name string) {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		hostnames = append(hostnames, name)
+	}
+	add(opts.PublicHostname)
+	for _, name := range opts.TLS.Storage.Hostnames {
+		add(name)
+	}
+	return hostnames
+}
+
 func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 	if opts.PublicHostname == "" {
 		return nil, fmt.Errorf("public hostname is required for ACME TLS")
 	}
-	storage, err := acmeStorage(opts)
-	if err != nil {
-		return nil, err
-	}
 	magic := certmagic.NewDefault()
-	magic.Storage = storage
+	magic.Storage = &certmagic.FileStorage{Path: acmeCachePath(opts.TLS)}
 	magic.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
 		CA:                        acmeCA(opts.TLS.ACMECA),
 		Email:                     opts.TLS.ACMEEmail,
@@ -65,7 +98,6 @@ func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 		DisableHTTPChallenge:      opts.TLS.ACMEDisableHTTPChallenge,
 		DisableTLSALPNChallenge:   opts.TLS.ACMEDisableTLSALPNChallenge,
 		DisableDistributedSolvers: opts.TLS.ACMEDisableDistributedSolvers,
-		DNS01Solver:               dns01Solver(opts.TLS),
 	})}
 	if err := magic.ManageAsync(ctx, []string{opts.PublicHostname}); err != nil {
 		return nil, err
@@ -73,29 +105,6 @@ func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.ServerName = opts.PublicHostname
 	return tlsConfig, nil
-}
-
-func dns01Solver(cfg config.TLSConfig) *certmagic.DNS01Solver {
-	switch strings.ToLower(strings.TrimSpace(cfg.ACMEDNSProvider)) {
-	case "cloudflare":
-		return &certmagic.DNS01Solver{DNSManager: certmagic.DNSManager{
-			DNSProvider:      &cloudflare.Provider{APIToken: cfg.ACMECloudflareAPIToken},
-			PropagationDelay: 10 * time.Second,
-		}}
-	default:
-		return nil
-	}
-}
-
-func acmeStorage(opts Options) (certmagic.Storage, error) {
-	switch strings.ToLower(strings.TrimSpace(opts.TLS.ACMEStorage)) {
-	case "", "file":
-		return &certmagic.FileStorage{Path: acmeCachePath(opts.TLS)}, nil
-	case "s3":
-		return NewS3Storage(opts.S3, opts.TLS.ACMES3Prefix)
-	default:
-		return nil, fmt.Errorf("unsupported acme storage %q", opts.TLS.ACMEStorage)
-	}
 }
 
 func acmeCachePath(cfg config.TLSConfig) string {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"slices"
 	"strings"
 	"time"
 
@@ -139,22 +140,61 @@ type WorkersConfig struct {
 }
 
 type TLSConfig struct {
-	Mode                          string `pkl:"mode" json:"mode"`
-	CertFile                      string `pkl:"cert_file" json:"cert_file"`
-	KeyFile                       string `pkl:"key_file" json:"key_file"`
-	ACMEEmail                     string `pkl:"acme_email" json:"acme_email"`
-	ACMECA                        string `pkl:"acme_ca" json:"acme_ca"`
-	ACMECachePath                 string `pkl:"acme_cache_path" json:"acme_cache_path"`
-	ACMEListenHost                string `pkl:"acme_listen_host" json:"acme_listen_host"`
-	ACMEHTTPPort                  int    `pkl:"acme_http_port" json:"acme_http_port"`
-	ACMETLSALPNPort               int    `pkl:"acme_tls_alpn_port" json:"acme_tls_alpn_port"`
-	ACMEDisableHTTPChallenge      bool   `pkl:"acme_disable_http_challenge" json:"acme_disable_http_challenge"`
-	ACMEDisableTLSALPNChallenge   bool   `pkl:"acme_disable_tls_alpn_challenge" json:"acme_disable_tls_alpn_challenge"`
-	ACMEDisableDistributedSolvers bool   `pkl:"acme_disable_distributed_solvers" json:"acme_disable_distributed_solvers"`
-	ACMEDNSProvider               string `pkl:"acme_dns_provider" json:"acme_dns_provider"`
-	ACMECloudflareAPIToken        string `pkl:"acme_cloudflare_api_token" json:"acme_cloudflare_api_token"`
-	ACMEStorage                   string `pkl:"acme_storage" json:"acme_storage"`
-	ACMES3Prefix                  string `pkl:"acme_s3_prefix" json:"acme_s3_prefix"`
+	Mode                          string           `pkl:"mode" json:"mode"`
+	CertFile                      string           `pkl:"cert_file" json:"cert_file"`
+	KeyFile                       string           `pkl:"key_file" json:"key_file"`
+	ACMEEmail                     string           `pkl:"acme_email" json:"acme_email"`
+	ACMECA                        string           `pkl:"acme_ca" json:"acme_ca"`
+	ACMECachePath                 string           `pkl:"acme_cache_path" json:"acme_cache_path"`
+	ACMEListenHost                string           `pkl:"acme_listen_host" json:"acme_listen_host"`
+	ACMEHTTPPort                  int              `pkl:"acme_http_port" json:"acme_http_port"`
+	ACMETLSALPNPort               int              `pkl:"acme_tls_alpn_port" json:"acme_tls_alpn_port"`
+	ACMEDisableHTTPChallenge      bool             `pkl:"acme_disable_http_challenge" json:"acme_disable_http_challenge"`
+	ACMEDisableTLSALPNChallenge   bool             `pkl:"acme_disable_tls_alpn_challenge" json:"acme_disable_tls_alpn_challenge"`
+	ACMEDisableDistributedSolvers bool             `pkl:"acme_disable_distributed_solvers" json:"acme_disable_distributed_solvers"`
+	Storage                       TLSStorageConfig `pkl:"storage" json:"storage"`
+}
+
+type TLSStorageConfig struct {
+	Endpoint               string   `pkl:"endpoint" json:"endpoint"`
+	Region                 string   `pkl:"region" json:"region"`
+	Bucket                 string   `pkl:"bucket" json:"bucket"`
+	AccessKeyID            string   `pkl:"access_key_id" json:"access_key_id"`
+	SecretAccessKey        string   `pkl:"secret_access_key" json:"secret_access_key"`
+	UseSSL                 bool     `pkl:"use_ssl" json:"use_ssl"`
+	Prefix                 string   `pkl:"prefix" json:"prefix"`
+	Issuer                 string   `pkl:"issuer" json:"issuer"`
+	Hostnames              []string `pkl:"hostnames" json:"hostnames"`
+	RefreshIntervalMinutes int      `pkl:"refresh_interval_minutes" json:"refresh_interval_minutes"`
+}
+
+func (c TLSStorageConfig) IssuerKey() string {
+	issuer := strings.TrimSpace(c.Issuer)
+	if issuer == "" {
+		return "acme-v02.api.letsencrypt.org-directory"
+	}
+	return issuer
+}
+
+func (c TLSStorageConfig) RefreshInterval() time.Duration {
+	if c.RefreshIntervalMinutes <= 0 {
+		return time.Hour
+	}
+	return time.Duration(c.RefreshIntervalMinutes) * time.Minute
+}
+
+func (c TLSStorageConfig) equal(other TLSStorageConfig) bool {
+	return slices.Equal(c.Hostnames, other.Hostnames) && c.Endpoint == other.Endpoint && c.Region == other.Region && c.Bucket == other.Bucket &&
+		c.AccessKeyID == other.AccessKeyID && c.SecretAccessKey == other.SecretAccessKey && c.UseSSL == other.UseSSL &&
+		c.Prefix == other.Prefix && c.Issuer == other.Issuer && c.RefreshIntervalMinutes == other.RefreshIntervalMinutes
+}
+
+func (c TLSConfig) equal(other TLSConfig) bool {
+	return c.Mode == other.Mode && c.CertFile == other.CertFile && c.KeyFile == other.KeyFile &&
+		c.ACMEEmail == other.ACMEEmail && c.ACMECA == other.ACMECA && c.ACMECachePath == other.ACMECachePath &&
+		c.ACMEListenHost == other.ACMEListenHost && c.ACMEHTTPPort == other.ACMEHTTPPort && c.ACMETLSALPNPort == other.ACMETLSALPNPort &&
+		c.ACMEDisableHTTPChallenge == other.ACMEDisableHTTPChallenge && c.ACMEDisableTLSALPNChallenge == other.ACMEDisableTLSALPNChallenge &&
+		c.ACMEDisableDistributedSolvers == other.ACMEDisableDistributedSolvers && c.Storage.equal(other.Storage)
 }
 
 type WebhookConfig struct {
@@ -334,31 +374,32 @@ func (c Config) Validate() error {
 		}
 	}
 	switch strings.ToLower(strings.TrimSpace(c.TLS.Mode)) {
-	case "", "manual", "acme", "off", "disabled":
+	case "", "manual", "acme", "storage", "off", "disabled":
 	default:
-		problems = append(problems, "tls.mode must be manual, acme, off, or disabled")
+		problems = append(problems, "tls.mode must be manual, acme, storage, off, or disabled")
 	}
 	if strings.EqualFold(strings.TrimSpace(c.TLS.Mode), "acme") && strings.TrimSpace(c.TLS.ACMEEmail) == "" {
 		problems = append(problems, "tls.acme_email is required when ACME TLS is enabled")
-	}
-	switch strings.ToLower(strings.TrimSpace(c.TLS.ACMEDNSProvider)) {
-	case "", "cloudflare":
-	default:
-		problems = append(problems, "tls.acme_dns_provider must be empty or cloudflare")
-	}
-	if strings.EqualFold(strings.TrimSpace(c.TLS.ACMEDNSProvider), "cloudflare") && strings.TrimSpace(c.TLS.ACMECloudflareAPIToken) == "" {
-		problems = append(problems, "tls.acme_cloudflare_api_token is required when tls.acme_dns_provider is cloudflare")
-	}
-	switch strings.ToLower(strings.TrimSpace(c.TLS.ACMEStorage)) {
-	case "", "file", "s3":
-	default:
-		problems = append(problems, "tls.acme_storage must be file or s3")
 	}
 	if c.TLS.ACMEHTTPPort < 0 {
 		problems = append(problems, "tls.acme_http_port must be >= 0")
 	}
 	if c.TLS.ACMETLSALPNPort < 0 {
 		problems = append(problems, "tls.acme_tls_alpn_port must be >= 0")
+	}
+	if strings.EqualFold(strings.TrimSpace(c.TLS.Mode), "storage") {
+		if strings.TrimSpace(c.TLS.Storage.Endpoint) == "" {
+			problems = append(problems, "tls.storage.endpoint is required when tls.mode is storage")
+		}
+		if strings.TrimSpace(c.TLS.Storage.Bucket) == "" {
+			problems = append(problems, "tls.storage.bucket is required when tls.mode is storage")
+		}
+		if strings.TrimSpace(c.TLS.Storage.AccessKeyID) == "" || strings.TrimSpace(c.TLS.Storage.SecretAccessKey) == "" {
+			problems = append(problems, "tls.storage.access_key_id and tls.storage.secret_access_key are required when tls.mode is storage")
+		}
+		if c.TLS.Storage.RefreshIntervalMinutes < 0 {
+			problems = append(problems, "tls.storage.refresh_interval_minutes must be >= 0")
+		}
 	}
 	if c.Limits.MaxMessageSizeBytes < 0 {
 		problems = append(problems, "limits.max_message_size_bytes must be >= 0")
@@ -434,7 +475,7 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	if c.Submission != next.Submission {
 		changes = append(changes, "submission listeners")
 	}
-	if c.TLS != next.TLS {
+	if !c.TLS.equal(next.TLS) {
 		changes = append(changes, "tls")
 	}
 	if c.Workers.Enabled != next.Workers.Enabled {
