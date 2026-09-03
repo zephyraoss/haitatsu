@@ -29,8 +29,9 @@ func NewStore(source Source, hostnames []string, issuerKey string) *Store {
 	return &Store{source: source, hostnames: hostnames, issuerKey: issuerKey, certs: map[string]*tls.Certificate{}}
 }
 
+const missingRetryInterval = 30 * time.Second
+
 func (s *Store) Refresh(ctx context.Context) error {
-	loaded := map[string]*tls.Certificate{}
 	var problems []error
 	for _, hostname := range s.hostnames {
 		cert, err := s.load(ctx, hostname)
@@ -38,34 +39,42 @@ func (s *Store) Refresh(ctx context.Context) error {
 			problems = append(problems, fmt.Errorf("%s: %w", hostname, err))
 			continue
 		}
-		loaded[hostname] = cert
-	}
-	if len(loaded) == 0 {
-		return errors.Join(problems...)
-	}
-	s.mu.Lock()
-	for hostname, cert := range loaded {
+		s.mu.Lock()
+		_, hadBefore := s.certs[hostname]
 		s.certs[hostname] = cert
+		s.mu.Unlock()
+		if !hadBefore {
+			slog.Info("certificate loaded from storage", "hostname", hostname)
+		}
 	}
-	s.mu.Unlock()
-	for _, problem := range problems {
-		slog.Warn("certificate not loaded from storage", "error", problem)
+	return errors.Join(problems...)
+}
+
+func (s *Store) Complete() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, hostname := range s.hostnames {
+		if _, ok := s.certs[hostname]; !ok {
+			return false
+		}
 	}
-	return nil
+	return true
 }
 
 func (s *Store) RefreshEvery(ctx context.Context, interval time.Duration) {
 	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
 		for {
+			wait := interval
+			if !s.Complete() {
+				wait = min(interval, missingRetryInterval)
+			}
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
-				if err := s.Refresh(ctx); err != nil {
-					slog.Error("certificate refresh failed", "error", err)
-				}
+			case <-time.After(wait):
+			}
+			if err := s.Refresh(ctx); err != nil {
+				slog.Warn("certificate refresh incomplete", "error", err)
 			}
 		}
 	}()
@@ -82,7 +91,7 @@ func (s *Store) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, er
 			return cert, nil
 		}
 	}
-	return nil, errors.New("no certificate available")
+	return nil, errors.New("no certificate available yet")
 }
 
 func (s *Store) load(ctx context.Context, hostname string) (*tls.Certificate, error) {

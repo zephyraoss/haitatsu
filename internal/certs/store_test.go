@@ -87,25 +87,45 @@ func TestStoreServesCertificateBySNIAndFallsBackToFirstHostname(t *testing.T) {
 	}
 }
 
-func TestStoreKeepsServingWhenOneHostnameIsMissing(t *testing.T) {
+func TestStoreServesWhatItHasAndReportsWhatIsMissing(t *testing.T) {
 	const issuer = "acme-v02.api.letsencrypt.org-directory"
 	source := mapSource{}
 	certPEM, keyPEM := selfSigned(t, "haitatsu.example.test")
 	put(source, issuer, "haitatsu.example.test", certPEM, keyPEM)
 
 	store := NewStore(source, []string{"haitatsu.example.test", "mx.example.test"}, issuer)
-	if err := store.Refresh(context.Background()); err != nil {
-		t.Fatalf("refresh should succeed with one certificate present: %v", err)
+	if err := store.Refresh(context.Background()); err == nil {
+		t.Fatal("refresh should report the missing hostname")
+	}
+	if store.Complete() {
+		t.Fatal("store should not be complete while a hostname is missing")
 	}
 	if _, err := store.GetCertificate(&tls.ClientHelloInfo{ServerName: "mx.example.test"}); err != nil {
 		t.Fatalf("missing hostname should fall back to the primary certificate: %v", err)
 	}
 }
 
-func TestStoreFailsWhenNothingLoads(t *testing.T) {
-	store := NewStore(mapSource{}, []string{"haitatsu.example.test"}, "issuer")
+func TestStorePicksUpCertificatesThatAppearLater(t *testing.T) {
+	const issuer = "acme-v02.api.letsencrypt.org-directory"
+	source := mapSource{}
+	store := NewStore(source, []string{"haitatsu.example.test"}, issuer)
 	if err := store.Refresh(context.Background()); err == nil {
-		t.Fatal("expected an error when no certificate can be loaded")
+		t.Fatal("expected an error while the bucket is empty")
+	}
+	if _, err := store.GetCertificate(&tls.ClientHelloInfo{}); err == nil {
+		t.Fatal("handshake should fail while no certificate is loaded")
+	}
+
+	certPEM, keyPEM := selfSigned(t, "haitatsu.example.test")
+	put(source, issuer, "haitatsu.example.test", certPEM, keyPEM)
+	if err := store.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !store.Complete() {
+		t.Fatal("store should be complete once the certificate is present")
+	}
+	if _, err := store.GetCertificate(&tls.ClientHelloInfo{}); err != nil {
+		t.Fatalf("certificate should be served after it appears: %v", err)
 	}
 }
 

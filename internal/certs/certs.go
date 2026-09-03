@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/caddyserver/certmagic"
@@ -52,7 +53,7 @@ func storageTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 	}
 	store := NewStore(source, hostnames, opts.TLS.Storage.IssuerKey())
 	if err := store.Refresh(ctx); err != nil {
-		return nil, fmt.Errorf("load certificates from storage: %w", err)
+		slog.Warn("certificates not yet in storage; TLS handshakes will fail until they appear", "error", err)
 	}
 	store.RefreshEvery(ctx, opts.TLS.Storage.RefreshInterval())
 	return &tls.Config{
