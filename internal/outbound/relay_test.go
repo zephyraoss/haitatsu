@@ -3,10 +3,12 @@ package outbound
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/testutil"
@@ -57,7 +59,7 @@ func TestFinishSchedulesRetryAndEventuallyFails(t *testing.T) {
 	client, _ := testutil.NewClient(t)
 	notifier := &recordingNotifier{}
 	cfg := config.RelayConfig{Addr: "relay:25", MaxAttempts: 2}
-	worker := NewWorker(nil, client, testutil.NewFakeStore(), func() config.RelayConfig { return cfg }, metrics.New(), notifier, "w1")
+	worker := NewWorker(nil, client, testutil.NewFakeStore(), func() config.RelayConfig { return cfg }, metrics.New(), notifier, "w1", database.BackendSQLite)
 	job, err := client.OutboundJob.Create().SetMailboxID("m").SetMessageID("msg").SetReturnPath("bounces+msg@example.test").SetRecipients([]string{"a@x.test"}).Save(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +85,65 @@ func TestFinishSchedulesRetryAndEventuallyFails(t *testing.T) {
 	}
 }
 
+func TestClaimSQLiteOutboundJob(t *testing.T) {
+	ctx := context.Background()
+	client, db := testutil.NewClient(t)
+	created, err := client.OutboundJob.Create().
+		SetMailboxID("mailbox").
+		SetMessageID("message").
+		SetReturnPath("sender@example.test").
+		SetRecipients([]string{"recipient@example.test"}).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := NewWorker(db, client, testutil.NewFakeStore(), func() config.RelayConfig { return config.RelayConfig{} }, metrics.New(), nil, "worker", database.BackendSQLite)
+	job, ok, err := worker.claim(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || job.ID != created.ID || len(job.Recipients) != 1 {
+		t.Fatalf("claimed = %+v, ok = %v", job, ok)
+	}
+}
+
+func TestClaimLibSQLRemoteOutboundJob(t *testing.T) {
+	endpoint := os.Getenv("HAITATSU_TEST_LIBSQL_URL")
+	if endpoint == "" {
+		t.Skip("HAITATSU_TEST_LIBSQL_URL is not set")
+	}
+	ctx := context.Background()
+	dbClient, err := database.Open(ctx, config.DatabaseConfig{
+		Driver:    "libsql",
+		DSN:       endpoint,
+		AuthToken: os.Getenv("HAITATSU_TEST_LIBSQL_AUTH_TOKEN"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbClient.Close()
+	if err := dbClient.RunMigrations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	created, err := dbClient.Ent().OutboundJob.Create().
+		SetMailboxID("mailbox").
+		SetMessageID("message").
+		SetReturnPath("sender@example.test").
+		SetRecipients([]string{"recipient@example.test"}).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := NewWorker(dbClient.SQL(), dbClient.Ent(), testutil.NewFakeStore(), func() config.RelayConfig { return config.RelayConfig{} }, metrics.New(), nil, "worker", database.BackendLibSQL)
+	job, ok, err := worker.claim(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || job.ID != created.ID {
+		t.Fatalf("claimed = %+v, ok = %v", job, ok)
+	}
+}
+
 func TestDeliverUsesInjectedSender(t *testing.T) {
 	ctx := context.Background()
 	client, _ := testutil.NewClient(t)
@@ -93,7 +154,7 @@ func TestDeliverUsesInjectedSender(t *testing.T) {
 	}
 	var gotFrom string
 	var gotRcpt []string
-	worker := NewWorker(nil, client, blobs, func() config.RelayConfig { return config.RelayConfig{Addr: "x"} }, metrics.New(), nil, "w").WithSender(func(_ context.Context, _ config.RelayConfig, from string, rcpt []string, _ []byte) error {
+	worker := NewWorker(nil, client, blobs, func() config.RelayConfig { return config.RelayConfig{Addr: "x"} }, metrics.New(), nil, "w", database.BackendSQLite).WithSender(func(_ context.Context, _ config.RelayConfig, from string, rcpt []string, _ []byte) error {
 		gotFrom, gotRcpt = from, rcpt
 		return nil
 	})

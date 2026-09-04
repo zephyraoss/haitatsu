@@ -19,6 +19,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
@@ -43,6 +44,7 @@ type ImportWorker struct {
 	mail     *mailstore.Store
 	events   *events.Service
 	workerID string
+	backend  database.Backend
 }
 
 type importJob struct {
@@ -52,8 +54,12 @@ type importJob struct {
 	Source     map[string]any
 }
 
-func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstore.Store, events *events.Service, workerID string) *ImportWorker {
-	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID}
+func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstore.Store, events *events.Service, workerID string, backends ...database.Backend) *ImportWorker {
+	backend := database.BackendPostgres
+	if len(backends) > 0 {
+		backend = backends[0]
+	}
+	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -122,7 +128,7 @@ func (w *ImportWorker) claim(ctx context.Context) (importJob, string, bool, erro
 	}
 	defer tx.Rollback()
 
-	row := tx.QueryRowContext(ctx, `
+	query := `
 UPDATE import_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM import_jobs
@@ -132,7 +138,24 @@ WHERE id = (
   LIMIT 1
 )
 RETURNING id, mailbox_id, source_type, source
-`, owner, time.Now().Add(jobLeaseDuration))
+`
+	now := time.Now().UTC()
+	args := []any{owner, now.Add(jobLeaseDuration)}
+	if w.backend.SQLiteFamily() {
+		query = `
+UPDATE import_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
+WHERE id = (
+  SELECT id FROM import_jobs
+  WHERE status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+  ORDER BY created_at
+  LIMIT 1
+)
+AND status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+RETURNING id, mailbox_id, source_type, source
+`
+		args = []any{owner, now.Add(jobLeaseDuration), now, now, now}
+	}
+	row := tx.QueryRowContext(ctx, query, args...)
 
 	var job importJob
 	var source []byte

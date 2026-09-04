@@ -35,7 +35,7 @@ func (c *Checker) Ready(ctx context.Context) error {
 		return fmt.Errorf("migrations not complete")
 	}
 	if err := c.database.Health(ctx); err != nil {
-		return fmt.Errorf("postgres: %w", err)
+		return fmt.Errorf("database: %w", err)
 	}
 	if err := c.storage.Health(ctx); err != nil {
 		return fmt.Errorf("s3: %w", err)

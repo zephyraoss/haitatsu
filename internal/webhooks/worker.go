@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
@@ -24,6 +25,7 @@ type Worker struct {
 	cfg      func() config.WebhookConfig
 	metrics  *metrics.Metrics
 	workerID string
+	backend  database.Backend
 	http     *http.Client
 }
 
@@ -35,8 +37,12 @@ type eventJob struct {
 	Attempts  int
 }
 
-func NewWorker(db *sql.DB, client *ent.Client, cfg func() config.WebhookConfig, metrics *metrics.Metrics, workerID string) *Worker {
-	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, http: &http.Client{}}
+func NewWorker(db *sql.DB, client *ent.Client, cfg func() config.WebhookConfig, metrics *metrics.Metrics, workerID string, backends ...database.Backend) *Worker {
+	backend := database.BackendPostgres
+	if len(backends) > 0 {
+		backend = backends[0]
+	}
+	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, backend: backend, http: &http.Client{}}
 }
 
 func (w *Worker) Run(ctx context.Context, concurrency int) {
@@ -97,7 +103,7 @@ func (w *Worker) claim(ctx context.Context) (eventJob, bool, error) {
 	}
 	defer tx.Rollback()
 
-	row := tx.QueryRowContext(ctx, `
+	query := `
 UPDATE event_logs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM event_logs
@@ -109,7 +115,28 @@ WHERE id = (
   LIMIT 1
 )
 RETURNING id, event_type, trace_id, payload, attempts
-`, w.workerID, time.Now().Add(5*time.Minute))
+`
+	now := time.Now().UTC()
+	args := []any{w.workerID, now.Add(5 * time.Minute)}
+	if w.backend.SQLiteFamily() {
+		query = `
+UPDATE event_logs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
+WHERE id = (
+  SELECT id FROM event_logs
+  WHERE status IN ('queued', 'retry')
+    AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
+    AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+  ORDER BY created_at
+  LIMIT 1
+)
+AND status IN ('queued', 'retry')
+AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
+AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+RETURNING id, event_type, trace_id, payload, attempts
+`
+		args = []any{w.workerID, now.Add(5 * time.Minute), now, now, now, now, now}
+	}
+	row := tx.QueryRowContext(ctx, query, args...)
 
 	var job eventJob
 	var payload []byte

@@ -30,8 +30,10 @@ relay {
   max_retry_minutes = 240
 }
 
-postgres {
-  dsn = read("env:HAITATSU_POSTGRES_DSN")
+database {
+  driver = read?("env:HAITATSU_DATABASE_DRIVER") ?? "postgres"
+  dsn = read?("env:HAITATSU_DATABASE_DSN") ?? read("env:HAITATSU_POSTGRES_DSN")
+  auth_token = read?("env:HAITATSU_DATABASE_AUTH_TOKEN") ?? ""
 }
 
 s3 {
