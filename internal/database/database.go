@@ -50,9 +50,14 @@ func Open(ctx context.Context, cfg config.DatabaseConfig) (*Client, error) {
 	case BackendSQLite:
 		db, err = sql.Open("sqlite", sqliteDSN(cfg.DSN))
 	case BackendLibSQL:
-		options := make([]libsqlclient.Option, 0, 1)
+		options := make([]libsqlclient.Option, 0, 2)
 		if cfg.AuthToken != "" {
 			options = append(options, libsqlclient.WithAuthToken(cfg.AuthToken))
+		}
+		if cfg.Namespace != "" {
+			options = append(options, libsqlclient.WithRequestHeaders(map[string]string{
+				"x-namespace": cfg.Namespace,
+			}))
 		}
 		connector, connectorErr := libsqlclient.NewConnector(cfg.DSN, options...)
 		if connectorErr != nil {

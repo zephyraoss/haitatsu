@@ -45,6 +45,7 @@ database {
   driver = "postgres"
   dsn = "postgres://haitatsu:password@localhost:5432/haitatsu"
   auth_token = ""
+  namespace = ""
 }
 ```
 
@@ -55,6 +56,7 @@ database {
   driver = "sqlite"
   dsn = "file:/var/lib/haitatsu/haitatsu.db"
   auth_token = ""
+  namespace = ""
 }
 ```
 
@@ -67,6 +69,7 @@ database {
   driver = "libsql"
   dsn = "libsql://database-name-organization.turso.io"
   auth_token = read("env:HAITATSU_DATABASE_AUTH_TOKEN")
+  namespace = ""
 }
 ```
 
@@ -77,8 +80,12 @@ database {
   driver = "libsql"
   dsn = "http://sqld:8080"
   auth_token = ""
+  namespace = "haitatsu"
 }
 ```
+
+`namespace` sends the `x-namespace` header expected by a self-hosted `sqld`
+server. Leave it empty for Turso Cloud and single-database servers.
 
 SQLite and libSQL use FTS5 for the REST message search endpoint. PostgreSQL keeps its GIN-backed full-text index.
 
@@ -116,7 +123,7 @@ Listener addresses, database settings, S3, TLS, and worker enablement require a 
 
 | Block | Keys |
 |-------|------|
-| `database` | `driver`, `dsn`, `auth_token` |
+| `database` | `driver`, `dsn`, `auth_token`, `namespace` |
 | `limits` | `max_message_size_bytes`, `max_inbound_recipients`, `max_submission_recipients`, `max_connections_per_ip`, `inbound_messages_per_minute_per_ip`, `default_outbound_per_hour`, `default_outbound_per_day`, `default_outbound_recipients_per_message` |
 | `relay` | `addr`, `username`, `password`, `from_host`, `max_attempts`, `max_retry_minutes` |
 | `webhooks` | `default_timeout_seconds`, `secret`, `endpoints`, `max_attempts` |

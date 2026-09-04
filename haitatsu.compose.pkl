@@ -34,6 +34,7 @@ database {
   driver = "postgres"
   dsn = "postgres://haitatsu:woof@postgres:5432/haitatsu?sslmode=disable"
   auth_token = ""
+  namespace = ""
 }
 
 s3 {

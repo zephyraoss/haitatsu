@@ -34,6 +34,7 @@ database {
   driver = read?("env:HAITATSU_DATABASE_DRIVER") ?? "postgres"
   dsn = read?("env:HAITATSU_DATABASE_DSN") ?? read("env:HAITATSU_POSTGRES_DSN")
   auth_token = read?("env:HAITATSU_DATABASE_AUTH_TOKEN") ?? ""
+  namespace = read?("env:HAITATSU_DATABASE_NAMESPACE") ?? ""
 }
 
 s3 {

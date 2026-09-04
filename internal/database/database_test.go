@@ -160,6 +160,7 @@ func TestLibSQLRemote(t *testing.T) {
 		Driver:    "libsql",
 		DSN:       endpoint,
 		AuthToken: os.Getenv("HAITATSU_TEST_LIBSQL_AUTH_TOKEN"),
+		Namespace: os.Getenv("HAITATSU_TEST_LIBSQL_NAMESPACE"),
 	})
 	if err != nil {
 		t.Fatal(err)

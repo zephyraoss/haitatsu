@@ -116,6 +116,7 @@ type DatabaseConfig struct {
 	Driver    string `pkl:"driver" json:"driver"`
 	DSN       string `pkl:"dsn" json:"dsn"`
 	AuthToken string `pkl:"auth_token" json:"auth_token"`
+	Namespace string `pkl:"namespace" json:"namespace"`
 }
 
 func (c Config) EffectiveDatabase() DatabaseConfig {
@@ -128,6 +129,7 @@ func (c Config) EffectiveDatabase() DatabaseConfig {
 	}
 	database.Driver = strings.ToLower(strings.TrimSpace(database.Driver))
 	database.DSN = strings.TrimSpace(database.DSN)
+	database.Namespace = strings.TrimSpace(database.Namespace)
 	return database
 }
 

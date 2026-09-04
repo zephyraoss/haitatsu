@@ -65,7 +65,7 @@ func TestEffectiveDatabaseSupportsLegacyPostgresConfig(t *testing.T) {
 func TestValidateAcceptsSQLiteAndLibSQL(t *testing.T) {
 	for _, database := range []DatabaseConfig{
 		{Driver: "sqlite", DSN: "file:haitatsu.db"},
-		{Driver: "libsql", DSN: "libsql://example.turso.io", AuthToken: "secret"},
+		{Driver: "libsql", DSN: "libsql://example.turso.io", AuthToken: "secret", Namespace: "haitatsu"},
 	} {
 		cfg := validConfig()
 		cfg.Database = database
