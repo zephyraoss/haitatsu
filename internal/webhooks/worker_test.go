@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/testutil"
 )
@@ -13,7 +14,7 @@ func TestFailSchedulesRetryWithBackoff(t *testing.T) {
 	ctx := context.Background()
 	client, _ := testutil.NewClient(t)
 	cfg := config.WebhookConfig{MaxAttempts: 3}
-	worker := NewWorker(nil, client, func() config.WebhookConfig { return cfg }, metrics.New(), "w")
+	worker := NewWorker(nil, client, func() config.WebhookConfig { return cfg }, metrics.New(), "w", database.BackendSQLite)
 	row, err := client.EventLog.Create().SetEventType("message.received").SetPayload(map[string]any{}).Save(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +43,23 @@ func TestSignatureIsStable(t *testing.T) {
 	c := signature("other", "2025-01-01T00:00:00Z", []byte(`{"a":1}`))
 	if a != b || a == c || len(a) < 20 {
 		t.Fatal("signature mismatch")
+	}
+}
+
+func TestClaimSQLiteWebhookJob(t *testing.T) {
+	ctx := context.Background()
+	client, db := testutil.NewClient(t)
+	created, err := client.EventLog.Create().SetEventType("message.received").SetTraceID("trace").SetPayload(map[string]any{"id": "message"}).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := NewWorker(db, client, func() config.WebhookConfig { return config.WebhookConfig{} }, metrics.New(), "worker", database.BackendSQLite)
+	job, ok, err := worker.claim(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || job.ID != created.ID || job.Payload["id"] != "message" {
+		t.Fatalf("claimed = %+v, ok = %v", job, ok)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
@@ -30,6 +31,7 @@ type ExportWorker struct {
 	store    Store
 	events   *events.Service
 	workerID string
+	backend  database.Backend
 }
 
 type exportJob struct {
@@ -37,8 +39,12 @@ type exportJob struct {
 	MailboxID string
 }
 
-func NewExportWorker(db *sql.DB, client *ent.Client, store Store, events *events.Service, workerID string) *ExportWorker {
-	return &ExportWorker{db: db, client: client, store: store, events: events, workerID: workerID}
+func NewExportWorker(db *sql.DB, client *ent.Client, store Store, events *events.Service, workerID string, backends ...database.Backend) *ExportWorker {
+	backend := database.BackendPostgres
+	if len(backends) > 0 {
+		backend = backends[0]
+	}
+	return &ExportWorker{db: db, client: client, store: store, events: events, workerID: workerID, backend: backend}
 }
 
 func (w *ExportWorker) Run(ctx context.Context, concurrency int) {
@@ -118,7 +124,7 @@ func (w *ExportWorker) claim(ctx context.Context) (exportJob, string, bool, erro
 	}
 	defer tx.Rollback()
 
-	row := tx.QueryRowContext(ctx, `
+	query := `
 UPDATE export_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM export_jobs
@@ -128,7 +134,24 @@ WHERE id = (
   LIMIT 1
 )
 RETURNING id, mailbox_id
-`, owner, time.Now().Add(jobLeaseDuration))
+`
+	now := time.Now().UTC()
+	args := []any{owner, now.Add(jobLeaseDuration)}
+	if w.backend.SQLiteFamily() {
+		query = `
+UPDATE export_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
+WHERE id = (
+  SELECT id FROM export_jobs
+  WHERE status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+  ORDER BY created_at
+  LIMIT 1
+)
+AND status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+RETURNING id, mailbox_id
+`
+		args = []any{owner, now.Add(jobLeaseDuration), now, now, now}
+	}
+	row := tx.QueryRowContext(ctx, query, args...)
 
 	var job exportJob
 	if err := row.Scan(&job.ID, &job.MailboxID); err != nil {

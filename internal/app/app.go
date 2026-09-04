@@ -74,7 +74,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	logger = logger.With("version", version.Version, "instance", cfg.Server.InstanceName)
 	slog.SetDefault(logger)
 
-	db, err := database.Open(ctx, cfg.Postgres)
+	db, err := database.Open(ctx, cfg.EffectiveDatabase())
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
@@ -91,7 +91,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	}
 
 	holder := config.NewHolder(cfg)
-	notifier := mailstore.NewNotifier(cfg.Server.InstanceName, database.NewChangeBus(db.SQL()))
+	notifier := mailstore.NewNotifier(cfg.Server.InstanceName, database.NewChangeBus(db.SQL(), db.Backend()))
 	mail := mailstore.New(db.Ent(), notifier)
 	runtime := &App{configPath: opts.ConfigPath, config: holder, logger: logger, database: db, storage: blobStore, notifier: notifier}
 	m := metrics.New()
@@ -103,14 +103,14 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	server := httpapi.New(holder, db.Ent(), db.SQL(), blobStore, mail, submissionService, checker, m, runtime)
 	cleanupWorker := cleanup.New(db.Ent(), blobStore, mail, m)
 	eventService := events.New(db.Ent())
-	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName)
-	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, mail, eventService, cfg.Server.InstanceName)
-	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), func() config.WebhookConfig { return holder.Get().Webhooks }, m, cfg.Server.InstanceName)
+	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName, db.Backend())
+	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, mail, eventService, cfg.Server.InstanceName, db.Backend())
+	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), func() config.WebhookConfig { return holder.Get().Webhooks }, m, cfg.Server.InstanceName, db.Backend())
 	resolver := routing.NewResolver(db.Ent())
 	ruleEngine := rules.New(db.Ent(), mail, eventService)
 	messageService := messages.NewService(db.Ent(), blobStore, mail, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	notificationService := notifications.New(db.Ent(), messageService, func() config.NotificationConfig { return holder.Get().Notifications }, cfg.Server.PublicHostname)
-	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName)
+	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName, db.Backend())
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
 	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname)
 	tlsConfig, err := certs.TLSConfig(ctx, certs.Options{TLS: cfg.TLS, PublicHostname: cfg.Server.PublicHostname, Hostnames: cfg.InboundHostnames()})

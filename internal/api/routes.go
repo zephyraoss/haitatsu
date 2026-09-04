@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
@@ -30,6 +31,7 @@ import (
 type Handler struct {
 	client   *ent.Client
 	db       *sql.DB
+	dialect  string
 	store    MessageStore
 	mail     *mailstore.Store
 	outbound *outbound.Submission
@@ -46,7 +48,11 @@ type MessageStore interface {
 }
 
 func Register(router fiber.Router, client *ent.Client, db *sql.DB, store MessageStore, mail *mailstore.Store, outboundService *outbound.Submission, cfg *config.Holder, reloader Reloader) {
-	h := &Handler{client: client, db: db, store: store, mail: mail, outbound: outboundService, config: cfg, reloader: reloader}
+	dbDialect := dialect.Postgres
+	if cfg.Get().EffectiveDatabase().Driver != "postgres" {
+		dbDialect = dialect.SQLite
+	}
+	h := &Handler{client: client, db: db, dialect: dbDialect, store: store, mail: mail, outbound: outboundService, config: cfg, reloader: reloader}
 	v1 := router.Group("/api/v1", ServiceTokenMiddleware(func() string { return cfg.Get().API.ServiceToken }))
 
 	v1.Get("/mailboxes", h.listMailboxes)

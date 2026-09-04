@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
@@ -452,13 +453,9 @@ func (h *Handler) applyMailboxSearch(c fiber.Ctx, query *ent.MailboxMessageQuery
 }
 
 func (h *Handler) searchMessageIDs(c fiber.Ctx, search messageSearch) ([]string, error) {
-	where, args := messageSearchWhere(search)
-	if len(where) == 0 {
+	query, args := messageSearchQuery(search, h.dialect)
+	if query == "" {
 		return nil, nil
-	}
-	query := "SELECT id FROM messages WHERE " + strings.Join(where, " AND ") + " ORDER BY created_at DESC"
-	if len(search.Terms) > 0 {
-		query = "SELECT id FROM messages, websearch_to_tsquery('english', $1) query WHERE " + strings.Join(where, " AND ") + " ORDER BY ts_rank(" + messageSearchVector + ", query) DESC, created_at DESC"
 	}
 	rows, err := h.db.QueryContext(c.Context(), query, args...)
 	if err != nil {
@@ -477,39 +474,99 @@ func (h *Handler) searchMessageIDs(c fiber.Ctx, search messageSearch) ([]string,
 	return ids, rows.Err()
 }
 
-func messageSearchWhere(search messageSearch) ([]string, []any) {
+func messageSearchQuery(search messageSearch, dbDialect string) (string, []any) {
+	where, args := messageSearchWhere(search, dbDialect)
+	if len(where) == 0 {
+		return "", nil
+	}
+	query := "SELECT id FROM messages WHERE " + strings.Join(where, " AND ") + " ORDER BY created_at DESC"
+	if len(search.Terms) > 0 && dbDialect == dialect.Postgres {
+		query = "SELECT id FROM messages, websearch_to_tsquery('english', $1) query WHERE " + strings.Join(where, " AND ") + " ORDER BY ts_rank(" + messageSearchVector + ", query) DESC, created_at DESC"
+	} else if sqliteFTSQuery(search.Terms) != "" {
+		query = "SELECT messages.id FROM messages JOIN messages_search ON messages_search.message_id = messages.id WHERE " + strings.Join(where, " AND ") + " ORDER BY bm25(messages_search), messages.created_at DESC"
+	}
+	return query, args
+}
+
+func messageSearchWhere(search messageSearch, dbDialect string) ([]string, []any) {
 	var where []string
 	var args []any
-	add := func(clause string, value any) {
+	addPostgres := func(clause string, value any) {
 		args = append(args, value)
 		where = append(where, fmt.Sprintf(clause, len(args)))
 	}
-	if len(search.Terms) > 0 {
+	addSQLite := func(clause string, value any) {
+		args = append(args, value)
+		where = append(where, clause)
+	}
+	if len(search.Terms) > 0 && dbDialect == dialect.Postgres {
 		args = append(args, strings.Join(search.Terms, " "))
 		where = append(where, messageSearchVector+" @@ query")
+	} else if terms := sqliteFTSQuery(search.Terms); terms != "" {
+		addSQLite("messages_search MATCH ?", terms)
 	}
 	if search.From != "" {
-		add("from_addresses::text ILIKE '%%' || $%d || '%%'", search.From)
+		if dbDialect == dialect.Postgres {
+			addPostgres("from_addresses::text ILIKE '%%' || $%d || '%%'", search.From)
+		} else {
+			addSQLite("lower(CAST(messages.from_addresses AS TEXT)) LIKE '%' || lower(?) || '%'", search.From)
+		}
 	}
 	if search.To != "" {
-		add("to_addresses::text ILIKE '%%' || $%d || '%%'", search.To)
+		if dbDialect == dialect.Postgres {
+			addPostgres("to_addresses::text ILIKE '%%' || $%d || '%%'", search.To)
+		} else {
+			addSQLite("lower(CAST(messages.to_addresses AS TEXT)) LIKE '%' || lower(?) || '%'", search.To)
+		}
 	}
 	if search.CC != "" {
-		add("cc_addresses::text ILIKE '%%' || $%d || '%%'", search.CC)
+		if dbDialect == dialect.Postgres {
+			addPostgres("cc_addresses::text ILIKE '%%' || $%d || '%%'", search.CC)
+		} else {
+			addSQLite("lower(CAST(messages.cc_addresses AS TEXT)) LIKE '%' || lower(?) || '%'", search.CC)
+		}
 	}
 	if search.Subject != "" {
-		add("subject ILIKE '%%' || $%d || '%%'", search.Subject)
+		if dbDialect == dialect.Postgres {
+			addPostgres("subject ILIKE '%%' || $%d || '%%'", search.Subject)
+		} else {
+			addSQLite("lower(messages.subject) LIKE '%' || lower(?) || '%'", search.Subject)
+		}
 	}
 	if search.HasAttachment {
-		where = append(where, "jsonb_array_length(attachments) > 0")
+		if dbDialect == dialect.Postgres {
+			where = append(where, "jsonb_array_length(attachments) > 0")
+		} else {
+			where = append(where, "json_array_length(messages.attachments) > 0")
+		}
 	}
 	if search.After != nil {
-		add("coalesce(date, created_at) >= $%d", *search.After)
+		if dbDialect == dialect.Postgres {
+			addPostgres("coalesce(date, created_at) >= $%d", *search.After)
+		} else {
+			addSQLite("datetime(coalesce(messages.date, messages.created_at)) >= datetime(?)", *search.After)
+		}
 	}
 	if search.Before != nil {
-		add("coalesce(date, created_at) <= $%d", *search.Before)
+		if dbDialect == dialect.Postgres {
+			addPostgres("coalesce(date, created_at) <= $%d", *search.Before)
+		} else {
+			addSQLite("datetime(coalesce(messages.date, messages.created_at)) <= datetime(?)", *search.Before)
+		}
 	}
 	return where, args
+}
+
+func sqliteFTSQuery(terms []string) string {
+	quoted := make([]string, 0, len(terms))
+	for _, term := range terms {
+		term = strings.TrimSpace(strings.Trim(term, `"`))
+		if term == "" {
+			continue
+		}
+		quoted = append(quoted, `"`+strings.ReplaceAll(term, `"`, `""`)+`"`)
+	}
+	return strings.Join(quoted, " AND ")
 }
 
 func searchTokens(value string) []string {

@@ -14,11 +14,14 @@ import (
 )
 
 type Config struct {
-	Server        ServerConfig       `pkl:"server" json:"server"`
-	SMTP          SMTPConfig         `pkl:"smtp" json:"smtp"`
-	IMAP          IMAPConfig         `pkl:"imap" json:"imap"`
-	Submission    SubmissionConfig   `pkl:"submission" json:"submission"`
-	Relay         RelayConfig        `pkl:"relay" json:"relay"`
+	Server     ServerConfig     `pkl:"server" json:"server"`
+	SMTP       SMTPConfig       `pkl:"smtp" json:"smtp"`
+	IMAP       IMAPConfig       `pkl:"imap" json:"imap"`
+	Submission SubmissionConfig `pkl:"submission" json:"submission"`
+	Relay      RelayConfig      `pkl:"relay" json:"relay"`
+	Database   DatabaseConfig   `pkl:"database" json:"database"`
+	// Postgres is kept for compatibility with configurations written before the
+	// generic database block was added.
 	Postgres      PostgresConfig     `pkl:"postgres" json:"postgres"`
 	S3            S3Config           `pkl:"s3" json:"s3"`
 	Logging       LoggingConfig      `pkl:"logging" json:"logging"`
@@ -107,6 +110,25 @@ func (c ServerConfig) ShutdownTimeout() time.Duration {
 
 type PostgresConfig struct {
 	DSN string `pkl:"dsn" json:"dsn"`
+}
+
+type DatabaseConfig struct {
+	Driver    string `pkl:"driver" json:"driver"`
+	DSN       string `pkl:"dsn" json:"dsn"`
+	AuthToken string `pkl:"auth_token" json:"auth_token"`
+}
+
+func (c Config) EffectiveDatabase() DatabaseConfig {
+	database := c.Database
+	if strings.TrimSpace(database.Driver) == "" {
+		database.Driver = "postgres"
+	}
+	if strings.TrimSpace(database.DSN) == "" && strings.EqualFold(database.Driver, "postgres") {
+		database.DSN = c.Postgres.DSN
+	}
+	database.Driver = strings.ToLower(strings.TrimSpace(database.Driver))
+	database.DSN = strings.TrimSpace(database.DSN)
+	return database
 }
 
 type S3Config struct {
@@ -368,8 +390,14 @@ func (c Config) Validate() error {
 	if c.SMTP.MaxInboundRecipients < 0 {
 		problems = append(problems, "smtp.max_inbound_recipients must be >= 0")
 	}
-	if strings.TrimSpace(c.Postgres.DSN) == "" {
-		problems = append(problems, "postgres.dsn is required")
+	database := c.EffectiveDatabase()
+	switch database.Driver {
+	case "postgres", "sqlite", "libsql":
+	default:
+		problems = append(problems, "database.driver must be postgres, sqlite, or libsql")
+	}
+	if database.DSN == "" {
+		problems = append(problems, "database.dsn is required")
 	}
 	if strings.TrimSpace(c.S3.Endpoint) == "" {
 		problems = append(problems, "s3.endpoint is required")
@@ -478,8 +506,8 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	}
 
 	var changes []string
-	if c.Postgres != next.Postgres {
-		changes = append(changes, "postgres")
+	if c.EffectiveDatabase() != next.EffectiveDatabase() {
+		changes = append(changes, "database")
 	}
 	if c.S3 != next.S3 {
 		changes = append(changes, "s3")

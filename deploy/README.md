@@ -24,7 +24,10 @@ the container environment through `read("env:...")`, so the stack's
 
 | Variable | Used by |
 |----------|---------|
-| `HAITATSU_POSTGRES_DSN` | `postgres.dsn` |
+| `HAITATSU_DATABASE_DRIVER` | `database.driver` (optional, defaults to `postgres`) |
+| `HAITATSU_DATABASE_DSN` | `database.dsn` (falls back to `HAITATSU_POSTGRES_DSN`) |
+| `HAITATSU_DATABASE_AUTH_TOKEN` | `database.auth_token` (libSQL only) |
+| `HAITATSU_POSTGRES_DSN` | Legacy fallback for `database.dsn` |
 | `HAITATSU_S3_ACCESS_KEY` | `s3.access_key_id` |
 | `HAITATSU_S3_SECRET_KEY` | `s3.secret_access_key` |
 | `HAITATSU_SERVICE_TOKEN` | `api.service_token` |

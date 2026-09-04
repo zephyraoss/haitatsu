@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
@@ -36,6 +37,7 @@ type Worker struct {
 	metrics  *metrics.Metrics
 	notifier Notifier
 	workerID string
+	backend  database.Backend
 	send     Sender
 }
 
@@ -55,8 +57,12 @@ type deliveryResult struct {
 	Response           string
 }
 
-func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg func() config.RelayConfig, metrics *metrics.Metrics, notifier Notifier, workerID string) *Worker {
-	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID, send: sendViaRelay}
+func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg func() config.RelayConfig, metrics *metrics.Metrics, notifier Notifier, workerID string, backends ...database.Backend) *Worker {
+	backend := database.BackendPostgres
+	if len(backends) > 0 {
+		backend = backends[0]
+	}
+	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID, backend: backend, send: sendViaRelay}
 }
 
 func (w *Worker) WithSender(send Sender) *Worker {
@@ -121,7 +127,7 @@ func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
 	}
 	defer tx.Rollback()
 
-	row := tx.QueryRowContext(ctx, `
+	query := `
 UPDATE outbound_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM outbound_jobs
@@ -133,7 +139,28 @@ WHERE id = (
   LIMIT 1
 )
 RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
-`, w.workerID, time.Now().Add(5*time.Minute))
+`
+	now := time.Now().UTC()
+	args := []any{w.workerID, now.Add(5 * time.Minute)}
+	if w.backend.SQLiteFamily() {
+		query = `
+UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
+WHERE id = (
+  SELECT id FROM outbound_jobs
+  WHERE status IN ('queued', 'retry')
+    AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
+    AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+  ORDER BY created_at
+  LIMIT 1
+)
+AND status IN ('queued', 'retry')
+AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
+AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
+`
+		args = []any{w.workerID, now.Add(5 * time.Minute), now, now, now, now, now}
+	}
+	row := tx.QueryRowContext(ctx, query, args...)
 
 	var job claimedJob
 	var recipients []byte

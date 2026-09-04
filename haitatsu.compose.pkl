@@ -30,8 +30,10 @@ relay {
   max_retry_minutes = 240
 }
 
-postgres {
+database {
+  driver = "postgres"
   dsn = "postgres://haitatsu:woof@postgres:5432/haitatsu?sslmode=disable"
+  auth_token = ""
 }
 
 s3 {

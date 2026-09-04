@@ -15,10 +15,12 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	_ "modernc.org/sqlite"
 
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	entfolder "github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/ids"
+	"github.com/zephyraoss/haitatsu/internal/testutil"
 )
 
 type fakeStore struct {
@@ -91,6 +93,37 @@ func seedMailbox(t *testing.T, client *ent.Client) *ent.Mailbox {
 
 func rawMessage(subject string) []byte {
 	return []byte("From: sender@example.com\r\nTo: rcpt@example.com\r\nSubject: " + subject + "\r\nMessage-ID: <" + subject + "@example.com>\r\n\r\nbody of " + subject + "\r\n")
+}
+
+func TestClaimSQLiteImportAndExportJobs(t *testing.T) {
+	ctx := context.Background()
+	client, db := testutil.NewClient(t)
+	imported, err := client.ImportJob.Create().SetMailboxID("mailbox").SetSourceType("maildir").SetSource(map[string]any{"path": "/mail"}).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := client.ExportJob.Create().SetMailboxID("mailbox").Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	importWorker := &ImportWorker{db: db, client: client, workerID: "worker", backend: database.BackendSQLite}
+	importJob, _, ok, err := importWorker.claim(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || importJob.ID != imported.ID {
+		t.Fatalf("import claim = %+v, ok = %v", importJob, ok)
+	}
+
+	exportWorker := &ExportWorker{db: db, client: client, workerID: "worker", backend: database.BackendSQLite}
+	exportJob, _, ok, err := exportWorker.claim(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || exportJob.ID != exported.ID {
+		t.Fatalf("export claim = %+v, ok = %v", exportJob, ok)
+	}
 }
 
 func writeMaildirMessage(t *testing.T, root string, rel string, raw []byte) {

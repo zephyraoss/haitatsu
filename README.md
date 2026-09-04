@@ -10,9 +10,9 @@ Haitatsu is a simple email server written in Go. It receives and stores mail, ex
 - Relay delivery with exponential backoff over roughly two days, permanent failure notifications
 - REST API with cursor pagination, constant-time service token auth
 - TLS from automatic ACME certificates, or read straight out of a certmagic-layout S3 bucket that something else (such as Caddy) already keeps current, for any number of hostnames
-- App passwords for protocol access, with login throttling shared across nodes through Postgres
+- App passwords for protocol access, with database-backed login throttling shared across nodes
 - Quota accounting that tracks deletes and expunges, with a recompute endpoint
-- PostgreSQL for metadata, S3-compatible storage for message blobs, versioned migrations
+- PostgreSQL, SQLite, or remote libSQL for metadata, S3-compatible storage for message blobs, versioned migrations
 - Pkl configuration with hot reload of spam, relay, webhook, notification, API token, and limits settings
 
 Mailbox users do not call the REST API directly. Integrate from your own backend using a configured service token. End users authenticate to IMAP and SMTP with app passwords.
@@ -21,7 +21,7 @@ Mailbox users do not call the REST API directly. Integrate from your own backend
 
 - Go 1.26 or later
 - [Pkl](https://pkl-lang.org/) (for local runs outside Docker)
-- PostgreSQL
+- PostgreSQL, a writable local directory for SQLite, or a libSQL server
 - S3-compatible object storage (MinIO works for development)
 
 ## Configuration
@@ -34,7 +34,53 @@ cp haitatsu.example.pkl haitatsu.pkl
 
 The server reads config from `/etc/haitatsu/haitatsu.pkl` by default and refuses to start if nothing is there. Override with `-config path/to/haitatsu.pkl`. The Docker image ships no config, so mount one at that path.
 
-Any field can read from the environment with `read("env:NAME")`, and `read?("env:NAME") ?? ""` makes it optional. The example config does this for every secret (Postgres DSN, S3 keys, service token, relay credentials, webhook secret, notification render secret, certificate-bucket keys, Axiom token) and sets `instance_name` from `HOSTNAME`, so a deployment is the committed file plus a handful of environment variables. See `deploy/README.md` for the list.
+Any field can read from the environment with `read("env:NAME")`, and `read?("env:NAME") ?? ""` makes it optional. The example config does this for every secret, including the database DSN and libSQL auth token, and sets `instance_name` from `HOSTNAME`. See `deploy/README.md` for the list.
+
+## Database backends
+
+PostgreSQL remains the default. The old `postgres { dsn = "..." }` block is still accepted, but new configurations should use `database`:
+
+```pkl
+database {
+  driver = "postgres"
+  dsn = "postgres://haitatsu:password@localhost:5432/haitatsu"
+  auth_token = ""
+}
+```
+
+For a local SQLite file:
+
+```pkl
+database {
+  driver = "sqlite"
+  dsn = "file:/var/lib/haitatsu/haitatsu.db"
+  auth_token = ""
+}
+```
+
+Haitatsu enables foreign keys, WAL mode, and a five-second busy timeout for local SQLite connections. Keep the database on a local persistent volume, not a network filesystem.
+
+For Turso Cloud:
+
+```pkl
+database {
+  driver = "libsql"
+  dsn = "libsql://database-name-organization.turso.io"
+  auth_token = read("env:HAITATSU_DATABASE_AUTH_TOKEN")
+}
+```
+
+Self-hosted sqld accepts `http://`, `https://`, `ws://`, and `wss://` URLs. An unauthenticated local server can use:
+
+```pkl
+database {
+  driver = "libsql"
+  dsn = "http://sqld:8080"
+  auth_token = ""
+}
+```
+
+SQLite and libSQL use FTS5 for the REST message search endpoint. PostgreSQL keeps its GIN-backed full-text index.
 
 ## Local development
 
@@ -66,10 +112,11 @@ Health checks: `GET /health`, `GET /ready`. Metrics: `GET /metrics`.
 
 ## Configuration reference
 
-Listener addresses, Postgres, S3, TLS, and worker enablement require a restart. Everything else reloads on `SIGHUP` or `POST /api/v1/admin/reload`.
+Listener addresses, database settings, S3, TLS, and worker enablement require a restart. Everything else reloads on `SIGHUP` or `POST /api/v1/admin/reload`.
 
 | Block | Keys |
 |-------|------|
+| `database` | `driver`, `dsn`, `auth_token` |
 | `limits` | `max_message_size_bytes`, `max_inbound_recipients`, `max_submission_recipients`, `max_connections_per_ip`, `inbound_messages_per_minute_per_ip`, `default_outbound_per_hour`, `default_outbound_per_day`, `default_outbound_recipients_per_message` |
 | `relay` | `addr`, `username`, `password`, `from_host`, `max_attempts`, `max_retry_minutes` |
 | `webhooks` | `default_timeout_seconds`, `secret`, `endpoints`, `max_attempts` |
@@ -86,7 +133,7 @@ Every list endpoint accepts `limit` (max 100) and `cursor`. The response include
 
 ## Multi-node
 
-IMAP IDLE notifications and login throttling are shared between nodes through Postgres (`LISTEN/NOTIFY` and the `auth_lockouts` table), so any number of Haitatsu processes can serve the same database.
+IMAP IDLE notifications and login throttling are shared between nodes. PostgreSQL uses `LISTEN/NOTIFY`; libSQL uses a short-lived database change log that is polled every 250 milliseconds. Local SQLite is intended for one Haitatsu process. PostgreSQL remains the better choice for sustained concurrent writes.
 
 Stop the stack with `task compose:down`. Reset volumes with `task compose:reset`.
 
