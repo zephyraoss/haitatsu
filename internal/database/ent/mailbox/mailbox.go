@@ -23,6 +23,8 @@ const (
 	FieldUsedBytes = "used_bytes"
 	// FieldOutboundLimits holds the string denoting the outbound_limits field in the database.
 	FieldOutboundLimits = "outbound_limits"
+	// FieldSpamThresholds holds the string denoting the spam_thresholds field in the database.
+	FieldSpamThresholds = "spam_thresholds"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -41,6 +43,7 @@ var Columns = []string{
 	FieldQuotaBytes,
 	FieldUsedBytes,
 	FieldOutboundLimits,
+	FieldSpamThresholds,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldDeletedAt,

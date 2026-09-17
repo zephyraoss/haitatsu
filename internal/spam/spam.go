@@ -33,6 +33,7 @@ type Assessment struct {
 	Header      string
 	Junk        bool
 	Reject      bool
+	Mailboxes   map[string]MailboxAssessment
 }
 
 type Checker struct {
@@ -119,7 +120,8 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 	dmarcFailed := dmarcResult == authres.ResultFail
 	assessment.Junk = score >= junkThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
 	assessment.Reject = score >= rejectThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
-	c.applyTypeSafe(ctx, raw, cfg.TypeSafe.WithDefaults(), &assessment)
+	forcedJunk := (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
+	c.applyMailboxPolicy(ctx, raw, cfg, recipients, forcedJunk, &assessment)
 	return assessment
 }
 

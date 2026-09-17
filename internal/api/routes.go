@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -127,6 +128,7 @@ type mailboxRequest struct {
 	Status         string           `json:"status"`
 	QuotaBytes     *int64           `json:"quota_bytes"`
 	OutboundLimits map[string]int64 `json:"outbound_limits"`
+	SpamThresholds json.RawMessage  `json:"spam_thresholds"`
 }
 
 type routeRequest struct {
@@ -207,6 +209,10 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	thresholds, err := parseSpamThresholds(req.SpamThresholds)
+	if err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_spam_thresholds", err.Error())
+	}
 	if req.PrimaryAddress == "" {
 		return problem(c, fiber.StatusBadRequest, "primary_address_required", "Primary address is required")
 	}
@@ -215,6 +221,9 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	}
 
 	create := h.client.Mailbox.Create().SetPrimaryAddress(req.PrimaryAddress)
+	if len(thresholds) > 0 {
+		create.SetSpamThresholds(thresholds)
+	}
 	if req.QuotaBytes != nil {
 		create.SetQuotaBytes(*req.QuotaBytes)
 	}
@@ -254,8 +263,19 @@ func (h *Handler) updateMailbox(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	thresholds, err := parseSpamThresholds(req.SpamThresholds)
+	if err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_spam_thresholds", err.Error())
+	}
 
 	update := h.client.Mailbox.UpdateOneID(c.Params("id"))
+	if len(req.SpamThresholds) > 0 {
+		if len(thresholds) == 0 {
+			update.ClearSpamThresholds()
+		} else {
+			update.SetSpamThresholds(thresholds)
+		}
+	}
 	if req.PrimaryAddress != "" {
 		if err := mailaddr.ValidateAddressNotReserved(req.PrimaryAddress); err != nil {
 			return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")

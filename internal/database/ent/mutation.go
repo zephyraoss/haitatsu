@@ -8043,6 +8043,7 @@ type MailboxMutation struct {
 	used_bytes      *int64
 	addused_bytes   *int64
 	outbound_limits *map[string]int64
+	spam_thresholds *map[string]float64
 	created_at      *time.Time
 	updated_at      *time.Time
 	deleted_at      *time.Time
@@ -8389,6 +8390,55 @@ func (m *MailboxMutation) ResetOutboundLimits() {
 	delete(m.clearedFields, mailbox.FieldOutboundLimits)
 }
 
+// SetSpamThresholds sets the "spam_thresholds" field.
+func (m *MailboxMutation) SetSpamThresholds(value map[string]float64) {
+	m.spam_thresholds = &value
+}
+
+// SpamThresholds returns the value of the "spam_thresholds" field in the mutation.
+func (m *MailboxMutation) SpamThresholds() (r map[string]float64, exists bool) {
+	v := m.spam_thresholds
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSpamThresholds returns the old "spam_thresholds" field's value of the Mailbox entity.
+// If the Mailbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MailboxMutation) OldSpamThresholds(ctx context.Context) (v map[string]float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSpamThresholds is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSpamThresholds requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSpamThresholds: %w", err)
+	}
+	return oldValue.SpamThresholds, nil
+}
+
+// ClearSpamThresholds clears the value of the "spam_thresholds" field.
+func (m *MailboxMutation) ClearSpamThresholds() {
+	m.spam_thresholds = nil
+	m.clearedFields[mailbox.FieldSpamThresholds] = struct{}{}
+}
+
+// SpamThresholdsCleared returns if the "spam_thresholds" field was cleared in this mutation.
+func (m *MailboxMutation) SpamThresholdsCleared() bool {
+	_, ok := m.clearedFields[mailbox.FieldSpamThresholds]
+	return ok
+}
+
+// ResetSpamThresholds resets all changes to the "spam_thresholds" field.
+func (m *MailboxMutation) ResetSpamThresholds() {
+	m.spam_thresholds = nil
+	delete(m.clearedFields, mailbox.FieldSpamThresholds)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *MailboxMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -8544,7 +8594,7 @@ func (m *MailboxMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MailboxMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.primary_address != nil {
 		fields = append(fields, mailbox.FieldPrimaryAddress)
 	}
@@ -8559,6 +8609,9 @@ func (m *MailboxMutation) Fields() []string {
 	}
 	if m.outbound_limits != nil {
 		fields = append(fields, mailbox.FieldOutboundLimits)
+	}
+	if m.spam_thresholds != nil {
+		fields = append(fields, mailbox.FieldSpamThresholds)
 	}
 	if m.created_at != nil {
 		fields = append(fields, mailbox.FieldCreatedAt)
@@ -8587,6 +8640,8 @@ func (m *MailboxMutation) Field(name string) (ent.Value, bool) {
 		return m.UsedBytes()
 	case mailbox.FieldOutboundLimits:
 		return m.OutboundLimits()
+	case mailbox.FieldSpamThresholds:
+		return m.SpamThresholds()
 	case mailbox.FieldCreatedAt:
 		return m.CreatedAt()
 	case mailbox.FieldUpdatedAt:
@@ -8612,6 +8667,8 @@ func (m *MailboxMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldUsedBytes(ctx)
 	case mailbox.FieldOutboundLimits:
 		return m.OldOutboundLimits(ctx)
+	case mailbox.FieldSpamThresholds:
+		return m.OldSpamThresholds(ctx)
 	case mailbox.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case mailbox.FieldUpdatedAt:
@@ -8661,6 +8718,13 @@ func (m *MailboxMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOutboundLimits(v)
+		return nil
+	case mailbox.FieldSpamThresholds:
+		v, ok := value.(map[string]float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSpamThresholds(v)
 		return nil
 	case mailbox.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -8743,6 +8807,9 @@ func (m *MailboxMutation) ClearedFields() []string {
 	if m.FieldCleared(mailbox.FieldOutboundLimits) {
 		fields = append(fields, mailbox.FieldOutboundLimits)
 	}
+	if m.FieldCleared(mailbox.FieldSpamThresholds) {
+		fields = append(fields, mailbox.FieldSpamThresholds)
+	}
 	if m.FieldCleared(mailbox.FieldDeletedAt) {
 		fields = append(fields, mailbox.FieldDeletedAt)
 	}
@@ -8762,6 +8829,9 @@ func (m *MailboxMutation) ClearField(name string) error {
 	switch name {
 	case mailbox.FieldOutboundLimits:
 		m.ClearOutboundLimits()
+		return nil
+	case mailbox.FieldSpamThresholds:
+		m.ClearSpamThresholds()
 		return nil
 	case mailbox.FieldDeletedAt:
 		m.ClearDeletedAt()
@@ -8788,6 +8858,9 @@ func (m *MailboxMutation) ResetField(name string) error {
 		return nil
 	case mailbox.FieldOutboundLimits:
 		m.ResetOutboundLimits()
+		return nil
+	case mailbox.FieldSpamThresholds:
+		m.ResetSpamThresholds()
 		return nil
 	case mailbox.FieldCreatedAt:
 		m.ResetCreatedAt()

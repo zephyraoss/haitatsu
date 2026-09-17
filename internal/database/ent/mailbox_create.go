@@ -77,6 +77,12 @@ func (_c *MailboxCreate) SetOutboundLimits(v map[string]int64) *MailboxCreate {
 	return _c
 }
 
+// SetSpamThresholds sets the "spam_thresholds" field.
+func (_c *MailboxCreate) SetSpamThresholds(v map[string]float64) *MailboxCreate {
+	_c.mutation.SetSpamThresholds(v)
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *MailboxCreate) SetCreatedAt(v time.Time) *MailboxCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -270,6 +276,10 @@ func (_c *MailboxCreate) createSpec() (*Mailbox, *sqlgraph.CreateSpec) {
 		_spec.SetField(mailbox.FieldOutboundLimits, field.TypeJSON, value)
 		_node.OutboundLimits = value
 	}
+	if value, ok := _c.mutation.SpamThresholds(); ok {
+		_spec.SetField(mailbox.FieldSpamThresholds, field.TypeJSON, value)
+		_node.SpamThresholds = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(mailbox.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -409,6 +419,24 @@ func (u *MailboxUpsert) UpdateOutboundLimits() *MailboxUpsert {
 // ClearOutboundLimits clears the value of the "outbound_limits" field.
 func (u *MailboxUpsert) ClearOutboundLimits() *MailboxUpsert {
 	u.SetNull(mailbox.FieldOutboundLimits)
+	return u
+}
+
+// SetSpamThresholds sets the "spam_thresholds" field.
+func (u *MailboxUpsert) SetSpamThresholds(v map[string]float64) *MailboxUpsert {
+	u.Set(mailbox.FieldSpamThresholds, v)
+	return u
+}
+
+// UpdateSpamThresholds sets the "spam_thresholds" field to the value that was provided on create.
+func (u *MailboxUpsert) UpdateSpamThresholds() *MailboxUpsert {
+	u.SetExcluded(mailbox.FieldSpamThresholds)
+	return u
+}
+
+// ClearSpamThresholds clears the value of the "spam_thresholds" field.
+func (u *MailboxUpsert) ClearSpamThresholds() *MailboxUpsert {
+	u.SetNull(mailbox.FieldSpamThresholds)
 	return u
 }
 
@@ -581,6 +609,27 @@ func (u *MailboxUpsertOne) UpdateOutboundLimits() *MailboxUpsertOne {
 func (u *MailboxUpsertOne) ClearOutboundLimits() *MailboxUpsertOne {
 	return u.Update(func(s *MailboxUpsert) {
 		s.ClearOutboundLimits()
+	})
+}
+
+// SetSpamThresholds sets the "spam_thresholds" field.
+func (u *MailboxUpsertOne) SetSpamThresholds(v map[string]float64) *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetSpamThresholds(v)
+	})
+}
+
+// UpdateSpamThresholds sets the "spam_thresholds" field to the value that was provided on create.
+func (u *MailboxUpsertOne) UpdateSpamThresholds() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateSpamThresholds()
+	})
+}
+
+// ClearSpamThresholds clears the value of the "spam_thresholds" field.
+func (u *MailboxUpsertOne) ClearSpamThresholds() *MailboxUpsertOne {
+	return u.Update(func(s *MailboxUpsert) {
+		s.ClearSpamThresholds()
 	})
 }
 
@@ -925,6 +974,27 @@ func (u *MailboxUpsertBulk) UpdateOutboundLimits() *MailboxUpsertBulk {
 func (u *MailboxUpsertBulk) ClearOutboundLimits() *MailboxUpsertBulk {
 	return u.Update(func(s *MailboxUpsert) {
 		s.ClearOutboundLimits()
+	})
+}
+
+// SetSpamThresholds sets the "spam_thresholds" field.
+func (u *MailboxUpsertBulk) SetSpamThresholds(v map[string]float64) *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.SetSpamThresholds(v)
+	})
+}
+
+// UpdateSpamThresholds sets the "spam_thresholds" field to the value that was provided on create.
+func (u *MailboxUpsertBulk) UpdateSpamThresholds() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.UpdateSpamThresholds()
+	})
+}
+
+// ClearSpamThresholds clears the value of the "spam_thresholds" field.
+func (u *MailboxUpsertBulk) ClearSpamThresholds() *MailboxUpsertBulk {
+	return u.Update(func(s *MailboxUpsert) {
+		s.ClearSpamThresholds()
 	})
 }
 

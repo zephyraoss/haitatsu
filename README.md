@@ -135,19 +135,46 @@ TLS has four modes. `manual` loads `cert_file` and `key_file`. `acme` obtains a 
 
 Per-mailbox outbound limits override the defaults through the `outbound_limits` field on the mailbox API using the keys `per_hour`, `per_day`, and `recipients_per_message`.
 
+### Per-inbox spam thresholds
+
+Each mailbox can override spam thresholds through `spam_thresholds` on `POST /api/v1/mailboxes` or `PATCH /api/v1/mailboxes/:id`. For example, this PATCH body sets the Junk score threshold to 3 and the TypeSafe spam probability threshold to 0.95:
+
+```json
+{
+  "spam_thresholds": {
+    "junk_threshold": 3,
+    "spam_threshold": 0.95
+  }
+}
+```
+
+| Key | Allowed values | Inherited setting |
+|-----|----------------|-------------------|
+| `junk_threshold` | Finite number greater than or equal to 0 | `spam.junk_threshold`, default 5 |
+| `spam_threshold` | Finite number greater than 0 and at most 1 | `spam.typesafe.spam_threshold`, default 0.98 |
+| `phishing_threshold` | Finite number greater than 0 and at most 1 | `spam.typesafe.phishing_threshold`, default 0.98 |
+
+Lower values send more messages to Junk; equality with a threshold also selects Junk. An explicit mailbox `junk_threshold` of 0 selects Junk even for a score of 0. TypeSafe thresholds take effect only when the server enables TypeSafe, and `shadow` mode records decisions without changing folders.
+
+A supplied object replaces all overrides for that mailbox. Omitted keys inherit server settings. Send `{"spam_thresholds": null}` or `{"spam_thresholds": {}}` to restore full inheritance; omitting `spam_thresholds` from a PATCH leaves it unchanged. Mailbox GET and list responses include configured overrides when present. Changes apply to newly received mail without a restart and leave stored messages in their current folders.
+
+Each recipient's mailbox determines initial Junk placement, including delivery through aliases and plus addresses. SMTP rejection remains server-wide. Mailbox thresholds do not override explicit sender blocks or DMARC quarantine, and routing rules still run after initial placement.
+
+The message API records each inbox's effective Junk threshold, initial placement, reasons, and TypeSafe result under `auth_results.mailboxes[mailbox_id]`. Use these records for per-inbox decisions; the top-level `auth_results.typesafe` describes the server-default policy. TypeSafe request and token metrics count once per message, and decision counters indicate whether any recipient met a TypeSafe threshold.
+
 ### Optional TypeSafe content filter
 
 `spam.typesafe.mode` defaults to `off`, which makes no external requests. `shadow` sends messages to TypeSafe and records what the filter would do without changing placement; `junk` additionally selects Junk when `spam_probability >= spam_threshold` or `phishing_probability >= phishing_threshold`. TypeSafe never sets an SMTP rejection and never changes `spam_score`; an outage or malformed response leaves the existing policy in control. Thresholds default to `0.98`, a starting point for shadow evaluation rather than a calibrated production value.
 
 Enabling `shadow` or `junk` sends message content to `https://api.typesafe.ai/v1/systemone`. The request carries the decoded subject, sender display name and address, Reply-To, bounded plain-text and HTML text, link destinations stripped of credentials, query strings and fragments, bounded attachment filenames and content types, and a server-computed SPF/DKIM/DMARC summary. It does not send raw headers, recipient lists, Bcc, mailbox identifiers, attachment bytes, or fetched link/remote-image content. Confirm provider retention, training use, processing region, rate limits, and pricing before production enablement; redacting metadata does not remove personal information from the body.
 
-Each inbound message triggers at most one request, bounded by `timeout_ms` after the concurrency and per-minute budgets are checked. Messages already rejected or classified as Junk by the existing checks skip the request, as do empty or unparseable bodies. Results are stored under `auth_results.typesafe` in the message API response.
+Each inbound message triggers at most one request, bounded by `timeout_ms` after the concurrency and per-minute budgets are checked. Messages already rejected or classified as Junk for every recipient by the existing checks skip the request, as do empty or unparseable bodies. Results are stored under `auth_results.typesafe` in the message API response.
 
 Set `HAITATSU_TYPESAFE_API_KEY` and change the example's `spam.typesafe.mode` to `shadow` to begin evaluation. Reload through SIGHUP or the admin reload endpoint. The default timeout is 2 seconds, with up to 8 requests in flight and 60 requests per minute per process. Divide the account budget across replicas. Omitted or zero numeric settings use defaults. Authentication and request-validation errors suppress further calls until the client sees changed settings; overload and repeated service failures use a bounded cooldown.
 
 The extractor scans at most 2 MiB of raw mail, 32 MIME entities with a nesting limit, and 32 KiB of top-level headers. It reads up to 64 KiB of each first text alternative and retains a combined 16 KiB by default, reserving HTML evidence when both alternatives exist. Truncation and parse limitations appear in the stored result. Text after the scan limit, image-only messages and attachment contents may escape content detection.
 
-Sender allow rules reduce the existing numeric score but do not bypass TypeSafe. One assessment applies to every recipient; mailbox routing rules run afterward and can move mail out of Junk. Changing to `off` stops new assessments without moving previously classified mail.
+Sender allow rules reduce the existing numeric score but do not bypass TypeSafe. Recipients share one content evaluation, with each mailbox applying its own thresholds. Mailbox routing rules run afterward and can move mail out of Junk. Changing to `off` stops new assessments without moving previously classified mail.
 
 For threshold calibration, `go run ./cmd/typesafe-eval -corpus labels.jsonl > predictions.jsonl 2> summary.json` evaluates labeled local mail without delivering it. It requires the API key and an explicit JSONL manifest. See [the evaluation guide](docs/typesafe-evaluation.md) for the format, metrics, and rollout procedure. Automated tests use fake responses.
 

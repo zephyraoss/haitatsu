@@ -18,6 +18,7 @@ func (Mailbox) Fields() []ent.Field {
 		field.Int64("quota_bytes").Default(0),
 		field.Int64("used_bytes").Default(0),
 		field.JSON("outbound_limits", map[string]int64{}).Optional(),
+		field.JSON("spam_thresholds", map[string]float64{}).Optional(),
 		createdAtField(),
 		updatedAtField(),
 		deletedAtField(),

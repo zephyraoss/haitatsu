@@ -362,6 +362,7 @@ var (
 		{Name: "quota_bytes", Type: field.TypeInt64, Default: 0},
 		{Name: "used_bytes", Type: field.TypeInt64, Default: 0},
 		{Name: "outbound_limits", Type: field.TypeJSON, Nullable: true},
+		{Name: "spam_thresholds", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true},
@@ -380,7 +381,7 @@ var (
 			{
 				Name:    "mailbox_deleted_at",
 				Unique:  false,
-				Columns: []*schema.Column{MailboxesColumns[8]},
+				Columns: []*schema.Column{MailboxesColumns[9]},
 			},
 		},
 	}

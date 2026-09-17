@@ -319,6 +319,16 @@ func OutboundLimitsNotNil() predicate.Mailbox {
 	return predicate.Mailbox(sql.FieldNotNull(FieldOutboundLimits))
 }
 
+// SpamThresholdsIsNil applies the IsNil predicate on the "spam_thresholds" field.
+func SpamThresholdsIsNil() predicate.Mailbox {
+	return predicate.Mailbox(sql.FieldIsNull(FieldSpamThresholds))
+}
+
+// SpamThresholdsNotNil applies the NotNil predicate on the "spam_thresholds" field.
+func SpamThresholdsNotNil() predicate.Mailbox {
+	return predicate.Mailbox(sql.FieldNotNull(FieldSpamThresholds))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Mailbox {
 	return predicate.Mailbox(sql.FieldEQ(FieldCreatedAt, v))

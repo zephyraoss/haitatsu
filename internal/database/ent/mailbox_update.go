@@ -110,6 +110,18 @@ func (_u *MailboxUpdate) ClearOutboundLimits() *MailboxUpdate {
 	return _u
 }
 
+// SetSpamThresholds sets the "spam_thresholds" field.
+func (_u *MailboxUpdate) SetSpamThresholds(v map[string]float64) *MailboxUpdate {
+	_u.mutation.SetSpamThresholds(v)
+	return _u
+}
+
+// ClearSpamThresholds clears the value of the "spam_thresholds" field.
+func (_u *MailboxUpdate) ClearSpamThresholds() *MailboxUpdate {
+	_u.mutation.ClearSpamThresholds()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *MailboxUpdate) SetUpdatedAt(v time.Time) *MailboxUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -209,6 +221,12 @@ func (_u *MailboxUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.OutboundLimitsCleared() {
 		_spec.ClearField(mailbox.FieldOutboundLimits, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.SpamThresholds(); ok {
+		_spec.SetField(mailbox.FieldSpamThresholds, field.TypeJSON, value)
+	}
+	if _u.mutation.SpamThresholdsCleared() {
+		_spec.ClearField(mailbox.FieldSpamThresholds, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mailbox.FieldUpdatedAt, field.TypeTime, value)
@@ -318,6 +336,18 @@ func (_u *MailboxUpdateOne) SetOutboundLimits(v map[string]int64) *MailboxUpdate
 // ClearOutboundLimits clears the value of the "outbound_limits" field.
 func (_u *MailboxUpdateOne) ClearOutboundLimits() *MailboxUpdateOne {
 	_u.mutation.ClearOutboundLimits()
+	return _u
+}
+
+// SetSpamThresholds sets the "spam_thresholds" field.
+func (_u *MailboxUpdateOne) SetSpamThresholds(v map[string]float64) *MailboxUpdateOne {
+	_u.mutation.SetSpamThresholds(v)
+	return _u
+}
+
+// ClearSpamThresholds clears the value of the "spam_thresholds" field.
+func (_u *MailboxUpdateOne) ClearSpamThresholds() *MailboxUpdateOne {
+	_u.mutation.ClearSpamThresholds()
 	return _u
 }
 
@@ -450,6 +480,12 @@ func (_u *MailboxUpdateOne) sqlSave(ctx context.Context) (_node *Mailbox, err er
 	}
 	if _u.mutation.OutboundLimitsCleared() {
 		_spec.ClearField(mailbox.FieldOutboundLimits, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.SpamThresholds(); ok {
+		_spec.SetField(mailbox.FieldSpamThresholds, field.TypeJSON, value)
+	}
+	if _u.mutation.SpamThresholdsCleared() {
+		_spec.ClearField(mailbox.FieldSpamThresholds, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(mailbox.FieldUpdatedAt, field.TypeTime, value)

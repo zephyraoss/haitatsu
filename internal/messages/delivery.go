@@ -112,7 +112,7 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, s
 			seen[mbox.ID] = struct{}{}
 
 			folderName := "INBOX"
-			if assessment.Junk {
+			if assessment.JunkForMailbox(mbox.ID) {
 				folderName = "Junk"
 			}
 			deliveryFolder, err := s.store.FolderByName(ctx, mbox.ID, folderName)

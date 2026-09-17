@@ -11,7 +11,7 @@ Create a JSONL manifest with one file and label per line. Relative paths resolve
 {"path":"mail/fake-login.eml","label":"phishing"}
 ```
 
-Use `ham` for wanted mail. Label an active phishing attempt `phishing`; label other unwanted mail `spam`. The summary treats spam and phishing together as unwanted mail, while the prediction rows retain both probabilities. Use a corpus representative of the messages that pass existing checks, because the new stage skips messages already rejected or classified as Junk.
+Use `ham` for wanted mail. Label an active phishing attempt `phishing`; label other unwanted mail `spam`. The summary treats spam and phishing together as unwanted mail, while the prediction rows retain both probabilities. Use a corpus representative of the messages that pass existing checks, because the new stage skips messages already rejected or classified as Junk for every recipient.
 
 An optional `auth_results` object can contain server-computed SPF, DKIM and DMARC results exported with the corpus. Do not populate it from untrusted `Authentication-Results` headers in the email. The command neither trusts those headers nor performs historical DNS verification.
 
@@ -24,6 +24,8 @@ go run ./cmd/typesafe-eval -corpus labels.jsonl > predictions.jsonl 2> summary.j
 The key has no command-line flag and does not appear in help output. The command validates the complete manifest before making requests. It paces requests at 60 per minute by default. `-max-requests-per-minute` changes that budget; coordinate it with other processes using the account.
 
 Use `-model`, `-timeout-ms`, `-max-text-bytes`, `-spam-threshold`, and `-phishing-threshold` to test settings. Defaults match the server. The model alias `jev-latest` can change, so use an available fixed model version when comparing experiments and retain the returned model identifiers.
+
+The command does not load mailbox overrides. To evaluate an inbox's TypeSafe thresholds, pass its effective values with `-spam-threshold` and `-phishing-threshold`, including server defaults for any keys the inbox inherits.
 
 Predictions contain the source path and label, requested and returned model, question/extractor versions, probabilities, thresholds, proposed Junk action, extraction limits, latency and token usage. Bodies and keys do not appear in output. Read failures, unusable content and provider errors produce an unscored row with null probabilities and action.
 

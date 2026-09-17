@@ -28,6 +28,8 @@ type Mailbox struct {
 	UsedBytes int64 `json:"used_bytes,omitempty"`
 	// OutboundLimits holds the value of the "outbound_limits" field.
 	OutboundLimits map[string]int64 `json:"outbound_limits,omitempty"`
+	// SpamThresholds holds the value of the "spam_thresholds" field.
+	SpamThresholds map[string]float64 `json:"spam_thresholds,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -42,7 +44,7 @@ func (*Mailbox) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case mailbox.FieldOutboundLimits:
+		case mailbox.FieldOutboundLimits, mailbox.FieldSpamThresholds:
 			values[i] = new([]byte)
 		case mailbox.FieldQuotaBytes, mailbox.FieldUsedBytes:
 			values[i] = new(sql.NullInt64)
@@ -101,6 +103,14 @@ func (_m *Mailbox) assignValues(columns []string, values []any) error {
 			} else if value != nil && len(*value) > 0 {
 				if err := json.Unmarshal(*value, &_m.OutboundLimits); err != nil {
 					return fmt.Errorf("unmarshal field outbound_limits: %w", err)
+				}
+			}
+		case mailbox.FieldSpamThresholds:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field spam_thresholds", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.SpamThresholds); err != nil {
+					return fmt.Errorf("unmarshal field spam_thresholds: %w", err)
 				}
 			}
 		case mailbox.FieldCreatedAt:
@@ -172,6 +182,9 @@ func (_m *Mailbox) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("outbound_limits=")
 	builder.WriteString(fmt.Sprintf("%v", _m.OutboundLimits))
+	builder.WriteString(", ")
+	builder.WriteString("spam_thresholds=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SpamThresholds))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

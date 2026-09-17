@@ -238,11 +238,11 @@ func init() {
 	// mailbox.DefaultUsedBytes holds the default value on creation for the used_bytes field.
 	mailbox.DefaultUsedBytes = mailboxDescUsedBytes.Default.(int64)
 	// mailboxDescCreatedAt is the schema descriptor for created_at field.
-	mailboxDescCreatedAt := mailboxFields[6].Descriptor()
+	mailboxDescCreatedAt := mailboxFields[7].Descriptor()
 	// mailbox.DefaultCreatedAt holds the default value on creation for the created_at field.
 	mailbox.DefaultCreatedAt = mailboxDescCreatedAt.Default.(func() time.Time)
 	// mailboxDescUpdatedAt is the schema descriptor for updated_at field.
-	mailboxDescUpdatedAt := mailboxFields[7].Descriptor()
+	mailboxDescUpdatedAt := mailboxFields[8].Descriptor()
 	// mailbox.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	mailbox.DefaultUpdatedAt = mailboxDescUpdatedAt.Default.(func() time.Time)
 	// mailbox.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
