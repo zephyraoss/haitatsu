@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/mail"
 	"slices"
 	"strings"
@@ -245,11 +246,68 @@ type NotificationConfig struct {
 }
 
 type SpamConfig struct {
-	JunkThreshold   float64  `pkl:"junk_threshold" json:"junk_threshold"`
-	RejectThreshold float64  `pkl:"reject_threshold" json:"reject_threshold"`
-	DNSBLZones      []string `pkl:"dnsbl_zones" json:"dnsbl_zones"`
-	DNSBLScore      float64  `pkl:"dnsbl_score" json:"dnsbl_score"`
-	RequireHELO     bool     `pkl:"require_helo" json:"require_helo"`
+	JunkThreshold   float64        `pkl:"junk_threshold" json:"junk_threshold"`
+	RejectThreshold float64        `pkl:"reject_threshold" json:"reject_threshold"`
+	DNSBLZones      []string       `pkl:"dnsbl_zones" json:"dnsbl_zones"`
+	DNSBLScore      float64        `pkl:"dnsbl_score" json:"dnsbl_score"`
+	RequireHELO     bool           `pkl:"require_helo" json:"require_helo"`
+	TypeSafe        TypeSafeConfig `pkl:"typesafe" json:"typesafe"`
+}
+
+// TypeSafeConfig controls the optional TypeSafe content evaluation stage. The
+// zero value means "off": no external request is made and assessments are
+// unchanged.
+type TypeSafeConfig struct {
+	Mode                 string  `pkl:"mode" json:"mode"`
+	APIKey               string  `pkl:"api_key" json:"api_key"`
+	Model                string  `pkl:"model" json:"model"`
+	TimeoutMS            int     `pkl:"timeout_ms" json:"timeout_ms"`
+	MaxTextBytes         int     `pkl:"max_text_bytes" json:"max_text_bytes"`
+	MaxInFlight          int     `pkl:"max_in_flight" json:"max_in_flight"`
+	MaxRequestsPerMinute int     `pkl:"max_requests_per_minute" json:"max_requests_per_minute"`
+	SpamThreshold        float64 `pkl:"spam_threshold" json:"spam_threshold"`
+	PhishingThreshold    float64 `pkl:"phishing_threshold" json:"phishing_threshold"`
+}
+
+// WithDefaults fills unset limits and thresholds with the documented local
+// defaults. Invalid nonzero values remain available for validation.
+func (c TypeSafeConfig) WithDefaults() TypeSafeConfig {
+	if strings.TrimSpace(c.Mode) == "" {
+		c.Mode = "off"
+	}
+	c.Mode = strings.ToLower(strings.TrimSpace(c.Mode))
+	if strings.TrimSpace(c.Model) == "" {
+		c.Model = "jev-latest"
+	}
+	if c.TimeoutMS == 0 {
+		c.TimeoutMS = 2000
+	}
+	if c.MaxTextBytes == 0 {
+		c.MaxTextBytes = 16384
+	}
+	if c.MaxInFlight == 0 {
+		c.MaxInFlight = 8
+	}
+	if c.MaxRequestsPerMinute == 0 {
+		c.MaxRequestsPerMinute = 60
+	}
+	if c.SpamThreshold == 0 {
+		c.SpamThreshold = 0.98
+	}
+	if c.PhishingThreshold == 0 {
+		c.PhishingThreshold = 0.98
+	}
+	return c
+}
+
+// Enabled reports whether the integration should make requests.
+func (c TypeSafeConfig) Enabled() bool {
+	mode := strings.ToLower(strings.TrimSpace(c.Mode))
+	return mode == "shadow" || mode == "junk"
+}
+
+func (c TypeSafeConfig) Timeout() time.Duration {
+	return time.Duration(c.WithDefaults().TimeoutMS) * time.Millisecond
 }
 
 type LimitsConfig struct {
@@ -496,10 +554,54 @@ func (c Config) Validate() error {
 	if c.Spam.RejectThreshold < 0 {
 		problems = append(problems, "spam.reject_threshold must be >= 0")
 	}
+	if err := validateTypeSafe(c.Spam.TypeSafe); err != nil {
+		problems = append(problems, err.Error())
+	}
 	if len(problems) > 0 {
 		return errors.New(strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+func validateTypeSafe(c TypeSafeConfig) error {
+	switch strings.ToLower(strings.TrimSpace(c.Mode)) {
+	case "", "off":
+		// Off ignores the remaining fields, matching the zero-value contract.
+		return nil
+	case "shadow", "junk":
+	default:
+		return errors.New("spam.typesafe.mode must be off, shadow, or junk")
+	}
+	effective := c.WithDefaults()
+	if strings.TrimSpace(effective.APIKey) == "" {
+		return errors.New("spam.typesafe.api_key is required when TypeSafe is enabled")
+	}
+	if strings.TrimSpace(effective.Model) == "" {
+		return errors.New("spam.typesafe.model is required when TypeSafe is enabled")
+	}
+	if c.TimeoutMS != 0 && (c.TimeoutMS < 100 || c.TimeoutMS > 10000) {
+		return errors.New("spam.typesafe.timeout_ms must be between 100 and 10000")
+	}
+	if c.MaxTextBytes < 0 {
+		return errors.New("spam.typesafe.max_text_bytes must be >= 0")
+	}
+	if c.MaxInFlight < 0 {
+		return errors.New("spam.typesafe.max_in_flight must be >= 0")
+	}
+	if c.MaxRequestsPerMinute < 0 {
+		return errors.New("spam.typesafe.max_requests_per_minute must be >= 0")
+	}
+	if c.SpamThreshold != 0 && !validProbability(c.SpamThreshold) {
+		return errors.New("spam.typesafe.spam_threshold must be greater than 0 and at most 1")
+	}
+	if c.PhishingThreshold != 0 && !validProbability(c.PhishingThreshold) {
+		return errors.New("spam.typesafe.phishing_threshold must be greater than 0 and at most 1")
+	}
+	return nil
+}
+
+func validProbability(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value > 0 && value <= 1
 }
 
 func (c Config) ReloadImpact(next *Config) ReloadImpact {

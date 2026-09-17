@@ -112,7 +112,29 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	notificationService := notifications.New(db.Ent(), messageService, func() config.NotificationConfig { return holder.Get().Notifications }, cfg.Server.PublicHostname)
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName, db.Backend())
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
-	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname)
+	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname,
+		spam.WithTypeSafe(spam.NewTypeSafeClient(), func(result spam.TypeSafeResult) {
+			m.TypeSafeAssessments.WithLabelValues(result.Mode, result.Status).Inc()
+			if result.ElapsedMS > 0 {
+				m.TypeSafeLatency.Observe(float64(result.ElapsedMS) / 1000)
+			}
+			if result.SpamProbability != nil {
+				m.TypeSafeProbabilities.WithLabelValues("spam").Observe(*result.SpamProbability)
+			}
+			if result.PhishingProbability != nil {
+				m.TypeSafeProbabilities.WithLabelValues("phishing").Observe(*result.PhishingProbability)
+			}
+			if result.Usage != nil {
+				m.TypeSafeTokens.WithLabelValues("input").Add(float64(result.Usage.InputTokens))
+				m.TypeSafeTokens.WithLabelValues("output").Add(float64(result.Usage.OutputTokens))
+			}
+			if result.WouldJunk {
+				m.TypeSafeDecisions.WithLabelValues(result.Mode, "would_junk").Inc()
+			}
+			if result.AppliedJunk {
+				m.TypeSafeDecisions.WithLabelValues(result.Mode, "applied_junk").Inc()
+			}
+		}))
 	tlsConfig, err := certs.TLSConfig(ctx, certs.Options{TLS: cfg.TLS, PublicHostname: cfg.Server.PublicHostname, Hostnames: cfg.InboundHostnames()})
 	if err != nil {
 		db.Close()

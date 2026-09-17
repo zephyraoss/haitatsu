@@ -127,12 +127,29 @@ Listener addresses, database settings, S3, TLS, and worker enablement require a 
 | `limits` | `max_message_size_bytes`, `max_inbound_recipients`, `max_submission_recipients`, `max_connections_per_ip`, `inbound_messages_per_minute_per_ip`, `default_outbound_per_hour`, `default_outbound_per_day`, `default_outbound_recipients_per_message` |
 | `relay` | `addr`, `username`, `password`, `from_host`, `max_attempts`, `max_retry_minutes` |
 | `webhooks` | `default_timeout_seconds`, `secret`, `endpoints`, `max_attempts` |
-| `spam` | `junk_threshold`, `reject_threshold`, `dnsbl_zones`, `dnsbl_score`, `require_helo` |
+| `spam` | `junk_threshold`, `reject_threshold`, `dnsbl_zones`, `dnsbl_score`, `require_helo`, `typesafe` |
+| `spam.typesafe` | `mode`, `api_key`, `model`, `timeout_ms`, `max_text_bytes`, `max_in_flight`, `max_requests_per_minute`, `spam_threshold`, `phishing_threshold` |
 | `imap` | `addr`, `max_connections_per_ip` |
 
 TLS has four modes. `manual` loads `cert_file` and `key_file`. `acme` obtains a certificate for `public_hostname` itself using HTTP-01 or TLS-ALPN-01 on the listener host, cached under `acme_cache_path` (default `/var/lib/haitatsu/certmagic`). `storage` issues nothing and instead reads certificates from the S3 bucket in `tls.storage`, in the layout certmagic writes (`<prefix>/certificates/<issuer>/<host>/<host>.crt` and `.key`), for `public_hostname` plus every name in `storage.hostnames`, re-reading them every `refresh_interval_minutes` (and every 30 seconds while any are still missing, so it can start before the issuer has produced them). Use `storage` when a reverse proxy such as Caddy already owns ports 80 and 443 and keeps a shared certificate store, so replicas serve the same certificate without any of them talking to the CA; the bucket credentials only need read access. `off` disables TLS and allows plaintext authentication, which is only for local development.
 
 Per-mailbox outbound limits override the defaults through the `outbound_limits` field on the mailbox API using the keys `per_hour`, `per_day`, and `recipients_per_message`.
+
+### Optional TypeSafe content filter
+
+`spam.typesafe.mode` defaults to `off`, which makes no external requests. `shadow` sends messages to TypeSafe and records what the filter would do without changing placement; `junk` additionally selects Junk when `spam_probability >= spam_threshold` or `phishing_probability >= phishing_threshold`. TypeSafe never sets an SMTP rejection and never changes `spam_score`; an outage or malformed response leaves the existing policy in control. Thresholds default to `0.98`, a starting point for shadow evaluation rather than a calibrated production value.
+
+Enabling `shadow` or `junk` sends message content to `https://api.typesafe.ai/v1/systemone`. The request carries the decoded subject, sender display name and address, Reply-To, bounded plain-text and HTML text, link destinations stripped of credentials, query strings and fragments, bounded attachment filenames and content types, and a server-computed SPF/DKIM/DMARC summary. It does not send raw headers, recipient lists, Bcc, mailbox identifiers, attachment bytes, or fetched link/remote-image content. Confirm provider retention, training use, processing region, rate limits, and pricing before production enablement; redacting metadata does not remove personal information from the body.
+
+Each inbound message triggers at most one request, bounded by `timeout_ms` after the concurrency and per-minute budgets are checked. Messages already rejected or classified as Junk by the existing checks skip the request, as do empty or unparseable bodies. Results are stored under `auth_results.typesafe` in the message API response.
+
+Set `HAITATSU_TYPESAFE_API_KEY` and change the example's `spam.typesafe.mode` to `shadow` to begin evaluation. Reload through SIGHUP or the admin reload endpoint. The default timeout is 2 seconds, with up to 8 requests in flight and 60 requests per minute per process. Divide the account budget across replicas. Omitted or zero numeric settings use defaults. Authentication and request-validation errors suppress further calls until the client sees changed settings; overload and repeated service failures use a bounded cooldown.
+
+The extractor scans at most 2 MiB of raw mail, 32 MIME entities with a nesting limit, and 32 KiB of top-level headers. It reads up to 64 KiB of each first text alternative and retains a combined 16 KiB by default, reserving HTML evidence when both alternatives exist. Truncation and parse limitations appear in the stored result. Text after the scan limit, image-only messages and attachment contents may escape content detection.
+
+Sender allow rules reduce the existing numeric score but do not bypass TypeSafe. One assessment applies to every recipient; mailbox routing rules run afterward and can move mail out of Junk. Changing to `off` stops new assessments without moving previously classified mail.
+
+For threshold calibration, `go run ./cmd/typesafe-eval -corpus labels.jsonl > predictions.jsonl 2> summary.json` evaluates labeled local mail without delivering it. It requires the API key and an explicit JSONL manifest. See [the evaluation guide](docs/typesafe-evaluation.md) for the format, metrics, and rollout procedure. Automated tests use fake responses.
 
 ## API pagination
 

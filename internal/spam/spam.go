@@ -36,26 +36,39 @@ type Assessment struct {
 }
 
 type Checker struct {
-	client *ent.Client
-	cfg    func() config.SpamConfig
-	authID string
+	client          *ent.Client
+	cfg             func() config.SpamConfig
+	authID          string
+	typesafe        TypeSafeEvaluator
+	observeTypeSafe func(TypeSafeResult)
 }
 
-func NewChecker(client *ent.Client, cfg func() config.SpamConfig, authID string) *Checker {
+type CheckerOption func(*Checker)
+
+// WithTypeSafe supplies the optional content evaluator and assessment observer.
+func WithTypeSafe(evaluator TypeSafeEvaluator, observe func(TypeSafeResult)) CheckerOption {
+	return func(c *Checker) { c.typesafe, c.observeTypeSafe = evaluator, observe }
+}
+
+func NewChecker(client *ent.Client, cfg func() config.SpamConfig, authID string, options ...CheckerOption) *Checker {
 	if cfg == nil {
 		cfg = func() config.SpamConfig { return config.SpamConfig{} }
 	}
-	return &Checker{client: client, cfg: cfg, authID: authID}
+	c := &Checker{client: client, cfg: cfg, authID: authID}
+	for _, option := range options {
+		option(c)
+	}
+	return c
 }
 
 func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recipients []routing.Result) Assessment {
+	cfg := c.cfg()
 	metadata := mailparse.Parse(raw)
 	fromDomain := firstAddressDomain(metadata.From)
 	dkimResult, dkimDomain := verifyDKIM(raw)
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
 	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain, spfResult, spfDomain)
 	listKind, listAction := c.senderRuleMatch(ctx, metadata, smtp, recipients)
-	cfg := c.cfg()
 	listed, dnsblZone := dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
 
 	score, reasons := score(spfResult, dkimResult, dmarcResult, dmarcPolicy, listKind)
@@ -106,6 +119,7 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 	dmarcFailed := dmarcResult == authres.ResultFail
 	assessment.Junk = score >= junkThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
 	assessment.Reject = score >= rejectThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
+	c.applyTypeSafe(ctx, raw, cfg.TypeSafe.WithDefaults(), &assessment)
 	return assessment
 }
 

@@ -23,6 +23,11 @@ type Metrics struct {
 	MailboxOverQuotaTotal  prometheus.Counter
 	WebhookFailuresTotal   prometheus.Counter
 	IMAPSessions           prometheus.Gauge
+	TypeSafeAssessments    *prometheus.CounterVec
+	TypeSafeLatency        prometheus.Histogram
+	TypeSafeProbabilities  *prometheus.HistogramVec
+	TypeSafeTokens         *prometheus.CounterVec
+	TypeSafeDecisions      *prometheus.CounterVec
 }
 
 func New() *Metrics {
@@ -90,6 +95,7 @@ func New() *Metrics {
 		m.WebhookFailuresTotal,
 		m.IMAPSessions,
 	)
+	m.initTypeSafe()
 
 	return m
 }

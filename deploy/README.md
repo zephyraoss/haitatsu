@@ -39,6 +39,7 @@ the container environment through `read("env:...")`, so the stack's
 | `HAITATSU_CERTS_S3_ACCESS_KEY` | `tls.storage.access_key_id` (read-only key for the Caddy cert bucket) |
 | `HAITATSU_CERTS_S3_SECRET_KEY` | `tls.storage.secret_access_key` |
 | `HAITATSU_AXIOM_TOKEN` | `logging.axiom_token` (optional) |
+| `HAITATSU_TYPESAFE_API_KEY` | `spam.typesafe.api_key` (optional; required when TypeSafe mode is `shadow` or `junk`) |
 
 `server.instance_name` reads `HOSTNAME`, which Docker sets to the container
 ID, so every replica names itself without per-replica config.

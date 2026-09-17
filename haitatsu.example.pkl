@@ -115,6 +115,17 @@ spam {
   dnsbl_zones = new Listing<String> {}
   dnsbl_score = 4.0
   require_helo = false
+  typesafe {
+    mode = "off"
+    api_key = read?("env:HAITATSU_TYPESAFE_API_KEY") ?? ""
+    model = "jev-latest"
+    timeout_ms = 2000
+    max_text_bytes = 16384
+    max_in_flight = 8
+    max_requests_per_minute = 60
+    spam_threshold = 0.98
+    phishing_threshold = 0.98
+  }
 }
 
 limits {
