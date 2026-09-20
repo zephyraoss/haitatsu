@@ -91,15 +91,19 @@ SQLite and libSQL use FTS5 for the REST message search endpoint. PostgreSQL keep
 
 ## Local development
 
-Start Postgres and MinIO, then build and run Haitatsu:
+Start Postgres and Garage, then build and run Haitatsu:
 
 ```sh
-docker compose up -d postgres minio minio-init
+docker compose up -d postgres garage
 task build
 ./haitatsu -config haitatsu.pkl
 ```
 
-Or run the full stack (Postgres, MinIO, and Haitatsu in Docker):
+For a host-run Haitatsu process, point the local config at Garage on
+`127.0.0.1:9000` with region `us-east-1`, bucket `haitatsu`, and the development
+access key and secret declared in `compose.yaml`.
+
+Or run the full stack (Postgres, Garage, and Haitatsu in Docker):
 
 ```sh
 task compose:up
