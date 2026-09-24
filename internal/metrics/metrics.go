@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -103,6 +104,13 @@ func New() *Metrics {
 func (m *Metrics) Middleware(c fiber.Ctx) error {
 	err := c.Next()
 	status := c.Response().StatusCode()
+	if err != nil {
+		status = fiber.StatusInternalServerError
+		var fe *fiber.Error
+		if errors.As(err, &fe) {
+			status = fe.Code
+		}
+	}
 	m.APIRequestsTotal.WithLabelValues(c.Method(), strconv.Itoa(status)).Inc()
 	return err
 }
