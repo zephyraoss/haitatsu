@@ -131,7 +131,7 @@ func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
 UPDATE outbound_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM outbound_jobs
-  WHERE status IN ('queued', 'retry')
+  WHERE status IN ('queued', 'retry', 'processing')
     AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
     AND (locked_until IS NULL OR locked_until <= NOW())
   ORDER BY created_at
@@ -147,13 +147,13 @@ RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
 WHERE id = (
   SELECT id FROM outbound_jobs
-  WHERE status IN ('queued', 'retry')
+  WHERE status IN ('queued', 'retry', 'processing')
     AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
     AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
   ORDER BY created_at
   LIMIT 1
 )
-AND status IN ('queued', 'retry')
+AND status IN ('queued', 'retry', 'processing')
 AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
 AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
 RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
