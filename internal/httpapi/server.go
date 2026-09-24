@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"net"
 
 	"github.com/gofiber/fiber/v3"
@@ -43,14 +44,16 @@ func New(cfg *config.Holder, entClient *ent.Client, db *sql.DB, store MessageSto
 
 	app.Get("/health", func(c fiber.Ctx) error {
 		if err := checker.Health(c.Context()); err != nil {
-			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "unhealthy", "error": err.Error()})
+			slog.Warn("health check failed", "error", err)
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "unhealthy"})
 		}
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
 	app.Get("/ready", func(c fiber.Ctx) error {
 		if err := checker.Ready(c.Context()); err != nil {
-			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "not_ready", "error": err.Error()})
+			slog.Warn("readiness check failed", "error", err)
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "not_ready"})
 		}
 		return c.JSON(fiber.Map{"status": "ready"})
 	})
