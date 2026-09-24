@@ -38,13 +38,14 @@ const (
 )
 
 type ImportWorker struct {
-	db       *sql.DB
-	client   *ent.Client
-	store    Store
-	mail     *mailstore.Store
-	events   *events.Service
-	workerID string
-	backend  database.Backend
+	db          *sql.DB
+	client      *ent.Client
+	store       Store
+	mail        *mailstore.Store
+	events      *events.Service
+	workerID    string
+	backend     database.Backend
+	maildirRoot func() string
 }
 
 type importJob struct {
@@ -60,6 +61,61 @@ func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstor
 		backend = backends[0]
 	}
 	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
+}
+
+// SetMaildirRoot confines maildir imports to the directory returned by root.
+// An empty root disables maildir imports.
+func (w *ImportWorker) SetMaildirRoot(root func() string) {
+	w.maildirRoot = root
+}
+
+// ResolveMaildirPath resolves a caller-supplied maildir path relative to base,
+// rejecting absolute paths and any path (including via symlinks) that escapes
+// base. An empty base disables maildir imports.
+func ResolveMaildirPath(base string, requested string) (string, error) {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return "", fmt.Errorf("maildir imports are disabled: imports.maildir_root is not configured")
+	}
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return "", fmt.Errorf("maildir import requires source.path")
+	}
+	if filepath.IsAbs(requested) || filepath.VolumeName(requested) != "" {
+		return "", fmt.Errorf("maildir source.path must be relative to the configured maildir root")
+	}
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return "", fmt.Errorf("resolve maildir root: %w", err)
+	}
+	baseReal, err := filepath.EvalSymlinks(baseAbs)
+	if err != nil {
+		return "", fmt.Errorf("resolve maildir root: %w", err)
+	}
+	cleaned := filepath.Clean(requested)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("maildir source.path escapes the configured maildir root")
+	}
+	joined := filepath.Join(baseReal, cleaned)
+	if !withinDir(baseReal, joined) {
+		return "", fmt.Errorf("maildir source.path escapes the configured maildir root")
+	}
+	resolved, err := filepath.EvalSymlinks(joined)
+	if err != nil {
+		return "", fmt.Errorf("resolve maildir path: %w", err)
+	}
+	if !withinDir(baseReal, resolved) {
+		return "", fmt.Errorf("maildir source.path escapes the configured maildir root")
+	}
+	return resolved, nil
+}
+
+func withinDir(base string, path string) bool {
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -372,9 +428,13 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 }
 
 func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	root := strings.TrimSpace(sourceString(job.Source, "path"))
-	if root == "" {
-		return fmt.Errorf("maildir import requires source.path")
+	base := ""
+	if w.maildirRoot != nil {
+		base = w.maildirRoot()
+	}
+	root, err := ResolveMaildirPath(base, sourceString(job.Source, "path"))
+	if err != nil {
+		return err
 	}
 	entries, err := maildirEntries(root)
 	if err != nil {

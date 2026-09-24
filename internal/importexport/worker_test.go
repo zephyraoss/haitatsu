@@ -158,16 +158,17 @@ func messagesInFolder(t *testing.T, client *ent.Client, mailboxID string, folder
 func TestImportMaildirJob(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
-	worker := &ImportWorker{client: client, store: newFakeStore()}
+	base := t.TempDir()
+	worker := &ImportWorker{client: client, store: newFakeStore(), maildirRoot: func() string { return base }}
 	mbox := seedMailbox(t, client)
 
-	root := t.TempDir()
+	root := filepath.Join(base, "user")
 	writeMaildirMessage(t, root, "cur/1.host:2,S", rawMessage("read-inbox"))
 	writeMaildirMessage(t, root, "new/2.host", rawMessage("unread-inbox"))
 	writeMaildirMessage(t, root, ".Sent/cur/3.host:2,FS", rawMessage("sent"))
 	writeMaildirMessage(t, root, ".Clients.Acme/new/4.host", rawMessage("client"))
 
-	job := importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": root}}
+	job := importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": "user"}}
 	count, err := worker.importJob(ctx, job)
 	if err != nil {
 		t.Fatal(err)
@@ -335,14 +336,14 @@ func TestAddToMailboxSkipsDuplicateMessageRows(t *testing.T) {
 func TestImportJobPersistsProgress(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
-	worker := &ImportWorker{client: client, store: newFakeStore()}
+	root := t.TempDir()
+	worker := &ImportWorker{client: client, store: newFakeStore(), maildirRoot: func() string { return root }}
 	mbox := seedMailbox(t, client)
 
-	root := t.TempDir()
 	for i := range 3 {
 		writeMaildirMessage(t, root, fmt.Sprintf("cur/%d.host", i), rawMessage(fmt.Sprintf("progress-%d", i)))
 	}
-	source := map[string]any{"path": root}
+	source := map[string]any{"path": "."}
 	row, err := client.ImportJob.Create().SetMailboxID(mbox.ID).SetSourceType("maildir").SetSource(source).Save(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -368,13 +369,13 @@ func TestExportBuildZIP(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
 	store := newFakeStore()
-	importWorker := &ImportWorker{client: client, store: store}
+	root := t.TempDir()
+	importWorker := &ImportWorker{client: client, store: store, maildirRoot: func() string { return root }}
 	mbox := seedMailbox(t, client)
 
-	root := t.TempDir()
 	writeMaildirMessage(t, root, "cur/1.host", rawMessage("first"))
 	writeMaildirMessage(t, root, "cur/2.host", rawMessage("second"))
-	if _, err := importWorker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": root}}); err != nil {
+	if _, err := importWorker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": "."}}); err != nil {
 		t.Fatal(err)
 	}
 

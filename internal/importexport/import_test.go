@@ -111,3 +111,38 @@ func TestMaildirEntries(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveMaildirPath(t *testing.T) {
+	base := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "user", "cur"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(base, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	realBase, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveMaildirPath(base, "user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(realBase, "user"); got != want {
+		t.Fatalf("resolved = %q, want %q", got, want)
+	}
+	if got, err := ResolveMaildirPath(base, "."); err != nil || got != realBase {
+		t.Fatalf("resolve . = %q, %v; want %q", got, err, realBase)
+	}
+
+	for _, bad := range []string{"", "/etc", base, "../" + filepath.Base(base), "user/../../..", "escape", "missing"} {
+		if _, err := ResolveMaildirPath(base, bad); err == nil {
+			t.Errorf("ResolveMaildirPath(%q) succeeded, want error", bad)
+		}
+	}
+	if _, err := ResolveMaildirPath("", "user"); err == nil {
+		t.Error("empty base should disable maildir imports")
+	}
+}

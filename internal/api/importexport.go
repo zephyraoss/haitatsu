@@ -81,8 +81,18 @@ func (h *Handler) createImport(c fiber.Ctx) error {
 			}
 		}
 	case "maildir":
-		if path, _ := req.Source["path"].(string); path == "" {
+		path, _ := req.Source["path"].(string)
+		if path == "" {
 			return problem(c, fiber.StatusBadRequest, "source_invalid", "Maildir import requires source.path")
+		}
+		root := ""
+		if h.config != nil {
+			if cfg := h.config.Get(); cfg != nil {
+				root = cfg.Import.MaildirRoot
+			}
+		}
+		if _, err := importexport.ResolveMaildirPath(root, path); err != nil {
+			return problem(c, fiber.StatusBadRequest, "source_invalid", err.Error())
 		}
 	case "imap":
 		if addr, _ := req.Source["addr"].(string); addr == "" {

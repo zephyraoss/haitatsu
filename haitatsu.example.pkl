@@ -138,3 +138,9 @@ limits {
   default_outbound_per_day = 2000
   default_outbound_recipients_per_message = 50
 }
+
+imports {
+  // Maildir imports may only read directories under this root; source.path is
+  // resolved relative to it. Leave empty to disable maildir imports.
+  maildir_root = ""
+}

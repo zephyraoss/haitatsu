@@ -34,6 +34,14 @@ type Config struct {
 	Notifications NotificationConfig `pkl:"notifications" json:"notifications"`
 	Spam          SpamConfig         `pkl:"spam" json:"spam"`
 	Limits        LimitsConfig       `pkl:"limits" json:"limits"`
+	Import        ImportConfig       `pkl:"imports" json:"imports"`
+}
+
+// ImportConfig controls filesystem-backed mailbox imports. MaildirRoot is the
+// only directory the import worker may read maildirs from; when empty,
+// maildir imports are disabled.
+type ImportConfig struct {
+	MaildirRoot string `pkl:"maildir_root" json:"maildir_root"`
 }
 
 type ServerConfig struct {
