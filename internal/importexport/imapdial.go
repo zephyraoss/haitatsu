@@ -4,43 +4,18 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/emersion/go-imap/v2/imapclient"
+
+	"github.com/zephyraoss/haitatsu/internal/config"
 )
 
 const imapDialTimeout = 30 * time.Second
-
-// IMAPImportPolicy is the operator-controlled policy for outbound IMAP import
-// connections. Job sources never override it.
-type IMAPImportPolicy struct {
-	// AllowedHosts, when non-empty, is the only set of hostnames imports may
-	// connect to. Hosts listed here are trusted even when they resolve to
-	// private addresses.
-	AllowedHosts []string
-	// AllowInsecure permits plaintext connections and disabled certificate
-	// verification when the job source asks for them.
-	AllowInsecure bool
-}
-
-func (p IMAPImportPolicy) hostAllowed(host string) bool {
-	if len(p.AllowedHosts) == 0 {
-		return true
-	}
-	for _, allowed := range p.AllowedHosts {
-		if strings.EqualFold(strings.TrimSpace(allowed), host) {
-			return true
-		}
-	}
-	return false
-}
-
-func (p IMAPImportPolicy) hostExplicitlyAllowed(host string) bool {
-	return len(p.AllowedHosts) > 0 && p.hostAllowed(host)
-}
 
 type imapTarget struct {
 	host  string
@@ -48,10 +23,10 @@ type imapTarget struct {
 }
 
 // resolveIMAPTarget validates a caller-supplied IMAP address against the
-// policy and resolves it to concrete IP addresses. The resolved addresses are
-// dialed directly so a DNS rebind between validation and connect cannot bypass
-// the range checks.
-func resolveIMAPTarget(ctx context.Context, addr string, policy IMAPImportPolicy) (imapTarget, error) {
+// operator configuration and resolves it to concrete IP addresses. The
+// resolved addresses are dialed directly so a DNS rebind between validation
+// and connect cannot bypass the range checks.
+func resolveIMAPTarget(ctx context.Context, addr string, imports config.ImportsConfig) (imapTarget, error) {
 	host, portText, err := net.SplitHostPort(strings.TrimSpace(addr))
 	if err != nil {
 		return imapTarget{}, fmt.Errorf("imap import source.addr must be host:port: %w", err)
@@ -64,10 +39,10 @@ func resolveIMAPTarget(ctx context.Context, addr string, policy IMAPImportPolicy
 	if err != nil || port == 0 {
 		return imapTarget{}, fmt.Errorf("imap import source.addr has invalid port %q", portText)
 	}
-	if !policy.hostAllowed(host) {
-		return imapTarget{}, fmt.Errorf("imap import host %q is not in workers.imap_import_allowed_hosts", host)
+	if !imports.AllowsHost(host) {
+		return imapTarget{}, fmt.Errorf("imap import host %q is not in imports.allowed_hosts", host)
 	}
-	trusted := policy.hostExplicitlyAllowed(host)
+	trusted := imports.HostExplicitlyAllowed(host)
 
 	var ips []netip.Addr
 	if ip, err := netip.ParseAddr(host); err == nil {
@@ -118,7 +93,7 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("203.0.113.0/24"),    // TEST-NET-3
 	netip.MustParsePrefix("240.0.0.0/4"),       // reserved + broadcast
 	netip.MustParsePrefix("::/128"),            // unspecified
-	netip.MustParsePrefix("::ffff:0:0/96"),     // IPv4-mapped (handled via Unmap, kept for safety)
+	netip.MustParsePrefix("::ffff:0:0/96"),     // IPv4-mapped
 	netip.MustParsePrefix("64:ff9b::/96"),      // NAT64
 	netip.MustParsePrefix("64:ff9b:1::/48"),    // local-use NAT64
 	netip.MustParsePrefix("100::/64"),          // discard
@@ -129,24 +104,28 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("fd00:ec2::254/128"), // AWS IPv6 metadata
 }
 
-func dialIMAP(ctx context.Context, source map[string]any, policy IMAPImportPolicy) (*imapclient.Client, error) {
+func dialIMAP(ctx context.Context, job importJob, imports config.ImportsConfig) (*imapclient.Client, error) {
+	source := job.Source
 	addr := sourceString(source, "addr")
 	if addr == "" {
 		return nil, fmt.Errorf("imap import requires source.addr")
 	}
-	target, err := resolveIMAPTarget(ctx, addr, policy)
-	if err != nil {
-		return nil, err
-	}
-
 	startTLS := sourceBool(source, "starttls")
 	plaintext := false
 	if tlsEnabled, ok := source["tls"].(bool); ok && !tlsEnabled && !startTLS {
 		plaintext = true
 	}
 	skipVerify := sourceBool(source, "skip_verify")
-	if (plaintext || skipVerify) && !policy.AllowInsecure {
-		return nil, fmt.Errorf("imap import requires verified TLS; plaintext and skip_verify are disabled by workers.imap_import_allow_insecure")
+	if (plaintext || skipVerify) && !imports.AllowsInsecureTLS(addr) {
+		return nil, fmt.Errorf("imap import: source.skip_verify / source.tls=false: skip_verify is not permitted for %q; add the host to imports.insecure_tls_hosts", addr)
+	}
+	if plaintext || skipVerify {
+		slog.Warn("imap import: insecure transport enabled", "import_id", job.ID, "mailbox_id", job.MailboxID, "addr", addr, "plaintext", plaintext, "skip_verify", skipVerify)
+	}
+
+	target, err := resolveIMAPTarget(ctx, addr, imports)
+	if err != nil {
+		return nil, err
 	}
 
 	conn, err := dialResolved(ctx, target)

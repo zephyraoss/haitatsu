@@ -19,6 +19,7 @@ imap {
 submission {
   starttls_addr = "0.0.0.0:587"
   tls_addr = "0.0.0.0:465"
+  allow_insecure_auth = false
 }
 
 relay {
@@ -28,6 +29,7 @@ relay {
   from_host = "smtp.mailbaby.net"
   max_attempts = 30
   max_retry_minutes = 240
+  timeout_seconds = 60
 }
 
 database {
@@ -65,10 +67,18 @@ api {
 workers {
   enabled = true
   concurrency = 4
-  // Optional: restrict IMAP import sources to these hostnames. Private/loopback/metadata ranges are always refused.
-  imap_import_allowed_hosts = new Listing<String> {}
-  // Allow plaintext or unverified-TLS IMAP imports when a job asks for them. Keep false in production.
-  imap_import_allow_insecure = false
+  maildir_import_root = ""
+}
+
+imports {
+  // Optional allowlist of remote IMAP hostnames imports may connect to. When
+  // empty any public host is allowed, but private, loopback, link-local and
+  // cloud-metadata address ranges are always refused.
+  allowed_hosts = new Listing<String> {}
+  // Remote IMAP hosts for which an import may set source.skip_verify (disable
+  // TLS certificate verification) or source.tls = false (plaintext). Leave
+  // empty to always require verified TLS.
+  insecure_tls_hosts = new Listing<String> {}
 }
 
 tls {

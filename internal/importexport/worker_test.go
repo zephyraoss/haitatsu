@@ -5,16 +5,19 @@ import (
 	"bytes"
 	"context"
 	stdsql "database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	_ "modernc.org/sqlite"
 
+	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	entfolder "github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -158,10 +161,10 @@ func messagesInFolder(t *testing.T, client *ent.Client, mailboxID string, folder
 func TestImportMaildirJob(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
-	worker := &ImportWorker{client: client, store: newFakeStore()}
+	root := t.TempDir()
+	worker := &ImportWorker{client: client, store: newFakeStore(), maildirRoot: func() string { return root }}
 	mbox := seedMailbox(t, client)
 
-	root := t.TempDir()
 	writeMaildirMessage(t, root, "cur/1.host:2,S", rawMessage("read-inbox"))
 	writeMaildirMessage(t, root, "new/2.host", rawMessage("unread-inbox"))
 	writeMaildirMessage(t, root, ".Sent/cur/3.host:2,FS", rawMessage("sent"))
@@ -285,6 +288,48 @@ func TestImportZipJob(t *testing.T) {
 	}
 }
 
+func TestImportRejectsOversizeMessages(t *testing.T) {
+	ctx := context.Background()
+	client := newTestClient(t)
+	store := newFakeStore()
+	root := t.TempDir()
+	worker := &ImportWorker{client: client, store: store, maxMessageBytes: 64, maildirRoot: func() string { return root }}
+	mbox := seedMailbox(t, client)
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	file, err := zw.Create("big.eml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(bytes.Repeat([]byte("a"), 4096)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store.objects["big.zip"] = buf.Bytes()
+
+	var tooLarge *ErrMessageTooLarge
+	_, err = worker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": "big.zip"}})
+	if !errors.As(err, &tooLarge) {
+		t.Fatalf("zip import error = %v, want ErrMessageTooLarge", err)
+	}
+
+	writeMaildirMessage(t, root, "cur/1.host:2,S", bytes.Repeat([]byte("b"), 4096))
+	_, err = worker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": root}})
+	if !errors.As(err, &tooLarge) {
+		t.Fatalf("maildir import error = %v, want ErrMessageTooLarge", err)
+	}
+
+	if _, err := readBounded(strings.NewReader("hello"), "small", 5); err != nil {
+		t.Fatalf("readBounded at limit: %v", err)
+	}
+	if _, err := readBounded(strings.NewReader("hello!"), "big", 5); !errors.As(err, &tooLarge) {
+		t.Fatalf("readBounded over limit error = %v, want ErrMessageTooLarge", err)
+	}
+}
+
 func TestAddToMailboxSkipsDuplicateMessageRows(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
@@ -335,10 +380,10 @@ func TestAddToMailboxSkipsDuplicateMessageRows(t *testing.T) {
 func TestImportJobPersistsProgress(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
-	worker := &ImportWorker{client: client, store: newFakeStore()}
+	root := t.TempDir()
+	worker := &ImportWorker{client: client, store: newFakeStore(), maildirRoot: func() string { return root }}
 	mbox := seedMailbox(t, client)
 
-	root := t.TempDir()
 	for i := range 3 {
 		writeMaildirMessage(t, root, fmt.Sprintf("cur/%d.host", i), rawMessage(fmt.Sprintf("progress-%d", i)))
 	}
@@ -368,10 +413,10 @@ func TestExportBuildZIP(t *testing.T) {
 	ctx := context.Background()
 	client := newTestClient(t)
 	store := newFakeStore()
-	importWorker := &ImportWorker{client: client, store: store}
+	root := t.TempDir()
+	importWorker := &ImportWorker{client: client, store: store, maildirRoot: func() string { return root }}
 	mbox := seedMailbox(t, client)
 
-	root := t.TempDir()
 	writeMaildirMessage(t, root, "cur/1.host", rawMessage("first"))
 	writeMaildirMessage(t, root, "cur/2.host", rawMessage("second"))
 	if _, err := importWorker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": root}}); err != nil {
@@ -393,5 +438,15 @@ func TestExportBuildZIP(t *testing.T) {
 	}
 	if len(reader.File) != 2 {
 		t.Errorf("export contains %d files, want 2", len(reader.File))
+	}
+}
+
+func TestDialIMAPRejectsUnlistedSkipVerify(t *testing.T) {
+	job := importJob{ID: "imp", Source: map[string]any{"addr": "imap.example.com:993", "skip_verify": true}}
+	if _, err := dialIMAP(context.Background(), job, config.ImportsConfig{}); err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
+		t.Fatalf("expected skip_verify rejection, got %v", err)
+	}
+	if _, err := dialIMAP(context.Background(), job, config.ImportsConfig{InsecureTLSHosts: []string{"other.example.com"}}); err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
+		t.Fatalf("expected skip_verify rejection for unlisted host, got %v", err)
 	}
 }

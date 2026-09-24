@@ -5,6 +5,8 @@ import (
 	"net"
 	"strings"
 	"testing"
+
+	"github.com/zephyraoss/haitatsu/internal/config"
 )
 
 func TestResolveIMAPTargetRejectsInternalAddresses(t *testing.T) {
@@ -14,20 +16,20 @@ func TestResolveIMAPTargetRejectsInternalAddresses(t *testing.T) {
 		"[::1]:143", "[fd00::1]:143", "[fe80::1]:143", "[::ffff:10.0.0.1]:143",
 		"[fd00:ec2::254]:80",
 	} {
-		if _, err := resolveIMAPTarget(context.Background(), addr, IMAPImportPolicy{}); err == nil {
+		if _, err := resolveIMAPTarget(context.Background(), addr, config.ImportsConfig{}); err == nil {
 			t.Errorf("%s: expected rejection", addr)
 		}
 	}
 }
 
 func TestResolveIMAPTargetRequiresPort(t *testing.T) {
-	if _, err := resolveIMAPTarget(context.Background(), "imap.example.com", IMAPImportPolicy{}); err == nil {
+	if _, err := resolveIMAPTarget(context.Background(), "imap.example.com", config.ImportsConfig{}); err == nil {
 		t.Fatal("expected error for missing port")
 	}
 }
 
 func TestResolveIMAPTargetAllowsPublicIP(t *testing.T) {
-	target, err := resolveIMAPTarget(context.Background(), "8.8.8.8:993", IMAPImportPolicy{})
+	target, err := resolveIMAPTarget(context.Background(), "8.8.8.8:993", config.ImportsConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -37,12 +39,12 @@ func TestResolveIMAPTargetAllowsPublicIP(t *testing.T) {
 }
 
 func TestResolveIMAPTargetAllowlist(t *testing.T) {
-	policy := IMAPImportPolicy{AllowedHosts: []string{"Mail.Internal.Example"}}
-	if _, err := resolveIMAPTarget(context.Background(), "8.8.8.8:993", policy); err == nil || !strings.Contains(err.Error(), "not in workers.imap_import_allowed_hosts") {
+	imports := config.ImportsConfig{AllowedHosts: []string{"Mail.Internal.Example"}}
+	if _, err := resolveIMAPTarget(context.Background(), "8.8.8.8:993", imports); err == nil || !strings.Contains(err.Error(), "not in imports.allowed_hosts") {
 		t.Fatalf("expected allowlist rejection, got %v", err)
 	}
 	// An explicitly allowlisted host may point at a private address.
-	if _, err := resolveIMAPTarget(context.Background(), "10.0.0.5:143", IMAPImportPolicy{AllowedHosts: []string{"10.0.0.5"}}); err != nil {
+	if _, err := resolveIMAPTarget(context.Background(), "10.0.0.5:143", config.ImportsConfig{AllowedHosts: []string{"10.0.0.5"}}); err != nil {
 		t.Fatalf("allowlisted private host rejected: %v", err)
 	}
 }
@@ -53,8 +55,8 @@ func TestDialIMAPRejectsInsecureTransportByDefault(t *testing.T) {
 		{"addr": "8.8.8.8:993", "skip_verify": true},
 		{"addr": "8.8.8.8:143", "starttls": true, "skip_verify": true},
 	} {
-		_, err := dialIMAP(context.Background(), source, IMAPImportPolicy{})
-		if err == nil || !strings.Contains(err.Error(), "requires verified TLS") {
+		_, err := dialIMAP(context.Background(), importJob{ID: "imp", Source: source}, config.ImportsConfig{})
+		if err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
 			t.Errorf("%v: expected insecure transport rejection, got %v", source, err)
 		}
 	}
@@ -73,9 +75,11 @@ func TestDialIMAPNeverDialsPrivateTarget(t *testing.T) {
 			conn.Close()
 		}
 	}()
-	_, err = dialIMAP(context.Background(), map[string]any{"addr": listener.Addr().String(), "tls": false, "skip_verify": true}, IMAPImportPolicy{AllowInsecure: true})
-	if err == nil {
-		t.Fatal("expected loopback target to be rejected")
+	addr := listener.Addr().String()
+	job := importJob{ID: "imp", Source: map[string]any{"addr": addr, "tls": false}}
+	_, err = dialIMAP(context.Background(), job, config.ImportsConfig{InsecureTLSHosts: []string{"127.0.0.1"}})
+	if err == nil || !strings.Contains(err.Error(), "disallowed address") {
+		t.Fatalf("expected loopback target to be rejected, got %v", err)
 	}
 	select {
 	case <-accepted:

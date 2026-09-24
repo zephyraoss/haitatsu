@@ -17,6 +17,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
+	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -33,18 +34,40 @@ import (
 const (
 	jobLeaseDuration      = 10 * time.Minute
 	jobLeaseRenewInterval = 2 * time.Minute
+	// jobLeaseGiveUp bounds how long a worker may keep running without a
+	// successful renewal; it stays below jobLeaseDuration so the worker
+	// stops before another worker can claim the job.
+	jobLeaseGiveUp = jobLeaseDuration - 2*jobLeaseRenewInterval
+
+	DefaultMaxMessageBytes int64 = 50 * 1024 * 1024
 )
 
 type ImportWorker struct {
-	db       *sql.DB
-	client   *ent.Client
-	store    Store
-	mail     *mailstore.Store
-	events   *events.Service
-	workerID string
-	backend  database.Backend
+	db              *sql.DB
+	client          *ent.Client
+	store           Store
+	mail            *mailstore.Store
+	events          *events.Service
+	workerID        string
+	backend         database.Backend
+	maxMessageBytes int64
+	imports         func() config.ImportsConfig
+	// maildirRoot returns the directory maildir imports are confined to; an
+	// empty value disables maildir imports.
+	maildirRoot func() string
+}
 
-	imapPolicy IMAPImportPolicy
+type ErrMessageTooLarge struct {
+	Name  string
+	Size  int64
+	Limit int64
+}
+
+func (e *ErrMessageTooLarge) Error() string {
+	if e.Size > 0 {
+		return fmt.Sprintf("import: message %q is %d bytes, exceeds limit of %d bytes", e.Name, e.Size, e.Limit)
+	}
+	return fmt.Sprintf("import: message %q exceeds limit of %d bytes", e.Name, e.Limit)
 }
 
 type importJob struct {
@@ -54,17 +77,56 @@ type importJob struct {
 	Source     map[string]any
 }
 
-func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstore.Store, events *events.Service, workerID string, backends ...database.Backend) *ImportWorker {
+func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstore.Store, events *events.Service, maildirRoot func() string, workerID string, backends ...database.Backend) *ImportWorker {
 	backend := database.BackendPostgres
 	if len(backends) > 0 {
 		backend = backends[0]
 	}
-	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
+	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend, maildirRoot: maildirRoot}
 }
 
-// SetIMAPPolicy configures the operator policy applied to IMAP import sources.
-func (w *ImportWorker) SetIMAPPolicy(policy IMAPImportPolicy) {
-	w.imapPolicy = policy
+func (w *ImportWorker) maildirImportRoot() string {
+	if w.maildirRoot == nil {
+		return ""
+	}
+	return w.maildirRoot()
+}
+
+// SetMaxMessageBytes caps the size of any single imported message. Values <= 0 fall back to DefaultMaxMessageBytes.
+func (w *ImportWorker) SetMaxMessageBytes(limit int64) {
+	w.maxMessageBytes = limit
+}
+
+func (w *ImportWorker) messageLimit() int64 {
+	if w.maxMessageBytes > 0 {
+		return w.maxMessageBytes
+	}
+	return DefaultMaxMessageBytes
+}
+
+// readBounded reads at most limit bytes from r, returning ErrMessageTooLarge if r holds more.
+func readBounded(r io.Reader, name string, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, &ErrMessageTooLarge{Name: name, Limit: limit}
+	}
+	return data, nil
+}
+
+// SetImportsConfig installs the operator configuration that gates insecure
+// import options such as source.skip_verify.
+func (w *ImportWorker) SetImportsConfig(imports func() config.ImportsConfig) {
+	w.imports = imports
+}
+
+func (w *ImportWorker) importsConfig() config.ImportsConfig {
+	if w.imports == nil {
+		return config.ImportsConfig{}
+	}
+	return w.imports()
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -137,7 +199,7 @@ func (w *ImportWorker) claim(ctx context.Context) (importJob, string, bool, erro
 UPDATE import_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM import_jobs
-  WHERE status = 'queued' AND (locked_until IS NULL OR locked_until <= NOW())
+  WHERE status IN ('queued', 'processing') AND (locked_until IS NULL OR locked_until <= NOW())
   ORDER BY created_at
   FOR UPDATE SKIP LOCKED
   LIMIT 1
@@ -151,11 +213,11 @@ RETURNING id, mailbox_id, source_type, source
 UPDATE import_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
 WHERE id = (
   SELECT id FROM import_jobs
-  WHERE status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+  WHERE status IN ('queued', 'processing') AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
   ORDER BY created_at
   LIMIT 1
 )
-AND status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+AND status IN ('queued', 'processing') AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
 RETURNING id, mailbox_id, source_type, source
 `
 		args = []any{owner, now.Add(jobLeaseDuration), now, now, now}
@@ -182,6 +244,7 @@ RETURNING id, mailbox_id, source_type, source
 func (w *ImportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
 	ticker := time.NewTicker(jobLeaseRenewInterval)
 	defer ticker.Stop()
+	lastRenewed := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -192,12 +255,17 @@ func (w *ImportWorker) renewLease(ctx context.Context, cancel context.CancelFunc
 				SetLockedUntil(time.Now().Add(jobLeaseDuration)).
 				Save(ctx)
 			if err != nil {
+				if time.Since(lastRenewed) >= jobLeaseGiveUp {
+					cancel()
+					return
+				}
 				continue
 			}
 			if n == 0 {
 				cancel()
 				return
 			}
+			lastRenewed = time.Now()
 		}
 	}
 }
@@ -361,7 +429,7 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 		if file.FileInfo().IsDir() || !strings.HasSuffix(strings.ToLower(file.Name), ".eml") {
 			continue
 		}
-		raw, err := readZipFile(file)
+		raw, err := readZipFile(file, w.messageLimit())
 		if err != nil {
 			return err
 		}
@@ -377,16 +445,16 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 }
 
 func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	root := strings.TrimSpace(sourceString(job.Source, "path"))
-	if root == "" {
-		return fmt.Errorf("maildir import requires source.path")
+	root, err := ResolveMaildirPath(w.maildirImportRoot(), sourceString(job.Source, "path"))
+	if err != nil {
+		return err
 	}
 	entries, err := maildirEntries(root)
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
-		raw, err := os.ReadFile(entry.path)
+		raw, err := readMaildirFile(entry.path, w.messageLimit())
 		if err != nil {
 			return err
 		}
@@ -406,7 +474,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 }
 
 func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	client, err := dialIMAP(ctx, job.Source, w.imapPolicy)
+	client, err := dialIMAP(ctx, job, w.importsConfig())
 	if err != nil {
 		return err
 	}
@@ -524,7 +592,7 @@ func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Cl
 		if remoteMessage == nil {
 			break
 		}
-		raw, flags, err := fetchMessageData(remoteMessage)
+		raw, flags, err := fetchMessageData(remoteMessage, w.messageLimit())
 		if err != nil {
 			return closeWithError(err)
 		}
@@ -684,7 +752,7 @@ func sourceStringSlice(source map[string]any, key string) []string {
 	return values
 }
 
-func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags, error) {
+func fetchMessageData(message *imapclient.FetchMessageData, limit int64) ([]byte, importFlags, error) {
 	var raw []byte
 	var flags importFlags
 	for {
@@ -697,7 +765,10 @@ func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags
 			if data.Literal == nil {
 				continue
 			}
-			body, err := io.ReadAll(data.Literal)
+			if size := data.Literal.Size(); size > limit {
+				return nil, flags, &ErrMessageTooLarge{Name: fmt.Sprintf("seq %d", message.SeqNum), Size: size, Limit: limit}
+			}
+			body, err := readBounded(data.Literal, fmt.Sprintf("seq %d", message.SeqNum), limit)
 			if err != nil {
 				return nil, flags, err
 			}
@@ -802,13 +873,32 @@ func maildirFlags(filename string) importFlags {
 	return flags
 }
 
-func readZipFile(file *zip.File) ([]byte, error) {
+func readZipFile(file *zip.File, limit int64) ([]byte, error) {
+	if file.UncompressedSize64 > uint64(limit) {
+		return nil, &ErrMessageTooLarge{Name: file.Name, Size: int64(file.UncompressedSize64), Limit: limit}
+	}
 	reader, err := file.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	return io.ReadAll(reader)
+	return readBounded(reader, file.Name, limit)
+}
+
+func readMaildirFile(path string, limit int64) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > limit {
+		return nil, &ErrMessageTooLarge{Name: path, Size: info.Size(), Limit: limit}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return readBounded(f, path, limit)
 }
 
 func messageObjectKey(t time.Time, messageID string) string {
