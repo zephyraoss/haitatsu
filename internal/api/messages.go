@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"mime"
 	"strconv"
 	"strings"
 	"time"
@@ -138,6 +139,7 @@ func (h *Handler) downloadRawMessage(c fiber.Ctx) error {
 		return problem(c, fiber.StatusInternalServerError, "raw_message_download_failed", "Failed to download raw message")
 	}
 	c.Set("Content-Type", "message/rfc822")
+	c.Set("X-Content-Type-Options", "nosniff")
 	c.Set("Content-Disposition", `attachment; filename="`+msg.ID+`.eml"`)
 	return c.Send(raw)
 }
@@ -159,14 +161,13 @@ func (h *Handler) downloadAttachment(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusNotFound, "attachment_not_found", "Attachment not found")
 	}
-	if attachment.ContentType != "" {
-		c.Set("Content-Type", attachment.ContentType)
-	} else {
-		c.Set("Content-Type", "application/octet-stream")
+	c.Set("Content-Type", downloadContentType(attachment.ContentType))
+	c.Set("X-Content-Type-Options", "nosniff")
+	filename := safeFilename(attachment.Filename)
+	if filename == "" {
+		filename = "attachment-" + strconv.Itoa(partIndex)
 	}
-	if attachment.Filename != "" {
-		c.Set("Content-Disposition", `attachment; filename="`+safeFilename(attachment.Filename)+`"`)
-	}
+	c.Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	return c.Send(attachment.Data)
 }
 
@@ -607,5 +608,21 @@ func safeFilename(value string) string {
 	value = strings.ReplaceAll(value, "\r", " ")
 	value = strings.ReplaceAll(value, "\n", " ")
 	value = strings.ReplaceAll(value, `"`, "'")
-	return value
+	return strings.TrimSpace(value)
+}
+
+// downloadContentType returns a Content-Type safe to serve for downloaded
+// attachments. Browser-renderable types that can execute script are replaced
+// with application/octet-stream.
+func downloadContentType(contentType string) string {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType == "" {
+		return "application/octet-stream"
+	}
+	switch strings.ToLower(mediaType) {
+	case "text/html", "application/xhtml+xml", "image/svg+xml", "text/xml", "application/xml",
+		"text/javascript", "application/javascript", "application/x-javascript", "application/ecmascript":
+		return "application/octet-stream"
+	}
+	return contentType
 }
