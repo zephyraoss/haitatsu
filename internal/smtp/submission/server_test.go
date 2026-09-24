@@ -48,7 +48,7 @@ func newHarness(t *testing.T, limits outbound.Limits) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(config.SubmissionConfig{StartTLSAddr: listener.Addr().String(), TLSAddr: "127.0.0.1:0"}, "mail.example.test", nil, client, submission, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 5})
+	server := New(config.SubmissionConfig{StartTLSAddr: listener.Addr().String(), TLSAddr: "127.0.0.1:0"}, "mail.example.test", nil, client, submission, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 5, AllowPlaintextAuth: true})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	return &harness{client: client, store: store, mbox: mbox, addr: listener.Addr().String()}

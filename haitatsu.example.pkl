@@ -69,6 +69,8 @@ workers {
 
 tls {
   mode = "storage"
+  // Only honoured when TLS is off: allow IMAP/SMTP submission to accept credentials over cleartext (dev only).
+  allow_plaintext_auth = false
   cert_file = ""
   key_file = ""
   acme_email = "postmaster@zephyra.email"

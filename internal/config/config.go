@@ -166,6 +166,7 @@ type WorkersConfig struct {
 
 type TLSConfig struct {
 	Mode                          string           `pkl:"mode" json:"mode"`
+	AllowPlaintextAuth            bool             `pkl:"allow_plaintext_auth" json:"allow_plaintext_auth"`
 	CertFile                      string           `pkl:"cert_file" json:"cert_file"`
 	KeyFile                       string           `pkl:"key_file" json:"key_file"`
 	ACMEEmail                     string           `pkl:"acme_email" json:"acme_email"`
@@ -215,7 +216,7 @@ func (c TLSStorageConfig) equal(other TLSStorageConfig) bool {
 }
 
 func (c TLSConfig) equal(other TLSConfig) bool {
-	return c.Mode == other.Mode && c.CertFile == other.CertFile && c.KeyFile == other.KeyFile &&
+	return c.Mode == other.Mode && c.AllowPlaintextAuth == other.AllowPlaintextAuth && c.CertFile == other.CertFile && c.KeyFile == other.KeyFile &&
 		c.ACMEEmail == other.ACMEEmail && c.ACMECA == other.ACMECA && c.ACMECachePath == other.ACMECachePath &&
 		c.ACMEListenHost == other.ACMEListenHost && c.ACMEHTTPPort == other.ACMEHTTPPort && c.ACMETLSALPNPort == other.ACMETLSALPNPort &&
 		c.ACMEDisableHTTPChallenge == other.ACMEDisableHTTPChallenge && c.ACMEDisableTLSALPNChallenge == other.ACMEDisableTLSALPNChallenge &&

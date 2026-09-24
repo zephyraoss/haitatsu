@@ -107,7 +107,11 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	messageID := ids.New().String()
 	traceID := ids.New().String()
 	recipients = outboundRecipients(recipients, mailparse.Parse(mailparse.NormalizeMessage(raw)))
-	normalized := normalizeSubmittedMessage(raw, sender.Address, messageID, s.publicHostname, traceID, s.instanceName)
+	fromAllowed := func(address string) (bool, error) { return s.SenderAllowed(ctx, mbox, address) }
+	normalized, err := normalizeSubmittedMessage(raw, sender.Address, fromAllowed, messageID, s.publicHostname, traceID, s.instanceName)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.enforceLimits(ctx, mbox, len(recipients)); err != nil {
 		return nil, err
 	}
@@ -278,10 +282,15 @@ func parsePrivateKey(value string) (*rsa.PrivateKey, error) {
 	return x509.ParsePKCS1PrivateKey(block.Bytes)
 }
 
-func normalizeSubmittedMessage(raw []byte, from string, messageID string, hostname string, traceID string, node string) []byte {
+type senderCheck func(address string) (bool, error)
+
+func normalizeSubmittedMessage(raw []byte, from string, fromAllowed senderCheck, messageID string, hostname string, traceID string, node string) ([]byte, error) {
+	var fromErr error
 	normalized, err := mailparse.InjectHeaders(raw, func(h textproto.MIMEHeader) {
 		if h.Get("From") == "" {
 			h.Set("From", from)
+		} else {
+			fromErr = checkFromHeader(h.Values("From"), fromAllowed)
 		}
 		if h.Get("Date") == "" {
 			h.Set("Date", time.Now().UTC().Format(time.RFC1123Z))
@@ -294,18 +303,23 @@ func normalizeSubmittedMessage(raw []byte, from string, messageID string, hostna
 		h.Set("X-Haitatsu-Node", node)
 	})
 	if err == nil {
-		return normalized
+		if fromErr != nil {
+			return nil, fromErr
+		}
+		return normalized, nil
 	}
-	return normalizeSubmittedMessageFallback(raw, from, messageID, hostname, traceID, node)
+	return normalizeSubmittedMessageFallback(raw, from, fromAllowed, messageID, hostname, traceID, node)
 }
 
-func normalizeSubmittedMessageFallback(raw []byte, from string, messageID string, hostname string, traceID string, node string) []byte {
+func normalizeSubmittedMessageFallback(raw []byte, from string, fromAllowed senderCheck, messageID string, hostname string, traceID string, node string) ([]byte, error) {
 	header, body := mailparse.SplitHeaderBody(raw)
 	body = mailparse.StripHaitatsuHeadersFromBody(body)
 	header = mailparse.RemoveHeaderField(header, "Bcc")
 	var extra [][]byte
-	if !hasHeader(header, "From") {
+	if values := headerValues(header, "From"); len(values) == 0 {
 		extra = append(extra, []byte("From: "+from))
+	} else if err := checkFromHeader(values, fromAllowed); err != nil {
+		return nil, err
 	}
 	if !hasHeader(header, "Date") {
 		extra = append(extra, []byte("Date: "+time.Now().UTC().Format(time.RFC1123Z)))
@@ -318,17 +332,53 @@ func normalizeSubmittedMessageFallback(raw []byte, from string, messageID string
 		[]byte("X-Haitatsu-Node: "+node),
 	)
 	header = mailparse.AppendHeaderFields(header, extra...)
-	return mailparse.JoinHeaderBody(header, body)
+	return mailparse.JoinHeaderBody(header, body), nil
+}
+
+// checkFromHeader rejects the submission unless every address in the From
+// header is one the submitting mailbox is authorized to send as.
+func checkFromHeader(values []string, fromAllowed senderCheck) error {
+	for _, value := range values {
+		list, err := mail.ParseAddressList(value)
+		if err != nil || len(list) == 0 {
+			return ErrSenderNotAllowed
+		}
+		for _, addr := range list {
+			allowed, err := fromAllowed(addr.Address)
+			if err != nil {
+				return err
+			}
+			if !allowed {
+				return ErrSenderNotAllowed
+			}
+		}
+	}
+	return nil
 }
 
 func hasHeader(header []byte, key string) bool {
+	return len(headerValues(header, key)) > 0
+}
+
+// headerValues returns the unfolded values of every field named key in a raw
+// header block.
+func headerValues(header []byte, key string) []string {
 	prefix := strings.ToLower(key) + ":"
+	var values []string
+	current := -1
 	for _, line := range strings.Split(string(header), "\n") {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), prefix) {
-			return true
+		line = strings.TrimRight(line, "\r")
+		if current >= 0 && len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+			values[current] += " " + strings.TrimSpace(line)
+			continue
+		}
+		current = -1
+		if strings.HasPrefix(strings.ToLower(line), prefix) {
+			values = append(values, strings.TrimSpace(line[len(prefix):]))
+			current = len(values) - 1
 		}
 	}
-	return false
+	return values
 }
 
 func messageObjectKey(t time.Time, messageID string) string {

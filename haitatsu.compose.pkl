@@ -69,6 +69,8 @@ workers {
 
 tls {
   mode = "off"
+  // Only honoured when TLS is off: allow IMAP/SMTP submission to accept credentials over cleartext (dev only).
+  allow_plaintext_auth = true
   cert_file = ""
   key_file = ""
   acme_email = ""

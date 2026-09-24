@@ -30,6 +30,7 @@ type Options struct {
 	MaxMessageBytes     int64
 	MaxRecipients       int
 	MaxConnectionsPerIP int
+	AllowPlaintextAuth  bool
 }
 
 func New(cfg config.SubmissionConfig, domain string, tlsConfig *tls.Config, client *ent.Client, submission *outbound.Submission, opts Options) *Server {
@@ -89,7 +90,7 @@ func newServer(addr string, domain string, tlsConfig *tls.Config, backend smtp.B
 	server.MaxRecipients = opts.MaxRecipients
 	server.MaxLineLength = 4000
 	server.TLSConfig = tlsConfig
-	server.AllowInsecureAuth = tlsConfig == nil
+	server.AllowInsecureAuth = tlsConfig == nil && opts.AllowPlaintextAuth
 	return server
 }
 

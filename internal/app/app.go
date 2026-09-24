@@ -143,6 +143,12 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	if strings.EqualFold(strings.TrimSpace(cfg.TLS.Mode), "storage") {
 		logger.Info("serving certificates from shared storage", "bucket", cfg.TLS.Storage.Bucket, "hostnames", cfg.InboundHostnames())
 	}
+	allowPlaintextAuth := tlsConfig == nil && cfg.TLS.AllowPlaintextAuth
+	if allowPlaintextAuth {
+		logger.Warn("TLS is disabled and tls.allow_plaintext_auth is set: IMAP and SMTP submission will accept credentials over cleartext connections")
+	} else if tlsConfig == nil {
+		logger.Warn("TLS is disabled: IMAP and SMTP submission will reject authentication until TLS is configured or tls.allow_plaintext_auth is set")
+	}
 	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler, spamChecker, m, inboundsmtp.Options{
 		MaxMessageBytes:     cfg.InboundMessageSize(),
 		MaxRecipients:       cfg.InboundRecipients(),
@@ -152,11 +158,13 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore, mail, m, imapserver.Options{
 		MaxConnectionsPerIP: cfg.IMAPConnectionsPerIP(),
 		AppendLimit:         cfg.InboundMessageSize(),
+		AllowPlaintextAuth:  allowPlaintextAuth,
 	})
 	submissionServer := submissionsmtp.New(cfg.Submission, cfg.Server.PublicHostname, tlsConfig, db.Ent(), submissionService, submissionsmtp.Options{
 		MaxMessageBytes:     cfg.InboundMessageSize(),
 		MaxRecipients:       cfg.SubmissionRecipients(),
 		MaxConnectionsPerIP: cfg.ConnectionsPerIP(),
+		AllowPlaintextAuth:  allowPlaintextAuth,
 	})
 
 	runtime.server = server
