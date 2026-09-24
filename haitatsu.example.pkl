@@ -71,8 +71,13 @@ workers {
 }
 
 imports {
-  // Remote IMAP hosts for which an import may set source.skip_verify to
-  // disable TLS certificate verification. Leave empty to always verify.
+  // Optional allowlist of remote IMAP hostnames imports may connect to. When
+  // empty any public host is allowed, but private, loopback, link-local and
+  // cloud-metadata address ranges are always refused.
+  allowed_hosts = new Listing<String> {}
+  // Remote IMAP hosts for which an import may set source.skip_verify (disable
+  // TLS certificate verification) or source.tls = false (plaintext). Leave
+  // empty to always require verified TLS.
   insecure_tls_hosts = new Listing<String> {}
 }
 
