@@ -16,10 +16,22 @@ const MailboxImportFailed = "mailbox.import_failed"
 
 type Service struct {
 	client *ent.Client
+	wake   func()
 }
 
 func New(client *ent.Client) *Service {
 	return &Service{client: client}
+}
+
+// OnQueued registers a callback invoked after every event log row is created.
+func (s *Service) OnQueued(fn func()) {
+	s.wake = fn
+}
+
+func (s *Service) notify() {
+	if s.wake != nil {
+		s.wake()
+	}
 }
 
 func (s *Service) EmitMessageReceived(ctx context.Context, msg *ent.Message, recipients []routing.Result) error {
@@ -42,6 +54,7 @@ func (s *Service) EmitMessageReceived(ctx context.Context, msg *ent.Message, rec
 		if _, err := create.Save(ctx); err != nil {
 			return err
 		}
+		s.notify()
 	}
 	return nil
 }
@@ -57,8 +70,11 @@ func (s *Service) Emit(ctx context.Context, eventType string, mailboxID string, 
 	if traceID, _ := payload["trace_id"].(string); traceID != "" {
 		create.SetTraceID(traceID)
 	}
-	_, err := create.Save(ctx)
-	return err
+	if _, err := create.Save(ctx); err != nil {
+		return err
+	}
+	s.notify()
+	return nil
 }
 
 func deliveredMailboxIDs(mailboxes []*ent.Mailbox) []string {
