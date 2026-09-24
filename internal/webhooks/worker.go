@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
@@ -18,6 +19,14 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
+
+const (
+	pollInterval    = 2 * time.Second
+	maxIdleInterval = 30 * time.Second
+)
+
+// WakePayload is published on the change bus whenever a new event is enqueued.
+var WakePayload = []byte(`{"kind":"webhook_enqueued"}`)
 
 type Worker struct {
 	db       *sql.DB
@@ -27,6 +36,9 @@ type Worker struct {
 	workerID string
 	backend  database.Backend
 	http     *http.Client
+	bus      database.ChangeBus
+	wakeMu   sync.RWMutex
+	wakers   []chan struct{}
 }
 
 type eventJob struct {
@@ -45,29 +57,81 @@ func NewWorker(db *sql.DB, client *ent.Client, cfg func() config.WebhookConfig, 
 	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, backend: backend, http: &http.Client{}}
 }
 
+// UseChangeBus makes the worker wake immediately on WakePayload notifications
+// instead of waiting for the next poll tick.
+func (w *Worker) UseChangeBus(bus database.ChangeBus) {
+	w.bus = bus
+}
+
 func (w *Worker) Run(ctx context.Context, concurrency int) {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
 	for range concurrency {
-		go w.loop(ctx)
+		wake := make(chan struct{}, 1)
+		w.wakeMu.Lock()
+		w.wakers = append(w.wakers, wake)
+		w.wakeMu.Unlock()
+		go w.loop(ctx, wake)
+	}
+	if w.bus != nil {
+		go func() {
+			_ = w.bus.Subscribe(ctx, func(payload []byte) {
+				if bytes.Equal(payload, WakePayload) {
+					w.Wake()
+				}
+			})
+		}()
 	}
 }
 
-func (w *Worker) loop(ctx context.Context) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+// Wake nudges every loop to claim work right away.
+func (w *Worker) Wake() {
+	w.wakeMu.RLock()
+	defer w.wakeMu.RUnlock()
+	for _, wake := range w.wakers {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (w *Worker) loop(ctx context.Context, wake <-chan struct{}) {
+	interval := pollInterval
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			for {
-				processed, err := w.ProcessOne(ctx)
-				if err != nil || !processed || ctx.Err() != nil {
-					break
+		case <-wake:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
 				}
 			}
+		case <-timer.C:
+		}
+		if w.drain(ctx) {
+			interval = pollInterval
+		} else if w.bus != nil {
+			interval = min(interval*2, maxIdleInterval)
+		}
+		timer.Reset(interval)
+	}
+}
+
+func (w *Worker) drain(ctx context.Context) bool {
+	processedAny := false
+	for {
+		processed, err := w.ProcessOne(ctx)
+		if processed {
+			processedAny = true
+		}
+		if err != nil || !processed || ctx.Err() != nil {
+			return processedAny
 		}
 	}
 }

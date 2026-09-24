@@ -91,7 +91,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	}
 
 	holder := config.NewHolder(cfg)
-	notifier := mailstore.NewNotifier(cfg.Server.InstanceName, database.NewChangeBus(db.SQL(), db.Backend()))
+	changeBus := database.NewChangeBus(db.SQL(), db.Backend())
+	notifier := mailstore.NewNotifier(cfg.Server.InstanceName, changeBus)
 	mail := mailstore.New(db.Ent(), notifier)
 	runtime := &App{configPath: opts.ConfigPath, config: holder, logger: logger, database: db, storage: blobStore, notifier: notifier}
 	m := metrics.New()
@@ -102,10 +103,11 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	})
 	server := httpapi.New(holder, db.Ent(), db.SQL(), blobStore, mail, submissionService, checker, m, runtime)
 	cleanupWorker := cleanup.New(db.Ent(), blobStore, mail, m)
-	eventService := events.New(db.Ent())
+	eventService := events.New(db.Ent(), changeBus)
 	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName, db.Backend())
 	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, mail, eventService, cfg.Server.InstanceName, db.Backend())
 	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), func() config.WebhookConfig { return holder.Get().Webhooks }, m, cfg.Server.InstanceName, db.Backend())
+	webhookWorker.UseChangeBus(changeBus)
 	resolver := routing.NewResolver(db.Ent())
 	ruleEngine := rules.New(db.Ent(), mail, eventService)
 	messageService := messages.NewService(db.Ent(), blobStore, mail, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)

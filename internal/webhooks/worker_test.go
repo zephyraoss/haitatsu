@@ -3,6 +3,7 @@ package webhooks
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
@@ -68,3 +69,46 @@ type fakeError struct{}
 func (fakeError) Error() string { return "boom" }
 
 var errFake = fakeError{}
+
+type fakeBus struct {
+	handler chan func(payload []byte)
+}
+
+func (b *fakeBus) Publish(context.Context, []byte) error { return nil }
+
+func (b *fakeBus) Subscribe(ctx context.Context, handler func(payload []byte)) error {
+	b.handler <- handler
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestWakeProcessesQueuedJobImmediately(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client, db := testutil.NewClient(t)
+	worker := NewWorker(db, client, func() config.WebhookConfig { return config.WebhookConfig{} }, metrics.New(), "worker", database.BackendSQLite)
+	bus := &fakeBus{handler: make(chan func(payload []byte), 1)}
+	worker.UseChangeBus(bus)
+	worker.Run(ctx, 1)
+	handler := <-bus.handler
+
+	created, err := client.EventLog.Create().SetEventType("message.received").SetTraceID("trace").SetPayload(map[string]any{}).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler([]byte(`{"kind":"exists"}`))
+	handler(WakePayload)
+	deadline := time.Now().Add(pollInterval / 2)
+	for time.Now().Before(deadline) {
+		after, err := client.EventLog.Get(ctx, created.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Status == "no_endpoint" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	after, _ := client.EventLog.Get(ctx, created.ID)
+	t.Fatalf("job was not processed after wake: %+v", after)
+}

@@ -3,8 +3,10 @@ package events
 import (
 	"context"
 
+	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/routing"
+	"github.com/zephyraoss/haitatsu/internal/webhooks"
 )
 
 const MessageReceived = "message.received"
@@ -16,10 +18,22 @@ const MailboxImportFailed = "mailbox.import_failed"
 
 type Service struct {
 	client *ent.Client
+	bus    database.ChangeBus
 }
 
-func New(client *ent.Client) *Service {
-	return &Service{client: client}
+func New(client *ent.Client, bus ...database.ChangeBus) *Service {
+	service := &Service{client: client}
+	if len(bus) > 0 {
+		service.bus = bus[0]
+	}
+	return service
+}
+
+func (s *Service) notify(ctx context.Context) {
+	if s.bus == nil {
+		return
+	}
+	_ = s.bus.Publish(ctx, webhooks.WakePayload)
 }
 
 func (s *Service) EmitMessageReceived(ctx context.Context, msg *ent.Message, recipients []routing.Result) error {
@@ -43,6 +57,9 @@ func (s *Service) EmitMessageReceived(ctx context.Context, msg *ent.Message, rec
 			return err
 		}
 	}
+	if len(recipients) > 0 {
+		s.notify(ctx)
+	}
 	return nil
 }
 
@@ -57,8 +74,11 @@ func (s *Service) Emit(ctx context.Context, eventType string, mailboxID string, 
 	if traceID, _ := payload["trace_id"].(string); traceID != "" {
 		create.SetTraceID(traceID)
 	}
-	_, err := create.Save(ctx)
-	return err
+	if _, err := create.Save(ctx); err != nil {
+		return err
+	}
+	s.notify(ctx)
+	return nil
 }
 
 func deliveredMailboxIDs(mailboxes []*ent.Mailbox) []string {
