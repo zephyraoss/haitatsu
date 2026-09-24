@@ -2,10 +2,10 @@ package imapserver
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/emersion/go-imap/v2"
 	goimapserver "github.com/emersion/go-imap/v2/imapserver"
 
@@ -338,41 +338,34 @@ func (s *session) Status(mailboxName string, options *imap.StatusOptions) (*imap
 	if options == nil {
 		return data, nil
 	}
-	if options.NumMessages || options.NumUnseen || options.NumDeleted || options.Size {
-		if c.isLabel() {
-			entries, err := s.loadEntries(ctx, c)
-			if err != nil {
-				return nil, err
-			}
-			total := uint32(len(entries))
-			var unseen, deleted uint32
-			for _, item := range entries {
-				if !item.flags.Seen {
-					unseen++
-				}
-				if item.flags.Deleted {
-					deleted++
-				}
-			}
-			if options.NumMessages {
-				data.NumMessages = &total
-			}
-			if options.NumUnseen {
-				data.NumUnseen = &unseen
-			}
-			if options.NumDeleted {
-				data.NumDeleted = &deleted
-			}
-			if options.Size {
-				size, err := s.sizeOf(ctx, entries)
-				if err != nil {
-					return nil, err
-				}
-				data.Size = &size
-			}
-		} else if err := s.folderStatus(ctx, c.folder.ID, options, data); err != nil {
+	scope := containerPredicate(c)
+	if options.NumMessages {
+		total, err := s.countMessages(ctx, scope)
+		if err != nil {
 			return nil, err
 		}
+		data.NumMessages = &total
+	}
+	if options.NumUnseen {
+		unseen, err := s.countMessages(ctx, scope, mailboxmessage.ReadEQ(false))
+		if err != nil {
+			return nil, err
+		}
+		data.NumUnseen = &unseen
+	}
+	if options.NumDeleted {
+		deleted, err := s.countMessages(ctx, scope, mailboxmessage.ImapDeletedEQ(true))
+		if err != nil {
+			return nil, err
+		}
+		data.NumDeleted = &deleted
+	}
+	if options.Size {
+		size, err := s.sumSize(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+		data.Size = &size
 	}
 	if options.AppendLimit && s.appendLimit > 0 {
 		limit := uint32(min(s.appendLimit, int64(^uint32(0))))
@@ -381,70 +374,48 @@ func (s *session) Status(mailboxName string, options *imap.StatusOptions) (*imap
 	return data, nil
 }
 
-func (s *session) folderStatus(ctx context.Context, folderID string, options *imap.StatusOptions, data *imap.StatusData) error {
-	live := []predicate.MailboxMessage{mailboxmessage.FolderIDEQ(folderID), mailboxmessage.DeletedAtIsNil()}
-	if options.NumMessages {
-		count, err := s.client.MailboxMessage.Query().Where(live...).Count(ctx)
-		if err != nil {
-			return err
-		}
-		total := uint32(count)
-		data.NumMessages = &total
+// containerPredicate matches the live MailboxMessage rows that make up a
+// folder or label, i.e. the same set loadEntries materializes.
+func containerPredicate(c container) predicate.MailboxMessage {
+	if c.isLabel() {
+		labelID := c.label.ID
+		return mailboxmessage.And(mailboxmessage.DeletedAtIsNil(), func(sel *sql.Selector) {
+			links := sql.Select(mailboxmessagelabel.FieldMailboxMessageID).
+				From(sql.Table(mailboxmessagelabel.Table)).
+				Where(sql.EQ(mailboxmessagelabel.FieldLabelID, labelID))
+			sel.Where(sql.In(sel.C(mailboxmessage.FieldID), links))
+		})
 	}
-	if options.NumUnseen {
-		count, err := s.client.MailboxMessage.Query().Where(append(slices.Clone(live), mailboxmessage.ReadEQ(false))...).Count(ctx)
-		if err != nil {
-			return err
-		}
-		unseen := uint32(count)
-		data.NumUnseen = &unseen
-	}
-	if options.NumDeleted {
-		count, err := s.client.MailboxMessage.Query().Where(append(slices.Clone(live), mailboxmessage.ImapDeletedEQ(true))...).Count(ctx)
-		if err != nil {
-			return err
-		}
-		deleted := uint32(count)
-		data.NumDeleted = &deleted
-	}
-	if options.Size {
-		items, err := s.client.MailboxMessage.Query().Where(live...).Select(mailboxmessage.FieldMessageID).All(ctx)
-		if err != nil {
-			return err
-		}
-		entries := make([]entry, 0, len(items))
-		for _, item := range items {
-			entries = append(entries, entry{messageID: item.MessageID})
-		}
-		size, err := s.sizeOf(ctx, entries)
-		if err != nil {
-			return err
-		}
-		data.Size = &size
-	}
-	return nil
+	return mailboxmessage.And(mailboxmessage.FolderIDEQ(c.folder.ID), mailboxmessage.DeletedAtIsNil())
 }
 
-func (s *session) sizeOf(ctx context.Context, entries []entry) (int64, error) {
-	if len(entries) == 0 {
+func (s *session) countMessages(ctx context.Context, scope predicate.MailboxMessage, extra ...predicate.MailboxMessage) (uint32, error) {
+	n, err := s.client.MailboxMessage.Query().Where(scope).Where(extra...).Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(n), nil
+}
+
+func (s *session) sumSize(ctx context.Context, scope predicate.MailboxMessage) (int64, error) {
+	var rows []struct {
+		Sum *int64 `json:"sum"`
+	}
+	err := s.client.Message.Query().
+		Where(func(sel *sql.Selector) {
+			items := sql.Select(mailboxmessage.FieldMessageID).From(sql.Table(mailboxmessage.Table))
+			scope(items)
+			sel.Where(sql.In(sel.C(message.FieldID), items))
+		}).
+		Aggregate(ent.As(ent.Sum(message.FieldSizeBytes), "sum")).
+		Scan(ctx, &rows)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 || rows[0].Sum == nil {
 		return 0, nil
 	}
-	ids := make([]string, 0, len(entries))
-	for _, item := range entries {
-		ids = append(ids, item.messageID)
-	}
-	var total int64
-	for start := 0; start < len(ids); start += 500 {
-		end := min(start+500, len(ids))
-		msgs, err := s.client.Message.Query().Where(message.IDIn(ids[start:end]...)).Select(message.FieldSizeBytes).All(ctx)
-		if err != nil {
-			return 0, err
-		}
-		for _, msg := range msgs {
-			total += msg.SizeBytes
-		}
-	}
-	return total, nil
+	return *rows[0].Sum, nil
 }
 
 func (s *session) Poll(w *goimapserver.UpdateWriter, allowExpunge bool) error {

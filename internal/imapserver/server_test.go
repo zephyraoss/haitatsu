@@ -343,6 +343,61 @@ func TestAppendMoveCopyAndLabels(t *testing.T) {
 	}
 }
 
+func TestStatusCountsFolderAndLabel(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	seen := h.deliver("INBOX", "seen", mailstore.Flags{Seen: true})
+	unseen := h.deliver("INBOX", "unseen", mailstore.Flags{})
+	h.deliver("INBOX", "seen deleted", mailstore.Flags{Seen: true, Deleted: true})
+	gone := h.deliver("INBOX", "soft deleted", mailstore.Flags{})
+	if err := h.store.SoftDeleteMany(ctx, []*ent.MailboxMessage{gone}); err != nil {
+		t.Fatal(err)
+	}
+	var wantSize int64
+	for _, item := range []*ent.MailboxMessage{seen, unseen} {
+		msg, err := h.client.Message.Get(ctx, item.MessageID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantSize += msg.SizeBytes
+	}
+	client := h.dial(nil)
+	all := &imap.StatusOptions{NumMessages: true, NumUnseen: true, NumDeleted: true, Size: true}
+	inbox, err := client.Status("INBOX", all).Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *inbox.NumMessages != 3 || *inbox.NumUnseen != 1 || *inbox.NumDeleted != 1 {
+		t.Fatalf("inbox status = messages %d unseen %d deleted %d", *inbox.NumMessages, *inbox.NumUnseen, *inbox.NumDeleted)
+	}
+	if *inbox.Size <= wantSize {
+		t.Fatalf("inbox size = %d, want > %d", *inbox.Size, wantSize)
+	}
+	if err := client.Create("Labels/Work", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Copy(imap.SeqSetNum(1, 2), "Labels/Work").Wait(); err != nil {
+		t.Fatal(err)
+	}
+	work, err := client.Status("Labels/Work", all).Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *work.NumMessages != 2 || *work.NumUnseen != 1 || *work.NumDeleted != 0 || *work.Size != wantSize {
+		t.Fatalf("label status = messages %d unseen %d deleted %d size %d (want size %d)", *work.NumMessages, *work.NumUnseen, *work.NumDeleted, *work.Size, wantSize)
+	}
+	empty, err := client.Status("Trash", all).Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *empty.NumMessages != 0 || *empty.Size != 0 {
+		t.Fatalf("trash status = %+v", empty)
+	}
+}
+
 func TestQuotaRejectsAppend(t *testing.T) {
 	h := newHarness(t)
 	if _, err := h.client.Mailbox.UpdateOneID(h.mbox.ID).SetQuotaBytes(10).Save(context.Background()); err != nil {
