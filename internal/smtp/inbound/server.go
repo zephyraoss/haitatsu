@@ -163,7 +163,11 @@ func (s *session) Data(r io.Reader) error {
 	if len(s.recipients) == 0 {
 		return nil
 	}
-	assessment := s.backend.spam.Check(context.Background(), raw, s.smtp, s.recipients)
+	assessment, err := s.backend.spam.Check(context.Background(), raw, s.smtp, s.recipients)
+	if err != nil {
+		slog.Error("inbound spam check failed", "error", err)
+		return temporarySMTPError("temporary local problem")
+	}
 	if assessment.Reject {
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "message rejected by policy"}
 	}
