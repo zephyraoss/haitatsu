@@ -157,3 +157,41 @@ func TestSubmitConcurrentRespectsHourlyLimit(t *testing.T) {
 		t.Fatalf("outbound jobs = %d (%v), want 2", jobs, err)
 	}
 }
+
+func TestSubmitConcurrentQuotaIsAtomic(t *testing.T) {
+	submission, mbox, _ := newSubmission(t, Limits{})
+	ctx := context.Background()
+	raw := []byte("From: alice@example.test\r\nTo: a@x.test\r\nSubject: hi\r\n\r\nbody\r\n")
+	probe, err := submission.Submit(ctx, mbox.ID, "alice@example.test", raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := submission.client.Mailbox.UpdateOneID(mbox.ID).SetQuotaBytes(probe.SizeBytes * 3).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	var accepted atomic.Int32
+	for range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := submission.Submit(ctx, mbox.ID, "alice@example.test", raw, nil)
+			if err == nil {
+				accepted.Add(1)
+			} else if !errors.Is(err, ErrOverQuota) {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if accepted.Load() != 2 {
+		t.Fatalf("accepted %d submissions, want 2", accepted.Load())
+	}
+	updated, err := submission.client.Mailbox.Get(ctx, mbox.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.UsedBytes > updated.QuotaBytes {
+		t.Fatalf("used_bytes %d exceeds quota %d", updated.UsedBytes, updated.QuotaBytes)
+	}
+}
