@@ -507,9 +507,25 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 	if err := s.resync(ctx, nil, syncMode{}); err != nil {
 		return err
 	}
-	for _, index := range s.view.selected(numSet) {
+	selected := s.view.selected(numSet)
+	itemsByID, err := s.loadMailboxMessages(ctx, selected)
+	if err != nil {
+		return err
+	}
+	type flagGroup struct {
+		flags mailstore.Flags
+		items []*ent.MailboxMessage
+	}
+	groups := map[string]*flagGroup{}
+	order := []string{}
+	nextFlags := make(map[int]mailstore.Flags, len(selected))
+	for _, index := range selected {
 		item := s.view.entries[index]
 		if item.gone {
+			continue
+		}
+		mm, ok := itemsByID[item.itemID]
+		if !ok {
 			continue
 		}
 		next := item.flags
@@ -525,16 +541,28 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 				next.Set(string(flag), false)
 			}
 		}
-		mm, err := s.client.MailboxMessage.Get(ctx, item.itemID)
-		if err != nil {
-			if ent.IsNotFound(err) {
-				continue
-			}
+		nextFlags[index] = next
+		key := strings.Join(next.List(), "\x00")
+		group, ok := groups[key]
+		if !ok {
+			group = &flagGroup{flags: next}
+			groups[key] = group
+			order = append(order, key)
+		}
+		group.items = append(group.items, mm)
+	}
+	for _, key := range order {
+		group := groups[key]
+		if err := s.store.SetFlagsMany(ctx, group.items, group.flags); err != nil {
 			return err
 		}
-		if _, err := s.store.SetFlags(ctx, mm, next); err != nil {
-			return err
+	}
+	for _, index := range selected {
+		next, ok := nextFlags[index]
+		if !ok {
+			continue
 		}
+		item := s.view.entries[index]
 		s.view.entries[index].flags = next
 		if !flags.Silent {
 			writer := w.CreateMessage(uint32(index + 1))
