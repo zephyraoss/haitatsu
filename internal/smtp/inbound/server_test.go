@@ -23,6 +23,7 @@ import (
 type harness struct {
 	client *ent.Client
 	store  *mailstore.Store
+	blobs  *testutil.FakeStore
 	mbox   *ent.Mailbox
 	addr   string
 }
@@ -45,7 +46,7 @@ func newHarness(t *testing.T, opts Options) *harness {
 	server := New(config.SMTPConfig{InboundAddr: listener.Addr().String()}, "mx.example.test", nil, routing.NewResolver(client), service, bounce.NewHandler(client, blobs, m), checker, m, opts)
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
-	return &harness{client: client, store: store, mbox: mbox, addr: listener.Addr().String()}
+	return &harness{client: client, store: store, blobs: blobs, mbox: mbox, addr: listener.Addr().String()}
 }
 
 func send(addr string, from string, to string, body string) error {
