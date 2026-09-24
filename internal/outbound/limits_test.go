@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
@@ -126,5 +127,91 @@ func TestSenderAllowedViaRoute(t *testing.T) {
 	_, err = submission.Submit(ctx, mbox.ID, "alice@example.test", []byte("From: alice@example.test\r\nTo: a@x.test\r\nSubject: hi\r\n\r\nbody\r\n"), nil)
 	if !errors.Is(err, mailstore.ErrOverQuota) {
 		t.Fatalf("expected over quota, got %v", err)
+	}
+}
+
+func TestSubmitConcurrentHourlyLimitIsAtomic(t *testing.T) {
+	submission, mbox, _ := newSubmission(t, Limits{PerHour: 3})
+	raw := []byte("From: alice@example.test\r\nTo: a@x.test\r\nSubject: hi\r\n\r\nbody\r\n")
+	const attempts = 12
+	errs := make(chan error, attempts)
+	var wg sync.WaitGroup
+	for range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := submission.Submit(context.Background(), mbox.ID, "alice@example.test", raw, nil)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	var ok, limited int
+	for err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrRateLimited):
+			limited++
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if ok != 3 || limited != attempts-3 {
+		t.Fatalf("accepted=%d limited=%d, want 3/%d", ok, limited, attempts-3)
+	}
+	count, err := submission.client.OutboundJob.Query().Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Fatalf("outbound jobs = %d, want 3", count)
+	}
+}
+
+func TestSubmitConcurrentQuotaIsAtomic(t *testing.T) {
+	submission, mbox, _ := newSubmission(t, Limits{})
+	ctx := context.Background()
+	raw := []byte("From: alice@example.test\r\nTo: a@x.test\r\nSubject: hi\r\n\r\nbody\r\n")
+	probe, err := submission.Submit(ctx, mbox.ID, "alice@example.test", raw, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := probe.SizeBytes
+	if _, err := submission.client.Mailbox.UpdateOneID(mbox.ID).SetQuotaBytes(size * 3).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	const attempts = 10
+	errs := make(chan error, attempts)
+	var wg sync.WaitGroup
+	for range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := submission.Submit(ctx, mbox.ID, "alice@example.test", raw, nil)
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	var ok int
+	for err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrOverQuota):
+		default:
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if ok != 2 {
+		t.Fatalf("accepted=%d, want 2", ok)
+	}
+	updated, err := submission.client.Mailbox.Get(ctx, mbox.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.UsedBytes > updated.QuotaBytes {
+		t.Fatalf("used_bytes %d exceeds quota %d", updated.UsedBytes, updated.QuotaBytes)
 	}
 }

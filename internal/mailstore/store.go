@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
+
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
@@ -72,15 +74,6 @@ func (s *Store) FolderByName(ctx context.Context, mailboxID string, name string)
 }
 
 func (s *Store) Attach(ctx context.Context, params Attach) (*ent.MailboxMessage, error) {
-	if params.EnforceQuota {
-		mbox, err := s.client.Mailbox.Get(ctx, params.MailboxID)
-		if err != nil {
-			return nil, err
-		}
-		if OverQuotaWith(mbox, params.SizeBytes) {
-			return nil, ErrOverQuota
-		}
-	}
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
 		return nil, err
@@ -97,7 +90,53 @@ func (s *Store) Attach(ctx context.Context, params Attach) (*ent.MailboxMessage,
 	return item, nil
 }
 
+// AttachTx attaches a message within the caller's transaction. The caller is
+// responsible for committing and for publishing the resulting change.
+func AttachTx(ctx context.Context, tx *ent.Tx, params Attach) (*ent.MailboxMessage, error) {
+	return attachInTx(ctx, tx.Client(), params)
+}
+
+// ReserveQuota takes a write lock on the mailbox row and fails with
+// ErrOverQuota unless `additional` bytes fit within the configured quota.
+// It must run inside the same transaction as the subsequent used_bytes
+// update so that the check and the increment are atomic.
+func ReserveQuota(ctx context.Context, client *ent.Client, mailboxID string, additional int64) error {
+	n, err := client.Mailbox.Update().
+		Where(
+			mailbox.IDEQ(mailboxID),
+			mailbox.Or(
+				mailbox.QuotaBytesLTE(0),
+				func(s *sql.Selector) {
+					s.Where(sql.P(func(b *sql.Builder) {
+						b.WriteString(s.C(mailbox.FieldUsedBytes)).WriteString(" + ").Arg(additional).WriteString(" <= ").WriteString(s.C(mailbox.FieldQuotaBytes))
+					}))
+				},
+			),
+		).
+		SetUpdatedAt(time.Now().UTC()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		exists, err := client.Mailbox.Query().Where(mailbox.IDEQ(mailboxID)).Exist(ctx)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return &ent.NotFoundError{}
+		}
+		return ErrOverQuota
+	}
+	return nil
+}
+
 func attachInTx(ctx context.Context, client *ent.Client, params Attach) (*ent.MailboxMessage, error) {
+	if params.EnforceQuota {
+		if err := ReserveQuota(ctx, client, params.MailboxID, params.SizeBytes); err != nil {
+			return nil, err
+		}
+	}
 	uid, err := allocateFolderUID(ctx, client, params.FolderID)
 	if err != nil {
 		return nil, err
