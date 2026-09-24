@@ -66,12 +66,13 @@ func (s *session) Append(mailboxName string, r imap.LiteralReader, options *imap
 		return nil, err
 	}
 	item, err := s.store.Attach(ctx, mailstore.Attach{
-		MailboxID: s.mailboxID,
-		MessageID: msg.ID,
-		FolderID:  c.folder.ID,
-		SizeBytes: int64(len(raw)),
-		Flags:     flags,
-		CreatedAt: createdAt,
+		MailboxID:    s.mailboxID,
+		MessageID:    msg.ID,
+		FolderID:     c.folder.ID,
+		SizeBytes:    int64(len(raw)),
+		Flags:        flags,
+		CreatedAt:    createdAt,
+		EnforceQuota: true,
 	})
 	if err != nil {
 		if errors.Is(err, mailstore.ErrOverQuota) {

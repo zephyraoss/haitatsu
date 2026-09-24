@@ -5,6 +5,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -22,19 +23,31 @@ func dnsblListed(ctx context.Context, remoteIP string, zones []string) (bool, st
 	if reversed == "" {
 		return false, ""
 	}
-	lookupCtx, cancel := context.WithTimeout(ctx, dnsblTimeout)
-	defer cancel()
-	for _, zone := range zones {
+	names := make([]string, len(zones))
+	listed := make([]bool, len(zones))
+	var wg sync.WaitGroup
+	for i, zone := range zones {
 		zone = strings.TrimSuffix(strings.TrimSpace(zone), ".")
 		if zone == "" {
 			continue
 		}
-		addrs, err := net.DefaultResolver.LookupIPAddr(lookupCtx, reversed+"."+zone)
-		if err != nil || len(addrs) == 0 {
-			continue
-		}
-		if strings.HasPrefix(addrs[0].IP.String(), "127.") {
-			return true, zone
+		names[i] = zone
+		wg.Add(1)
+		go func(i int, zone string) {
+			defer wg.Done()
+			lookupCtx, cancel := context.WithTimeout(ctx, dnsblTimeout)
+			defer cancel()
+			addrs, err := net.DefaultResolver.LookupIPAddr(lookupCtx, reversed+"."+zone)
+			if err != nil || len(addrs) == 0 {
+				return
+			}
+			listed[i] = strings.HasPrefix(addrs[0].IP.String(), "127.")
+		}(i, zone)
+	}
+	wg.Wait()
+	for i, hit := range listed {
+		if hit {
+			return true, names[i]
 		}
 	}
 	return false, ""

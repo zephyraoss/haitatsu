@@ -15,7 +15,7 @@ func (DKIMKey) Fields() []ent.Field {
 		ulidField(),
 		field.String("domain"),
 		field.String("selector").Default("zpr1"),
-		field.String("private_key_pem"),
+		field.String("private_key_pem").Sensitive(),
 		field.String("public_key_pem"),
 		createdAtField(),
 		updatedAtField(),
