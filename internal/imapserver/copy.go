@@ -33,16 +33,17 @@ func (s *session) Move(w *goimapserver.MoveWriter, numSet imap.NumSet, dest stri
 	if len(indexes) == 0 {
 		return nil
 	}
+	items, err := s.mailboxMessages(ctx, indexes)
+	if err != nil {
+		return err
+	}
 	var sourceUIDs, destUIDs imap.UIDSet
 	removed := map[int]struct{}{}
 	for _, index := range indexes {
 		item := s.view.entries[index]
-		mm, err := s.mailboxMessage(ctx, item)
-		if err != nil {
-			if ent.IsNotFound(err) {
-				continue
-			}
-			return err
+		mm, ok := items[item.itemID]
+		if !ok {
+			continue
 		}
 		destUID, err := s.moveOne(ctx, mm, item, target)
 		if err != nil {
@@ -115,18 +116,20 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	if err := s.resync(ctx, nil, syncMode{}); err != nil {
 		return nil, err
 	}
+	indexes := s.view.selected(numSet)
+	items, err := s.mailboxMessages(ctx, indexes)
+	if err != nil {
+		return nil, err
+	}
 	var sourceUIDs, destUIDs imap.UIDSet
-	for _, index := range s.view.selected(numSet) {
+	for _, index := range indexes {
 		item := s.view.entries[index]
 		if item.gone {
 			continue
 		}
-		mm, err := s.mailboxMessage(ctx, item)
-		if err != nil {
-			if ent.IsNotFound(err) {
-				continue
-			}
-			return nil, err
+		mm, ok := items[item.itemID]
+		if !ok {
+			continue
 		}
 		destUID, err := s.copyOne(ctx, mm, target)
 		if err != nil {

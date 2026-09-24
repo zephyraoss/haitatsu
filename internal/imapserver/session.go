@@ -538,3 +538,22 @@ func (s *session) mailboxMessage(ctx context.Context, item entry) (*ent.MailboxM
 	}
 	return mm, nil
 }
+
+func (s *session) mailboxMessages(ctx context.Context, indexes []int) (map[string]*ent.MailboxMessage, error) {
+	ids := make([]string, 0, len(indexes))
+	for _, index := range indexes {
+		ids = append(ids, s.view.entries[index].itemID)
+	}
+	items := make(map[string]*ent.MailboxMessage, len(ids))
+	for start := 0; start < len(ids); start += 500 {
+		end := min(start+500, len(ids))
+		batch, err := s.client.MailboxMessage.Query().Where(mailboxmessage.IDIn(ids[start:end]...), mailboxmessage.DeletedAtIsNil()).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range batch {
+			items[item.ID] = item
+		}
+	}
+	return items, nil
+}
