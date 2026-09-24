@@ -23,7 +23,7 @@ type AppPassword struct {
 	// Name holds the value of the "name" field.
 	Name string `json:"name,omitempty"`
 	// Hash holds the value of the "hash" field.
-	Hash string `json:"hash,omitempty"`
+	Hash string `json:"-"`
 	// Scopes holds the value of the "scopes" field.
 	Scopes []string `json:"scopes,omitempty"`
 	// LastUsedAt holds the value of the "last_used_at" field.
@@ -172,8 +172,7 @@ func (_m *AppPassword) String() string {
 	builder.WriteString("name=")
 	builder.WriteString(_m.Name)
 	builder.WriteString(", ")
-	builder.WriteString("hash=")
-	builder.WriteString(_m.Hash)
+	builder.WriteString("hash=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("scopes=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Scopes))

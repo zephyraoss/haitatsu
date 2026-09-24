@@ -8,6 +8,7 @@ import (
 	goimapserver "github.com/emersion/go-imap/v2/imapserver"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 )
 
@@ -33,16 +34,17 @@ func (s *session) Move(w *goimapserver.MoveWriter, numSet imap.NumSet, dest stri
 	if len(indexes) == 0 {
 		return nil
 	}
+	itemsByID, err := s.loadLiveMailboxMessages(ctx, indexes)
+	if err != nil {
+		return err
+	}
 	var sourceUIDs, destUIDs imap.UIDSet
 	removed := map[int]struct{}{}
 	for _, index := range indexes {
 		item := s.view.entries[index]
-		mm, err := s.mailboxMessage(ctx, item)
-		if err != nil {
-			if ent.IsNotFound(err) {
-				continue
-			}
-			return err
+		mm, ok := itemsByID[item.itemID]
+		if !ok {
+			continue
 		}
 		destUID, err := s.moveOne(ctx, mm, item, target)
 		if err != nil {
@@ -71,6 +73,28 @@ func (s *session) Move(w *goimapserver.MoveWriter, numSet imap.NumSet, dest stri
 	s.view.entries = remaining
 	s.view.drainChanges()
 	return nil
+}
+
+func (s *session) loadLiveMailboxMessages(ctx context.Context, selected []int) (map[string]*ent.MailboxMessage, error) {
+	ids := make([]string, 0, len(selected))
+	for _, index := range selected {
+		if item := s.view.entries[index]; !item.gone {
+			ids = append(ids, item.itemID)
+		}
+	}
+	result := make(map[string]*ent.MailboxMessage, len(ids))
+	for start := 0; start < len(ids); start += fetchBatchSize {
+		rows, err := s.client.MailboxMessage.Query().
+			Where(mailboxmessage.IDIn(ids[start:min(start+fetchBatchSize, len(ids))]...), mailboxmessage.DeletedAtIsNil()).
+			All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			result[row.ID] = row
+		}
+	}
+	return result, nil
 }
 
 func (s *session) moveOne(ctx context.Context, mm *ent.MailboxMessage, item entry, target container) (uint32, error) {
@@ -115,18 +139,20 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	if err := s.resync(ctx, nil, syncMode{}); err != nil {
 		return nil, err
 	}
+	selected := s.view.selected(numSet)
+	itemsByID, err := s.loadLiveMailboxMessages(ctx, selected)
+	if err != nil {
+		return nil, err
+	}
 	var sourceUIDs, destUIDs imap.UIDSet
-	for _, index := range s.view.selected(numSet) {
+	for _, index := range selected {
 		item := s.view.entries[index]
 		if item.gone {
 			continue
 		}
-		mm, err := s.mailboxMessage(ctx, item)
-		if err != nil {
-			if ent.IsNotFound(err) {
-				continue
-			}
-			return nil, err
+		mm, ok := itemsByID[item.itemID]
+		if !ok {
+			continue
 		}
 		destUID, err := s.copyOne(ctx, mm, target)
 		if err != nil {

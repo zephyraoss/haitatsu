@@ -106,13 +106,13 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 
 	messageID := ids.New().String()
 	traceID := ids.New().String()
-	recipients = outboundRecipients(recipients, mailparse.Parse(mailparse.NormalizeMessage(raw)))
-	normalized := normalizeSubmittedMessage(raw, sender.Address, messageID, s.publicHostname, traceID, s.instanceName)
-	limits := s.limitsFor(mbox)
-	if limits.RecipientsPerMessage > 0 && int64(len(recipients)) > limits.RecipientsPerMessage {
-		return nil, ErrTooManyRecipients
+	if len(recipients) > 0 {
+		recipients = dedupeAddresses(recipients)
+	} else {
+		recipients = outboundRecipients(nil, mailparse.Parse(mailparse.NormalizeMessage(raw)))
 	}
-	if err := enforceLimits(ctx, s.client, mbox.ID, limits); err != nil {
+	normalized := normalizeSubmittedMessage(raw, sender.Address, messageID, s.publicHostname, traceID, s.instanceName)
+	if err := s.enforceLimits(ctx, s.client, mbox, len(recipients)); err != nil {
 		return nil, err
 	}
 	if mailstore.OverQuotaWith(mbox, int64(len(normalized))) {
@@ -131,12 +131,11 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	if err != nil {
 		return nil, err
 	}
-
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	msg, item, err := s.submitInTx(ctx, tx, mbox.ID, limits, domain, sent.ID, messageID, traceID, objectKey, signed, recipients)
+	msg, attach, item, err := s.enqueueInTx(ctx, tx, mbox, sent.ID, domain, messageID, traceID, objectKey, signed, recipients)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -144,39 +143,43 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	s.store.Notifier().Publish(ctx, mailstore.Change{MailboxID: mailboxID, Container: mailstore.FolderContainer(sent.ID), Kind: mailstore.ChangeExists, UID: item.UID})
+	s.store.NotifyAttached(ctx, attach, item)
 	return msg, nil
 }
 
-// submitInTx serializes concurrent submissions for a mailbox: ReserveQuota
-// takes a write lock on the mailbox row before the rate-limit count, so the
-// count, message/job creation and used_bytes increment are atomic.
-func (s *Submission) submitInTx(ctx context.Context, tx *ent.Tx, mailboxID string, limits Limits, domain string, sentFolderID string, messageID string, traceID string, objectKey string, signed []byte, recipients []string) (*ent.Message, *ent.MailboxMessage, error) {
+// enqueueInTx re-checks the send limits and quota under a mailbox row lock so
+// that concurrent submissions for the same mailbox cannot all pass the checks
+// before any of them records its job.
+func (s *Submission) enqueueInTx(ctx context.Context, tx *ent.Tx, mbox *ent.Mailbox, sentFolderID string, domain string, messageID string, traceID string, objectKey string, signed []byte, recipients []string) (*ent.Message, mailstore.Attach, *ent.MailboxMessage, error) {
 	client := tx.Client()
-	size := int64(len(signed))
-	if err := mailstore.ReserveQuota(ctx, client, mailboxID, size); err != nil {
-		return nil, nil, err
+	if err := mailstore.LockMailbox(ctx, tx, mbox.ID); err != nil {
+		return nil, mailstore.Attach{}, nil, err
 	}
-	if err := enforceLimits(ctx, client, mailboxID, limits); err != nil {
-		return nil, nil, err
+	if err := s.enforceLimits(ctx, client, mbox, len(recipients)); err != nil {
+		return nil, mailstore.Attach{}, nil, err
 	}
 	msg, err := createMessage(ctx, client, messageID, traceID, objectKey, signed, mailparse.Parse(signed))
 	if err != nil {
-		return nil, nil, err
+		return nil, mailstore.Attach{}, nil, err
 	}
-	item, err := mailstore.AttachTx(ctx, tx, mailstore.Attach{MailboxID: mailboxID, MessageID: msg.ID, FolderID: sentFolderID, SizeBytes: size, Flags: mailstore.Flags{Seen: true}})
+	attach := mailstore.Attach{MailboxID: mbox.ID, MessageID: msg.ID, FolderID: sentFolderID, SizeBytes: int64(len(signed)), Flags: mailstore.Flags{Seen: true}, EnforceQuota: true}
+	item, err := s.store.AttachInTx(ctx, tx, attach)
 	if err != nil {
-		return nil, nil, err
+		return nil, mailstore.Attach{}, nil, err
 	}
-	if _, err := client.OutboundJob.Create().SetMailboxID(mailboxID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, domain)).SetRecipients(recipients).Save(ctx); err != nil {
-		return nil, nil, err
+	if _, err := client.OutboundJob.Create().SetMailboxID(mbox.ID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, domain)).SetRecipients(recipients).Save(ctx); err != nil {
+		return nil, mailstore.Attach{}, nil, err
 	}
-	return msg, item, nil
+	return msg, attach, item, nil
 }
 
-func enforceLimits(ctx context.Context, client *ent.Client, mailboxID string, limits Limits) error {
+func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, mbox *ent.Mailbox, recipientCount int) error {
+	limits := s.limitsFor(mbox)
+	if limits.RecipientsPerMessage > 0 && int64(recipientCount) > limits.RecipientsPerMessage {
+		return ErrTooManyRecipients
+	}
 	if limits.PerHour > 0 {
-		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mailboxID), outboundjob.CreatedAtGTE(time.Now().Add(-time.Hour))).Count(ctx)
+		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mbox.ID), outboundjob.CreatedAtGTE(time.Now().Add(-time.Hour))).Count(ctx)
 		if err != nil {
 			return err
 		}
@@ -185,7 +188,7 @@ func enforceLimits(ctx context.Context, client *ent.Client, mailboxID string, li
 		}
 	}
 	if limits.PerDay > 0 {
-		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mailboxID), outboundjob.CreatedAtGTE(time.Now().Add(-24*time.Hour))).Count(ctx)
+		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mbox.ID), outboundjob.CreatedAtGTE(time.Now().Add(-24*time.Hour))).Count(ctx)
 		if err != nil {
 			return err
 		}

@@ -86,57 +86,35 @@ func (s *Store) Attach(ctx context.Context, params Attach) (*ent.MailboxMessage,
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	s.notifier.Publish(ctx, Change{MailboxID: params.MailboxID, Container: FolderContainer(params.FolderID), Kind: ChangeExists, UID: item.UID})
+	s.NotifyAttached(ctx, params, item)
 	return item, nil
 }
 
-// AttachTx attaches a message within the caller's transaction. The caller is
-// responsible for committing and for publishing the resulting change.
-func AttachTx(ctx context.Context, tx *ent.Tx, params Attach) (*ent.MailboxMessage, error) {
+// AttachInTx attaches within the caller's transaction. The caller must call
+// NotifyAttached after committing.
+func (s *Store) AttachInTx(ctx context.Context, tx *ent.Tx, params Attach) (*ent.MailboxMessage, error) {
 	return attachInTx(ctx, tx.Client(), params)
 }
 
-// ReserveQuota takes a write lock on the mailbox row and fails with
-// ErrOverQuota unless `additional` bytes fit within the configured quota.
-// It must run inside the same transaction as the subsequent used_bytes
-// update so that the check and the increment are atomic.
-func ReserveQuota(ctx context.Context, client *ent.Client, mailboxID string, additional int64) error {
-	n, err := client.Mailbox.Update().
-		Where(
-			mailbox.IDEQ(mailboxID),
-			mailbox.Or(
-				mailbox.QuotaBytesLTE(0),
-				func(s *sql.Selector) {
-					s.Where(sql.P(func(b *sql.Builder) {
-						b.WriteString(s.C(mailbox.FieldUsedBytes)).WriteString(" + ").Arg(additional).WriteString(" <= ").WriteString(s.C(mailbox.FieldQuotaBytes))
-					}))
-				},
-			),
-		).
-		SetUpdatedAt(time.Now().UTC()).
-		Save(ctx)
+func (s *Store) NotifyAttached(ctx context.Context, params Attach, item *ent.MailboxMessage) {
+	s.notifier.Publish(ctx, Change{MailboxID: params.MailboxID, Container: FolderContainer(params.FolderID), Kind: ChangeExists, UID: item.UID})
+}
+
+// LockMailbox takes a write lock on the mailbox row for the duration of tx so
+// that check-then-write sequences against the mailbox are serialized.
+func LockMailbox(ctx context.Context, tx *ent.Tx, mailboxID string) error {
+	n, err := tx.Client().Mailbox.Update().Where(mailbox.IDEQ(mailboxID)).AddUsedBytes(0).Save(ctx)
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		exists, err := client.Mailbox.Query().Where(mailbox.IDEQ(mailboxID)).Exist(ctx)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			return &ent.NotFoundError{}
-		}
-		return ErrOverQuota
+		_, err := tx.Client().Mailbox.Get(ctx, mailboxID)
+		return err
 	}
 	return nil
 }
 
 func attachInTx(ctx context.Context, client *ent.Client, params Attach) (*ent.MailboxMessage, error) {
-	if params.EnforceQuota {
-		if err := ReserveQuota(ctx, client, params.MailboxID, params.SizeBytes); err != nil {
-			return nil, err
-		}
-	}
 	uid, err := allocateFolderUID(ctx, client, params.FolderID)
 	if err != nil {
 		return nil, err
@@ -165,10 +143,42 @@ func attachInTx(ctx context.Context, client *ent.Client, params Attach) (*ent.Ma
 	if err != nil {
 		return nil, err
 	}
-	if _, err := client.Mailbox.UpdateOneID(params.MailboxID).AddUsedBytes(params.SizeBytes).Save(ctx); err != nil {
+	if err := addUsedBytes(ctx, client, params.MailboxID, params.SizeBytes, params.EnforceQuota); err != nil {
 		return nil, err
 	}
 	return item, nil
+}
+
+// addUsedBytes increments used_bytes; with enforceQuota the increment is a
+// single conditional UPDATE that fails with ErrOverQuota unless the new total
+// fits within quota_bytes, so the check and the write cannot race.
+func addUsedBytes(ctx context.Context, client *ent.Client, mailboxID string, size int64, enforceQuota bool) error {
+	if !enforceQuota {
+		_, err := client.Mailbox.UpdateOneID(mailboxID).AddUsedBytes(size).Save(ctx)
+		return err
+	}
+	n, err := client.Mailbox.Update().
+		Where(
+			mailbox.IDEQ(mailboxID),
+			mailbox.Or(
+				mailbox.QuotaBytesLTE(0),
+				func(s *sql.Selector) {
+					s.Where(sql.ExprP(s.C(mailbox.FieldUsedBytes)+" + ? <= "+s.C(mailbox.FieldQuotaBytes), size))
+				},
+			),
+		).
+		AddUsedBytes(size).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := client.Mailbox.Get(ctx, mailboxID); err != nil {
+			return err
+		}
+		return ErrOverQuota
+	}
+	return nil
 }
 
 func allocateFolderUID(ctx context.Context, client *ent.Client, folderID string) (uint32, error) {
@@ -269,12 +279,111 @@ func softDeleteInTx(ctx context.Context, client *ent.Client, item *ent.MailboxMe
 }
 
 func (s *Store) SoftDeleteMany(ctx context.Context, items []*ent.MailboxMessage) error {
+	byMailbox := map[string][]*ent.MailboxMessage{}
+	order := []string{}
 	for _, item := range items {
-		if err := s.SoftDelete(ctx, item); err != nil {
+		if item.DeletedAt != nil {
+			continue
+		}
+		if _, ok := byMailbox[item.MailboxID]; !ok {
+			order = append(order, item.MailboxID)
+		}
+		byMailbox[item.MailboxID] = append(byMailbox[item.MailboxID], item)
+	}
+	for _, mailboxID := range order {
+		if err := s.softDeleteBatch(ctx, mailboxID, byMailbox[mailboxID]); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *Store) softDeleteBatch(ctx context.Context, mailboxID string, items []*ent.MailboxMessage) error {
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	if err := softDeleteBatchInTx(ctx, tx.Client(), mailboxID, ids); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for _, item := range items {
+		s.notifier.Publish(ctx, Change{MailboxID: item.MailboxID, Container: FolderContainer(item.FolderID), Kind: ChangeExpunge, UID: item.UID})
+	}
+	return nil
+}
+
+func softDeleteBatchInTx(ctx context.Context, client *ent.Client, mailboxID string, ids []string) error {
+	now := time.Now()
+	var freed int64
+	for start := 0; start < len(ids); start += batchSize {
+		chunk := ids[start:min(start+batchSize, len(ids))]
+		live, err := client.MailboxMessage.Query().
+			Where(mailboxmessage.IDIn(chunk...), mailboxmessage.DeletedAtIsNil()).
+			Select(mailboxmessage.FieldID, mailboxmessage.FieldMessageID).
+			All(ctx)
+		if err != nil {
+			return err
+		}
+		if len(live) == 0 {
+			continue
+		}
+		liveIDs := make([]string, 0, len(live))
+		messageIDs := make([]string, 0, len(live))
+		for _, item := range live {
+			liveIDs = append(liveIDs, item.ID)
+			messageIDs = append(messageIDs, item.MessageID)
+		}
+		if _, err := client.MailboxMessage.Update().Where(mailboxmessage.IDIn(liveIDs...), mailboxmessage.DeletedAtIsNil()).SetDeletedAt(now).Save(ctx); err != nil {
+			return err
+		}
+		sizes, err := messageSizes(ctx, client, messageIDs)
+		if err != nil {
+			return err
+		}
+		for _, id := range messageIDs {
+			freed += sizes[id]
+		}
+	}
+	if freed == 0 {
+		return nil
+	}
+	_, err := client.Mailbox.UpdateOneID(mailboxID).AddUsedBytes(-freed).Save(ctx)
+	return err
+}
+
+const batchSize = 500
+
+func DeleteLabelLinks(ctx context.Context, client *ent.Client, mailboxMessageIDs []string) error {
+	for start := 0; start < len(mailboxMessageIDs); start += batchSize {
+		chunk := mailboxMessageIDs[start:min(start+batchSize, len(mailboxMessageIDs))]
+		if _, err := client.MailboxMessageLabel.Delete().Where(mailboxmessagelabel.MailboxMessageIDIn(chunk...)).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func messageSizes(ctx context.Context, client *ent.Client, messageIDs []string) (map[string]int64, error) {
+	sizes := make(map[string]int64, len(messageIDs))
+	for start := 0; start < len(messageIDs); start += batchSize {
+		chunk := messageIDs[start:min(start+batchSize, len(messageIDs))]
+		rows, err := client.Message.Query().Where(message.IDIn(chunk...)).Select(message.FieldID, message.FieldSizeBytes).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			sizes[row.ID] = row.SizeBytes
+		}
+	}
+	return sizes, nil
 }
 
 func (s *Store) SetFlags(ctx context.Context, item *ent.MailboxMessage, flags Flags) (*ent.MailboxMessage, error) {
@@ -285,6 +394,47 @@ func (s *Store) SetFlags(ctx context.Context, item *ent.MailboxMessage, flags Fl
 	s.notifier.Publish(ctx, Change{MailboxID: item.MailboxID, Container: FolderContainer(item.FolderID), Kind: ChangeFlags, UID: updated.UID, Flags: flags.List()})
 	s.publishLabelFlagChanges(ctx, updated, flags)
 	return updated, nil
+}
+
+// SetFlagsMany applies the same flags to every item with a single UPDATE per batch.
+func (s *Store) SetFlagsMany(ctx context.Context, items []*ent.MailboxMessage, flags Flags) error {
+	if len(items) == 0 {
+		return nil
+	}
+	keywords := flags.Keywords
+	if keywords == nil {
+		keywords = []string{}
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	for start := 0; start < len(ids); start += batchSize {
+		chunk := ids[start:min(start+batchSize, len(ids))]
+		if _, err := s.client.MailboxMessage.Update().
+			Where(mailboxmessage.IDIn(chunk...)).
+			SetRead(flags.Seen).SetAnswered(flags.Answered).SetFlagged(flags.Flagged).SetImapDeleted(flags.Deleted).SetDraft(flags.Draft).SetKeywords(keywords).
+			Save(ctx); err != nil {
+			return err
+		}
+	}
+	byID := make(map[string]*ent.MailboxMessage, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+		s.notifier.Publish(ctx, Change{MailboxID: item.MailboxID, Container: FolderContainer(item.FolderID), Kind: ChangeFlags, UID: item.UID, Flags: flags.List()})
+	}
+	for start := 0; start < len(ids); start += batchSize {
+		chunk := ids[start:min(start+batchSize, len(ids))]
+		links, err := s.client.MailboxMessageLabel.Query().Where(mailboxmessagelabel.MailboxMessageIDIn(chunk...)).All(ctx)
+		if err != nil {
+			return nil
+		}
+		for _, link := range links {
+			item := byID[link.MailboxMessageID]
+			s.notifier.Publish(ctx, Change{MailboxID: item.MailboxID, Container: LabelContainer(link.LabelID), Kind: ChangeFlags, UID: link.UID, Flags: flags.List()})
+		}
+	}
+	return nil
 }
 
 func (s *Store) publishLabelFlagChanges(ctx context.Context, item *ent.MailboxMessage, flags Flags) {
@@ -357,16 +507,13 @@ func (s *Store) RecomputeUsedBytes(ctx context.Context, mailboxID string) (int64
 	for _, item := range items {
 		ids = append(ids, item.MessageID)
 	}
+	sizes, err := messageSizes(ctx, s.client, ids)
+	if err != nil {
+		return 0, err
+	}
 	var total int64
-	for start := 0; start < len(ids); start += 500 {
-		end := min(start+500, len(ids))
-		messages, err := s.client.Message.Query().Where(message.IDIn(ids[start:end]...)).All(ctx)
-		if err != nil {
-			return 0, err
-		}
-		for _, msg := range messages {
-			total += msg.SizeBytes
-		}
+	for _, id := range ids {
+		total += sizes[id]
 	}
 	if _, err := s.client.Mailbox.UpdateOneID(mailboxID).SetUsedBytes(total).Save(ctx); err != nil {
 		return 0, err
@@ -404,10 +551,12 @@ func (s *Store) PurgeMailbox(ctx context.Context, mailboxID string) error {
 	if err != nil {
 		return err
 	}
+	ids := make([]string, 0, len(items))
 	for _, item := range items {
-		if _, err := s.client.MailboxMessageLabel.Delete().Where(mailboxmessagelabel.MailboxMessageIDEQ(item.ID)).Exec(ctx); err != nil {
-			return err
-		}
+		ids = append(ids, item.ID)
+	}
+	if err := DeleteLabelLinks(ctx, s.client, ids); err != nil {
+		return err
 	}
 	if _, err := s.client.MailboxMessage.Delete().Where(mailboxmessage.MailboxIDEQ(mailboxID)).Exec(ctx); err != nil {
 		return err

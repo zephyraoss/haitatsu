@@ -74,3 +74,22 @@ func TestValidateAcceptsSQLiteAndLibSQL(t *testing.T) {
 		}
 	}
 }
+
+func TestImportsConfigAllowsInsecureTLS(t *testing.T) {
+	cfg := ImportsConfig{InsecureTLSHosts: []string{" Legacy.Example.COM ", "10.0.0.5:993"}}
+	for addr, want := range map[string]bool{
+		"legacy.example.com:993": true,
+		"legacy.example.com":     true,
+		"10.0.0.5:993":           true,
+		"10.0.0.5:143":           false,
+		"imap.example.com:993":   false,
+		"":                       false,
+	} {
+		if got := cfg.AllowsInsecureTLS(addr); got != want {
+			t.Errorf("AllowsInsecureTLS(%q) = %v, want %v", addr, got, want)
+		}
+	}
+	if (ImportsConfig{}).AllowsInsecureTLS("legacy.example.com:993") {
+		t.Fatal("empty allowlist must not permit skip_verify")
+	}
+}
