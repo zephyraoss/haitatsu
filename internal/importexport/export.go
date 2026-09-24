@@ -169,6 +169,7 @@ RETURNING id, mailbox_id
 func (w *ExportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
 	ticker := time.NewTicker(jobLeaseRenewInterval)
 	defer ticker.Stop()
+	lastRenewed := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -179,12 +180,17 @@ func (w *ExportWorker) renewLease(ctx context.Context, cancel context.CancelFunc
 				SetLockedUntil(time.Now().Add(jobLeaseDuration)).
 				Save(ctx)
 			if err != nil {
+				if time.Since(lastRenewed) >= jobLeaseGiveUp {
+					cancel()
+					return
+				}
 				continue
 			}
 			if n == 0 {
 				cancel()
 				return
 			}
+			lastRenewed = time.Now()
 		}
 	}
 }

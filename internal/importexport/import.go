@@ -35,6 +35,10 @@ import (
 const (
 	jobLeaseDuration      = 10 * time.Minute
 	jobLeaseRenewInterval = 2 * time.Minute
+	// jobLeaseGiveUp bounds how long a worker may keep running without a
+	// successful renewal; it stays below jobLeaseDuration so the worker
+	// stops before another worker can claim the job.
+	jobLeaseGiveUp = jobLeaseDuration - 2*jobLeaseRenewInterval
 )
 
 type ImportWorker struct {
@@ -177,6 +181,7 @@ RETURNING id, mailbox_id, source_type, source
 func (w *ImportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
 	ticker := time.NewTicker(jobLeaseRenewInterval)
 	defer ticker.Stop()
+	lastRenewed := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -187,12 +192,17 @@ func (w *ImportWorker) renewLease(ctx context.Context, cancel context.CancelFunc
 				SetLockedUntil(time.Now().Add(jobLeaseDuration)).
 				Save(ctx)
 			if err != nil {
+				if time.Since(lastRenewed) >= jobLeaseGiveUp {
+					cancel()
+					return
+				}
 				continue
 			}
 			if n == 0 {
 				cancel()
 				return
 			}
+			lastRenewed = time.Now()
 		}
 	}
 }
