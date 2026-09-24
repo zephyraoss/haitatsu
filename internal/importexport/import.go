@@ -32,6 +32,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
+	"github.com/zephyraoss/haitatsu/internal/storage"
 )
 
 const (
@@ -404,6 +405,9 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 	key := sourceKey(job.Source)
 	if key == "" {
 		return fmt.Errorf("zip import requires source.object_key")
+	}
+	if err := storage.ValidateImportKey(key); err != nil {
+		return err
 	}
 	reader, err := w.store.GetObjectReader(ctx, key)
 	if err != nil {
