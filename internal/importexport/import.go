@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
+	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -45,6 +47,7 @@ type ImportWorker struct {
 	events   *events.Service
 	workerID string
 	backend  database.Backend
+	imports  func() config.ImportsConfig
 }
 
 type importJob struct {
@@ -60,6 +63,19 @@ func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstor
 		backend = backends[0]
 	}
 	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
+}
+
+// SetImportsConfig installs the operator configuration that gates insecure
+// import options such as source.skip_verify.
+func (w *ImportWorker) SetImportsConfig(imports func() config.ImportsConfig) {
+	w.imports = imports
+}
+
+func (w *ImportWorker) importsConfig() config.ImportsConfig {
+	if w.imports == nil {
+		return config.ImportsConfig{}
+	}
+	return w.imports()
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -401,7 +417,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 }
 
 func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	client, err := dialIMAP(job.Source)
+	client, err := dialIMAP(job, w.importsConfig())
 	if err != nil {
 		return err
 	}
@@ -679,12 +695,20 @@ func sourceStringSlice(source map[string]any, key string) []string {
 	return values
 }
 
-func dialIMAP(source map[string]any) (*imapclient.Client, error) {
+func dialIMAP(job importJob, imports config.ImportsConfig) (*imapclient.Client, error) {
+	source := job.Source
 	addr := sourceString(source, "addr")
 	if addr == "" {
 		return nil, fmt.Errorf("imap import requires source.addr")
 	}
-	options := &imapclient.Options{TLSConfig: imapTLSConfig(addr, sourceBool(source, "skip_verify"))}
+	skipVerify := sourceBool(source, "skip_verify")
+	if skipVerify {
+		if !imports.AllowsInsecureTLS(addr) {
+			return nil, fmt.Errorf("imap import: source.skip_verify is not permitted for %q; add the host to imports.insecure_tls_hosts", addr)
+		}
+		slog.Warn("imap import: TLS certificate verification disabled", "import_id", job.ID, "mailbox_id", job.MailboxID, "addr", addr)
+	}
+	options := &imapclient.Options{TLSConfig: imapTLSConfig(addr, skipVerify)}
 	if sourceBool(source, "starttls") {
 		return imapclient.DialStartTLS(addr, options)
 	}

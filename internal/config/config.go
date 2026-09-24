@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/mail"
 	"slices"
 	"strings"
@@ -34,6 +35,33 @@ type Config struct {
 	Notifications NotificationConfig `pkl:"notifications" json:"notifications"`
 	Spam          SpamConfig         `pkl:"spam" json:"spam"`
 	Limits        LimitsConfig       `pkl:"limits" json:"limits"`
+	Imports       ImportsConfig      `pkl:"imports" json:"imports"`
+}
+
+// ImportsConfig controls mailbox import behaviour that is decided by the
+// operator rather than by API callers.
+type ImportsConfig struct {
+	// InsecureTLSHosts lists remote IMAP hosts (or host:port pairs) for which an
+	// import request may disable TLS certificate verification via
+	// source.skip_verify. Requests naming any other host are rejected.
+	InsecureTLSHosts []string `pkl:"insecure_tls_hosts" json:"insecure_tls_hosts"`
+}
+
+// AllowsInsecureTLS reports whether certificate verification may be disabled
+// for the given IMAP address.
+func (c ImportsConfig) AllowsInsecureTLS(addr string) bool {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	for _, allowed := range c.InsecureTLSHosts {
+		allowed = strings.ToLower(strings.TrimSpace(allowed))
+		if allowed != "" && (allowed == addr || allowed == host) {
+			return true
+		}
+	}
+	return false
 }
 
 type ServerConfig struct {

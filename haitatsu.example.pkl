@@ -67,6 +67,12 @@ workers {
   concurrency = 4
 }
 
+imports {
+  // Remote IMAP hosts for which an import may set source.skip_verify to
+  // disable TLS certificate verification. Leave empty to always verify.
+  insecure_tls_hosts = new Listing<String> {}
+}
+
 tls {
   mode = "storage"
   cert_file = ""
