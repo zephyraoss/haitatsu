@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/mail"
+	"sort"
 	"strings"
 
 	"github.com/emersion/go-msgauth/authres"
@@ -143,9 +144,16 @@ func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metada
 		return "", ""
 	}
 	mailboxIDs := recipientMailboxIDs(recipients)
-	for _, id := range mailboxIDs {
-		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("mailbox"), senderrule.ScopeRefEQ(id)).All(ctx)
+	if len(mailboxIDs) > 0 {
+		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("mailbox"), senderrule.ScopeRefIn(mailboxIDs...)).All(ctx)
 		if err == nil {
+			order := make(map[string]int, len(mailboxIDs))
+			for i, id := range mailboxIDs {
+				order[id] = i
+			}
+			sort.SliceStable(items, func(i, j int) bool {
+				return order[items[i].ScopeRef] < order[items[j].ScopeRef]
+			})
 			entries = append(entries, items...)
 		}
 	}
