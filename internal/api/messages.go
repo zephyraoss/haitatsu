@@ -15,6 +15,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
@@ -321,12 +322,62 @@ func (h *Handler) moveToSystemFolder(c fiber.Ctx, name string) (*ent.MailboxMess
 
 func (h *Handler) mailboxMessageResponses(c fiber.Ctx, items []*ent.MailboxMessage) ([]mailboxMessageResponse, error) {
 	responses := make([]mailboxMessageResponse, 0, len(items))
+	if len(items) == 0 {
+		return responses, nil
+	}
+	itemIDs := make([]string, 0, len(items))
+	messageIDs := make([]string, 0, len(items))
 	for _, item := range items {
-		response, err := h.mailboxMessageResponse(c, item)
+		itemIDs = append(itemIDs, item.ID)
+		messageIDs = append(messageIDs, item.MessageID)
+	}
+
+	messages, err := h.client.Message.Query().Where(message.IDIn(messageIDs...)).All(c.Context())
+	if err != nil {
+		return nil, err
+	}
+	messagesByID := make(map[string]*ent.Message, len(messages))
+	for _, msg := range messages {
+		messagesByID[msg.ID] = msg
+	}
+
+	links, err := h.client.MailboxMessageLabel.Query().Where(mailboxmessagelabel.MailboxMessageIDIn(itemIDs...)).All(c.Context())
+	if err != nil {
+		return nil, err
+	}
+	labelIDsByItem := make(map[string][]string, len(items))
+	labelIDSet := make(map[string]struct{})
+	for _, link := range links {
+		labelIDsByItem[link.MailboxMessageID] = append(labelIDsByItem[link.MailboxMessageID], link.LabelID)
+		labelIDSet[link.LabelID] = struct{}{}
+	}
+	labelsByID := make(map[string]*ent.Label, len(labelIDSet))
+	if len(labelIDSet) > 0 {
+		labelIDs := make([]string, 0, len(labelIDSet))
+		for id := range labelIDSet {
+			labelIDs = append(labelIDs, id)
+		}
+		labels, err := h.client.Label.Query().Where(label.IDIn(labelIDs...)).All(c.Context())
 		if err != nil {
 			return nil, err
 		}
-		responses = append(responses, response)
+		for _, lbl := range labels {
+			labelsByID[lbl.ID] = lbl
+		}
+	}
+
+	for _, item := range items {
+		msg, ok := messagesByID[item.MessageID]
+		if !ok {
+			return nil, fmt.Errorf("message %s not found", item.MessageID)
+		}
+		var labels []*ent.Label
+		for _, id := range labelIDsByItem[item.ID] {
+			if lbl, ok := labelsByID[id]; ok {
+				labels = append(labels, lbl)
+			}
+		}
+		responses = append(responses, mailboxMessageResponse{MailboxMessage: item, Message: msg, Labels: labels})
 	}
 	return responses, nil
 }
