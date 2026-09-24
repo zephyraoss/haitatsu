@@ -166,6 +166,16 @@ func TestFlagsOnlyFetchDoesNotTouchBlobStore(t *testing.T) {
 	if h.blobs.Gets != before {
 		t.Fatalf("metadata-only fetch hit blob store %d times", h.blobs.Gets-before)
 	}
+	envelopes, err := client.Fetch(all, &imap.FetchOptions{UID: true, Envelope: true}).Collect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.blobs.Gets != before {
+		t.Fatalf("envelope fetch hit blob store %d times", h.blobs.Gets-before)
+	}
+	if len(envelopes) != 5 || envelopes[2].Envelope.Subject != "mmm" {
+		t.Fatalf("unexpected envelopes: %+v", envelopes)
+	}
 	msgs, err := client.Fetch(imap.SeqSetNum(1), &imap.FetchOptions{BodySection: []*imap.FetchItemBodySection{{Peek: true}}}).Collect()
 	if err != nil || len(msgs) != 1 || h.blobs.Gets != before+1 {
 		t.Fatalf("body fetch should load exactly one blob: gets=%d err=%v", h.blobs.Gets-before, err)
