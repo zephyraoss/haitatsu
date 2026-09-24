@@ -73,7 +73,7 @@ func (s *FakeStore) PutExportStream(ctx context.Context, key string, data io.Rea
 
 func NewClient(t testing.TB) (*ent.Client, *stdsql.DB) {
 	t.Helper()
-	db, err := stdsql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", sanitize(t.Name())))
+	db, err := stdsql.Open("sqlite", fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_time_format=sqlite", sanitize(t.Name())))
 	if err != nil {
 		t.Fatal(err)
 	}

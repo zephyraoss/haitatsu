@@ -15,7 +15,7 @@ func (AppPassword) Fields() []ent.Field {
 		ulidField(),
 		field.String("mailbox_id"),
 		field.String("name"),
-		field.String("hash"),
+		field.String("hash").Sensitive(),
 		field.JSON("scopes", []string{}),
 		field.Time("last_used_at").Optional().Nillable(),
 		field.Time("revoked_at").Optional().Nillable(),
