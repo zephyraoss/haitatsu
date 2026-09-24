@@ -20,10 +20,15 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/mailaddr"
+	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
-const verpPrefix = "bounces+"
+const (
+	verpPrefix          = "bounces+"
+	maxStatusBlocks     = 64
+	maxStatusRecipients = 32
+)
 
 type Store interface {
 	PutMessage(ctx context.Context, key string, data []byte) error
@@ -142,7 +147,7 @@ func bounceDetails(raw []byte) map[string]any {
 		return details
 	}
 	reader := multipart.NewReader(message.Body, params["boundary"])
-	for {
+	for parts := 0; parts < mailparse.MaxParts; parts++ {
 		part, err := reader.NextPart()
 		if err == io.EOF {
 			break
@@ -153,7 +158,7 @@ func bounceDetails(raw []byte) map[string]any {
 		if partContentType(part) != "message/delivery-status" {
 			continue
 		}
-		status, err := io.ReadAll(part)
+		status, err := io.ReadAll(io.LimitReader(part, mailparse.MaxStatusBytes))
 		if err != nil {
 			return details
 		}
@@ -179,6 +184,9 @@ func parseDeliveryStatus(data []byte) map[string]any {
 	}
 	recipients := make([]map[string]any, 0, len(blocks)-1)
 	for _, block := range blocks[1:] {
+		if len(recipients) >= maxStatusRecipients {
+			break
+		}
 		recipient := map[string]any{}
 		setHeaderDetails(recipient, block, map[string]string{
 			"Original-Recipient": "original_recipient",
@@ -206,7 +214,9 @@ func parseDeliveryStatus(data []byte) map[string]any {
 func deliveryStatusBlocks(data []byte) []textproto.MIMEHeader {
 	var blocks []textproto.MIMEHeader
 	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
-	for _, block := range strings.Split(normalized, "\n\n") {
+	for len(normalized) > 0 && len(blocks) < maxStatusBlocks {
+		block, rest, _ := strings.Cut(normalized, "\n\n")
+		normalized = rest
 		block = strings.TrimSpace(block)
 		if block == "" {
 			continue
@@ -214,9 +224,6 @@ func deliveryStatusBlocks(data []byte) []textproto.MIMEHeader {
 		reader := textproto.NewReader(bufio.NewReader(strings.NewReader(block + "\r\n\r\n")))
 		header, err := reader.ReadMIMEHeader()
 		if err != nil || len(header) == 0 {
-			continue
-		}
-		if len(header) == 0 {
 			continue
 		}
 		blocks = append(blocks, header)
