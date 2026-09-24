@@ -131,7 +131,7 @@ func (h *Handler) getMessage(c fiber.Ctx) error {
 func (h *Handler) downloadRawMessage(c fiber.Ctx) error {
 	msg, err := h.messageForMailboxMessage(c)
 	if err != nil {
-		return err
+		return entProblem(c, err, "message_not_found", "Message not found")
 	}
 	raw, err := h.store.GetMessage(c.Context(), msg.BlobKey)
 	if err != nil {
@@ -147,9 +147,9 @@ func (h *Handler) downloadAttachment(c fiber.Ctx) error {
 	if err != nil || partIndex <= 0 {
 		return problem(c, fiber.StatusBadRequest, "invalid_attachment", "Attachment ID must be a positive part index")
 	}
-	msg, handlerErr := h.messageForMailboxMessage(c)
-	if handlerErr != nil {
-		return handlerErr
+	msg, err := h.messageForMailboxMessage(c)
+	if err != nil {
+		return entProblem(c, err, "message_not_found", "Message not found")
 	}
 	raw, err := h.store.GetMessage(c.Context(), msg.BlobKey)
 	if err != nil {
@@ -205,13 +205,9 @@ func (h *Handler) updateMailboxMessage(c fiber.Ctx) error {
 func (h *Handler) messageForMailboxMessage(c fiber.Ctx) (*ent.Message, error) {
 	item, err := h.client.MailboxMessage.Get(c.Context(), c.Params("id"))
 	if err != nil {
-		return nil, entProblem(c, err, "message_not_found", "Message not found")
+		return nil, err
 	}
-	msg, err := h.client.Message.Get(c.Context(), item.MessageID)
-	if err != nil {
-		return nil, entProblem(c, err, "message_not_found", "Message not found")
-	}
-	return msg, nil
+	return h.client.Message.Get(c.Context(), item.MessageID)
 }
 
 func (h *Handler) moveMessage(c fiber.Ctx) error {

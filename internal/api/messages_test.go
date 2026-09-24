@@ -2,14 +2,19 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"entgo.io/ent/dialect"
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
+	"github.com/zephyraoss/haitatsu/internal/testutil"
 )
 
 func TestMessageSearchWhereTermsClause(t *testing.T) {
@@ -92,5 +97,43 @@ func TestMessageSearchQueryRunsOnSQLite(t *testing.T) {
 	}
 	if id != message.ID {
 		t.Fatalf("message id = %q, want %q", id, message.ID)
+	}
+}
+
+func TestDownloadMessageMissingReturnsNotFound(t *testing.T) {
+	client, db := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	app := fiber.New()
+	cfg := &config.Config{}
+	cfg.API.ServiceToken = "test-token"
+	Register(app, client, db, testutil.NewFakeStore(), store, nil, config.NewHolder(cfg), nil)
+
+	request := func(path string, status int) []byte {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/api/v1"+path, nil)
+		req.Header.Set("Authorization", "Bearer test-token")
+		res, err := app.Test(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		raw, err := io.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.StatusCode != status {
+			t.Fatalf("GET %s: status=%d want=%d body=%s", path, res.StatusCode, status, raw)
+		}
+		return raw
+	}
+
+	for _, path := range []string{"/messages/does-not-exist/raw", "/messages/does-not-exist/attachments/1"} {
+		var body ErrorBody
+		if err := json.Unmarshal(request(path, fiber.StatusNotFound), &body); err != nil {
+			t.Fatalf("GET %s: invalid response: %v", path, err)
+		}
+		if body.Error.Code != "message_not_found" {
+			t.Fatalf("GET %s: error code = %q, want message_not_found", path, body.Error.Code)
+		}
 	}
 }
