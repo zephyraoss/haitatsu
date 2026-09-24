@@ -1,13 +1,20 @@
 package api
 
 import (
+	"context"
 	"net"
+	"regexp"
 	"strings"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 )
+
+var domainNamePattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 
 type dnsCheck struct {
 	Name    string `json:"name"`
@@ -30,6 +37,16 @@ func (h *Handler) checkDNS(c fiber.Ctx) error {
 	if domain == "" {
 		return problem(c, fiber.StatusBadRequest, "domain_required", "Domain is required")
 	}
+	if len(domain) > 253 || !domainNamePattern.MatchString(domain) {
+		return problem(c, fiber.StatusBadRequest, "domain_invalid", "Domain is not a valid hostname")
+	}
+	hosted, err := h.domainHosted(c.Context(), domain)
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "domain_lookup_failed", err.Error())
+	}
+	if !hosted {
+		return problem(c, fiber.StatusNotFound, "domain_not_hosted", "Domain has no DKIM key, mailbox, or route on this server")
+	}
 	checks := []dnsCheck{
 		h.checkMX(domain),
 		h.checkDKIM(c, domain),
@@ -37,6 +54,16 @@ func (h *Handler) checkDNS(c fiber.Ctx) error {
 		checkTXT("dmarc", "_dmarc."+domain, "v=DMARC1"),
 	}
 	return data(c, fiber.Map{"domain": domain, "checks": checks})
+}
+
+func (h *Handler) domainHosted(ctx context.Context, domain string) (bool, error) {
+	if ok, err := h.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).Exist(ctx); err != nil || ok {
+		return ok, err
+	}
+	if ok, err := h.client.Mailbox.Query().Where(sql.FieldHasSuffixFold(mailbox.FieldPrimaryAddress, "@"+domain)).Exist(ctx); err != nil || ok {
+		return ok, err
+	}
+	return h.client.Route.Query().Where(sql.FieldHasSuffixFold(route.FieldSourceAddress, "@"+domain)).Exist(ctx)
 }
 
 func (h *Handler) checkMX(domain string) dnsCheck {
