@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/mail"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -162,6 +163,9 @@ type APIConfig struct {
 type WorkersConfig struct {
 	Enabled     bool `pkl:"enabled" json:"enabled"`
 	Concurrency int  `pkl:"concurrency" json:"concurrency"`
+	// MaildirImportRoot confines maildir imports to a server-local directory.
+	// Maildir imports are disabled when empty.
+	MaildirImportRoot string `pkl:"maildir_import_root" json:"maildir_import_root"`
 }
 
 type TLSConfig struct {
@@ -473,6 +477,9 @@ func (c Config) Validate() error {
 	}
 	if c.Workers.Concurrency < 0 {
 		problems = append(problems, "workers.concurrency must be >= 0")
+	}
+	if root := strings.TrimSpace(c.Workers.MaildirImportRoot); root != "" && !filepath.IsAbs(root) {
+		problems = append(problems, "workers.maildir_import_root must be an absolute path")
 	}
 	if c.Logging.AxiomEnabled {
 		if strings.TrimSpace(c.Logging.AxiomDataset) == "" {

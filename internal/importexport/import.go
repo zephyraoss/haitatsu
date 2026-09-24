@@ -45,6 +45,9 @@ type ImportWorker struct {
 	events   *events.Service
 	workerID string
 	backend  database.Backend
+	// maildirRoot returns the directory maildir imports are confined to; an
+	// empty value disables maildir imports.
+	maildirRoot func() string
 }
 
 type importJob struct {
@@ -54,12 +57,19 @@ type importJob struct {
 	Source     map[string]any
 }
 
-func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstore.Store, events *events.Service, workerID string, backends ...database.Backend) *ImportWorker {
+func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstore.Store, events *events.Service, maildirRoot func() string, workerID string, backends ...database.Backend) *ImportWorker {
 	backend := database.BackendPostgres
 	if len(backends) > 0 {
 		backend = backends[0]
 	}
-	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
+	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend, maildirRoot: maildirRoot}
+}
+
+func (w *ImportWorker) maildirImportRoot() string {
+	if w.maildirRoot == nil {
+		return ""
+	}
+	return w.maildirRoot()
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -372,9 +382,9 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 }
 
 func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	root := strings.TrimSpace(sourceString(job.Source, "path"))
-	if root == "" {
-		return fmt.Errorf("maildir import requires source.path")
+	root, err := ResolveMaildirPath(w.maildirImportRoot(), sourceString(job.Source, "path"))
+	if err != nil {
+		return err
 	}
 	entries, err := maildirEntries(root)
 	if err != nil {

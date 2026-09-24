@@ -104,7 +104,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	cleanupWorker := cleanup.New(db.Ent(), blobStore, mail, m)
 	eventService := events.New(db.Ent())
 	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName, db.Backend())
-	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, mail, eventService, cfg.Server.InstanceName, db.Backend())
+	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, mail, eventService, func() string { return holder.Get().Workers.MaildirImportRoot }, cfg.Server.InstanceName, db.Backend())
 	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), func() config.WebhookConfig { return holder.Get().Webhooks }, m, cfg.Server.InstanceName, db.Backend())
 	resolver := routing.NewResolver(db.Ent())
 	ruleEngine := rules.New(db.Ent(), mail, eventService)

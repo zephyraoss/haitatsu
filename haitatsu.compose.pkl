@@ -65,6 +65,7 @@ api {
 workers {
   enabled = true
   concurrency = 2
+  maildir_import_root = ""
 }
 
 tls {
