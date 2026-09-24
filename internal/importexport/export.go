@@ -212,21 +212,31 @@ func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) (*os.File
 		os.Remove(tmp.Name())
 		return nil, 0, err
 	}
-	archive := zip.NewWriter(tmp)
+	messageIDs := make([]string, 0, len(items))
 	for _, item := range items {
-		msg, err := w.client.Message.Query().Where(message.IDEQ(item.MessageID)).Only(ctx)
+		messageIDs = append(messageIDs, item.MessageID)
+	}
+	blobKeys := make(map[string]string, len(messageIDs))
+	for start := 0; start < len(messageIDs); start += 500 {
+		end := min(start+500, len(messageIDs))
+		batch, err := w.client.Message.Query().
+			Where(message.IDIn(messageIDs[start:end]...)).
+			Select(message.FieldID, message.FieldBlobKey).
+			All(ctx)
 		if err != nil {
 			return discard(err)
 		}
-		raw, err := w.store.GetMessage(ctx, msg.BlobKey)
-		if err != nil {
-			return discard(err)
+		for _, msg := range batch {
+			blobKeys[msg.ID] = msg.BlobKey
 		}
-		file, err := archive.Create(fmt.Sprintf("messages/%s.eml", msg.ID))
-		if err != nil {
-			return discard(err)
+	}
+	archive := zip.NewWriter(tmp)
+	for _, messageID := range messageIDs {
+		blobKey, ok := blobKeys[messageID]
+		if !ok {
+			return discard(fmt.Errorf("message %s not found", messageID))
 		}
-		if _, err := file.Write(raw); err != nil {
+		if err := w.appendMessage(ctx, archive, messageID, blobKey); err != nil {
 			return discard(err)
 		}
 	}
@@ -241,6 +251,20 @@ func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) (*os.File
 		return discard(err)
 	}
 	return tmp, size, nil
+}
+
+func (w *ExportWorker) appendMessage(ctx context.Context, archive *zip.Writer, messageID string, blobKey string) error {
+	reader, err := w.store.GetObjectReader(ctx, blobKey)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	file, err := archive.Create(fmt.Sprintf("messages/%s.eml", messageID))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(file, reader)
+	return err
 }
 
 func (w *ExportWorker) fail(ctx context.Context, job exportJob, owner string, cause error) error {
