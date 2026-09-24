@@ -67,10 +67,19 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 	metadata := mailparse.Parse(raw)
 	fromDomain := firstAddressDomain(metadata.From)
 	dkimResult, dkimDomain := verifyDKIM(raw)
+	var (
+		listed    bool
+		dnsblZone string
+		dnsblDone = make(chan struct{})
+	)
+	go func() {
+		defer close(dnsblDone)
+		listed, dnsblZone = dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
+	}()
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
 	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain, spfResult, spfDomain)
 	listKind, listAction := c.senderRuleMatch(ctx, metadata, smtp, recipients)
-	listed, dnsblZone := dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
+	<-dnsblDone
 
 	score, reasons := score(spfResult, dkimResult, dmarcResult, dmarcPolicy, listKind)
 	if listed {
