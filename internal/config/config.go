@@ -81,6 +81,7 @@ type SMTPConfig struct {
 type IMAPConfig struct {
 	Addr                string `pkl:"addr" json:"addr"`
 	MaxConnectionsPerIP int    `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
+	AllowInsecureAuth   bool   `pkl:"allow_insecure_auth" json:"allow_insecure_auth"`
 }
 
 type SubmissionConfig struct {
