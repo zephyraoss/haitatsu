@@ -37,7 +37,10 @@ func TestSenderRulePrecedenceIsGlobalFirstAndAllowDoesNotBypassTypeSafe(t *testi
 		{OriginalRecipient: bob.PrimaryAddress, BaseRecipient: bob.PrimaryAddress, Mailboxes: []*ent.Mailbox{bob}},
 	}
 	raw := []byte("From: sender@remote.test\r\nSubject: hello\r\nMessage-ID: <a@remote.test>\r\n\r\nbody\r\n")
-	assessment := checker.Check(ctx, raw, SMTPContext{RemoteIP: "203.0.113.9", HELO: "remote.test"}, recipients)
+	assessment, err := checker.Check(ctx, raw, SMTPContext{RemoteIP: "203.0.113.9", HELO: "remote.test"}, recipients)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if kind, _ := assessment.AuthResults["list_kind"].(string); kind != "block" {
 		t.Fatalf("list_kind = %q, want block (global precedes mailbox rules)", kind)
@@ -72,7 +75,10 @@ func TestSenderAllowRuleStillRunsTypeSafeOnceForAllRecipients(t *testing.T) {
 		{OriginalRecipient: bob.PrimaryAddress, BaseRecipient: bob.PrimaryAddress, Mailboxes: []*ent.Mailbox{bob}},
 	}
 	raw := []byte("From: sender@remote.test\r\nSubject: hello\r\nMessage-ID: <a@remote.test>\r\n\r\nbody\r\n")
-	assessment := checker.Check(ctx, raw, SMTPContext{RemoteIP: "127.0.0.1", HELO: "remote.test"}, recipients)
+	assessment, err := checker.Check(ctx, raw, SMTPContext{RemoteIP: "127.0.0.1", HELO: "remote.test"}, recipients)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if evaluator.calls != 1 {
 		t.Fatalf("calls = %d, want 1 regardless of recipient count", evaluator.calls)

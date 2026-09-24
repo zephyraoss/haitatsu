@@ -1,6 +1,8 @@
 package api
 
 import (
+	"errors"
+
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/gofiber/fiber/v3"
 
@@ -81,8 +83,15 @@ func (h *Handler) createImport(c fiber.Ctx) error {
 			}
 		}
 	case "maildir":
-		if path, _ := req.Source["path"].(string); path == "" {
+		path, _ := req.Source["path"].(string)
+		if path == "" {
 			return problem(c, fiber.StatusBadRequest, "source_invalid", "Maildir import requires source.path")
+		}
+		if _, err := importexport.ResolveMaildirPath(h.config.Get().Workers.MaildirImportRoot, path); err != nil {
+			if errors.Is(err, importexport.ErrMaildirImportDisabled) {
+				return problem(c, fiber.StatusBadRequest, "source_type_invalid", "Maildir import is disabled on this server")
+			}
+			return problem(c, fiber.StatusBadRequest, "source_invalid", "Maildir source.path is invalid or outside the configured import root")
 		}
 	case "imap":
 		if addr, _ := req.Source["addr"].(string); addr == "" {

@@ -108,16 +108,14 @@ func (r *Resolver) patternRoute(ctx context.Context, target candidate) (Result, 
 
 func (r *Resolver) catchAllRoute(ctx context.Context, target candidate) (Result, bool, error) {
 	domain := addressDomain(target.OriginalRecipient)
-	routes, err := r.client.Route.Query().Where(route.TypeEQ("catch_all"), route.StatusEQ("active"), route.DeletedAtIsNil()).All(ctx)
+	item, err := r.client.Route.Query().Where(route.SourceAddressEQ("*@"+domain), route.TypeEQ("catch_all"), route.StatusEQ("active"), route.DeletedAtIsNil()).First(ctx)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return Result{}, false, nil
+		}
 		return Result{}, false, err
 	}
-	for _, item := range routes {
-		if item.SourceAddress == "*@"+domain {
-			return r.routeResult(ctx, item, target)
-		}
-	}
-	return Result{}, false, nil
+	return r.routeResult(ctx, item, target)
 }
 
 func (r *Resolver) routeResult(ctx context.Context, route *ent.Route, target candidate) (Result, bool, error) {
