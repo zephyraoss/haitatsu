@@ -201,6 +201,64 @@ func TestNotifierDeliversChangesToSubscribers(t *testing.T) {
 	}
 }
 
+func TestSetFlagsManyUpdatesAndNotifiesEachMessage(t *testing.T) {
+	ctx := context.Background()
+	client, _ := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	mbox := testutil.SeedMailbox(t, store, "bulk@example.com")
+	inbox, _ := store.FolderByName(ctx, mbox.ID, "INBOX")
+	label, err := store.CreateLabel(ctx, mbox.ID, "Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var items []*ent.MailboxMessage
+	for range 3 {
+		item, err := store.Attach(ctx, mailstore.Attach{MailboxID: mbox.ID, MessageID: seedMessage(t, client, 1).ID, FolderID: inbox.ID, SizeBytes: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		items = append(items, item)
+	}
+	link, err := store.AddLabel(ctx, items[1], label.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folderChanges, cancelFolder := store.Notifier().Subscribe(mailstore.FolderContainer(inbox.ID))
+	defer cancelFolder()
+	labelChanges, cancelLabel := store.Notifier().Subscribe(mailstore.LabelContainer(label.ID))
+	defer cancelLabel()
+
+	flags := mailstore.Flags{Seen: true, Keywords: []string{"$Important"}}
+	ids := []string{items[0].ID, items[2].ID, items[1].ID, "missing"}
+	if err := store.SetFlagsMany(ctx, ids, flags); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		got, err := client.MailboxMessage.Get(ctx, item.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Read || len(got.Keywords) != 1 || got.Keywords[0] != "$Important" {
+			t.Fatalf("message %s flags = %+v", item.ID, mailstore.FlagsOf(got))
+		}
+	}
+	seen := map[uint32]bool{}
+	for range items {
+		change := <-folderChanges
+		if change.Kind != mailstore.ChangeFlags || len(change.Flags) != 2 {
+			t.Fatalf("unexpected folder change %+v", change)
+		}
+		seen[change.UID] = true
+	}
+	if len(seen) != 3 {
+		t.Fatalf("expected a change per message, got uids %v", seen)
+	}
+	change := <-labelChanges
+	if change.Kind != mailstore.ChangeFlags || change.UID != link.UID {
+		t.Fatalf("unexpected label change %+v", change)
+	}
+}
+
 func TestRecomputeUsedBytesRepairsDrift(t *testing.T) {
 	ctx := context.Background()
 	client, _ := testutil.NewClient(t)

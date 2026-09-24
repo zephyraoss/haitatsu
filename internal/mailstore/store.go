@@ -248,6 +248,45 @@ func (s *Store) SetFlags(ctx context.Context, item *ent.MailboxMessage, flags Fl
 	return updated, nil
 }
 
+// SetFlagsMany applies the same flags to every message in ids with one
+// UPDATE, then publishes the same per-message change events SetFlags would.
+// Messages that no longer exist are skipped.
+func (s *Store) SetFlagsMany(ctx context.Context, ids []string, flags Flags) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	keywords := flags.Keywords
+	if keywords == nil {
+		keywords = []string{}
+	}
+	if _, err := s.client.MailboxMessage.Update().
+		Where(mailboxmessage.IDIn(ids...)).
+		SetRead(flags.Seen).SetAnswered(flags.Answered).SetFlagged(flags.Flagged).SetImapDeleted(flags.Deleted).SetDraft(flags.Draft).SetKeywords(keywords).
+		Save(ctx); err != nil {
+		return err
+	}
+	items, err := s.client.MailboxMessage.Query().Where(mailboxmessage.IDIn(ids...)).All(ctx)
+	if err != nil {
+		return err
+	}
+	links, err := s.client.MailboxMessageLabel.Query().Where(mailboxmessagelabel.MailboxMessageIDIn(ids...)).All(ctx)
+	if err != nil {
+		return err
+	}
+	linksByItem := make(map[string][]*ent.MailboxMessageLabel, len(links))
+	for _, link := range links {
+		linksByItem[link.MailboxMessageID] = append(linksByItem[link.MailboxMessageID], link)
+	}
+	list := flags.List()
+	for _, item := range items {
+		s.notifier.Publish(ctx, Change{MailboxID: item.MailboxID, Container: FolderContainer(item.FolderID), Kind: ChangeFlags, UID: item.UID, Flags: list})
+		for _, link := range linksByItem[item.ID] {
+			s.notifier.Publish(ctx, Change{MailboxID: item.MailboxID, Container: LabelContainer(link.LabelID), Kind: ChangeFlags, UID: link.UID, Flags: list})
+		}
+	}
+	return nil
+}
+
 func (s *Store) publishLabelFlagChanges(ctx context.Context, item *ent.MailboxMessage, flags Flags) {
 	links, err := s.client.MailboxMessageLabel.Query().Where(mailboxmessagelabel.MailboxMessageIDEQ(item.ID)).All(ctx)
 	if err != nil {

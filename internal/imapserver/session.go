@@ -2,6 +2,7 @@ package imapserver
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -486,12 +487,18 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 	if err := s.resync(ctx, nil, syncMode{}); err != nil {
 		return err
 	}
-	for _, index := range s.view.selected(numSet) {
+	indexes := s.view.selected(numSet)
+	nextFlags := make([]mailstore.Flags, len(indexes))
+	groups := make(map[string][]string)
+	var groupOrder []string
+	groupFlags := make(map[string]mailstore.Flags)
+	for i, index := range indexes {
 		item := s.view.entries[index]
 		if item.gone {
 			continue
 		}
 		next := item.flags
+		next.Keywords = slices.Clone(next.Keywords)
 		switch flags.Op {
 		case imap.StoreFlagsSet:
 			next = mailstore.ParseFlags(storeFlagStrings(flags.Flags))
@@ -504,16 +511,25 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 				next.Set(string(flag), false)
 			}
 		}
-		mm, err := s.client.MailboxMessage.Get(ctx, item.itemID)
-		if err != nil {
-			if ent.IsNotFound(err) {
-				continue
-			}
+		nextFlags[i] = next
+		key := strings.Join(next.List(), " ")
+		if _, ok := groups[key]; !ok {
+			groupOrder = append(groupOrder, key)
+			groupFlags[key] = next
+		}
+		groups[key] = append(groups[key], item.itemID)
+	}
+	for _, key := range groupOrder {
+		if err := s.store.SetFlagsMany(ctx, groups[key], groupFlags[key]); err != nil {
 			return err
 		}
-		if _, err := s.store.SetFlags(ctx, mm, next); err != nil {
-			return err
+	}
+	for i, index := range indexes {
+		item := s.view.entries[index]
+		if item.gone {
+			continue
 		}
+		next := nextFlags[i]
 		s.view.entries[index].flags = next
 		if !flags.Silent {
 			writer := w.CreateMessage(uint32(index + 1))
