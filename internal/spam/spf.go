@@ -5,11 +5,31 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-msgauth/authres"
 )
 
-const maxSPFDepth = 10
+// Limits from RFC 7208 §4.6.4.
+const (
+	maxSPFDepth     = 10
+	maxSPFLookups   = 10
+	maxSPFMXRecords = 10
+	maxSPFAddresses = 10
+	spfTimeout      = 20 * time.Second
+)
+
+type spfBudget struct {
+	lookups int
+}
+
+func (b *spfBudget) consume() bool {
+	if b.lookups >= maxSPFLookups {
+		return false
+	}
+	b.lookups++
+	return true
+}
 
 func checkSPF(ctx context.Context, smtp SMTPContext) (authres.ResultValue, string, string) {
 	domain := addressDomain(smtp.MailFrom)
@@ -20,13 +40,18 @@ func checkSPF(ctx context.Context, smtp SMTPContext) (authres.ResultValue, strin
 	if domain == "" || remoteIP == nil {
 		return authres.ResultNone, domain, ""
 	}
-	result, reason := evalSPF(ctx, domain, remoteIP, 0)
+	ctx, cancel := context.WithTimeout(ctx, spfTimeout)
+	defer cancel()
+	result, reason := evalSPF(ctx, domain, remoteIP, 0, &spfBudget{})
 	return result, domain, reason
 }
 
-func evalSPF(ctx context.Context, domain string, remoteIP net.IP, depth int) (authres.ResultValue, string) {
+func evalSPF(ctx context.Context, domain string, remoteIP net.IP, depth int, budget *spfBudget) (authres.ResultValue, string) {
 	if depth > maxSPFDepth {
 		return authres.ResultPermError, "too many SPF includes or redirects"
+	}
+	if err := ctx.Err(); err != nil {
+		return authres.ResultTempError, err.Error()
 	}
 	record, result, reason := lookupSPF(ctx, domain)
 	if result != "" {
@@ -48,7 +73,10 @@ func evalSPF(ctx context.Context, domain string, remoteIP net.IP, depth int) (au
 		case "all":
 			return qualifierResult(qualifier), "all"
 		case "include":
-			included, includeReason := evalSPF(ctx, arg, remoteIP, depth+1)
+			if !budget.consume() {
+				return authres.ResultPermError, "too many DNS lookups"
+			}
+			included, includeReason := evalSPF(ctx, arg, remoteIP, depth+1, budget)
 			if included == authres.ResultPass {
 				return qualifierResult(qualifier), "include:" + arg
 			}
@@ -60,10 +88,16 @@ func evalSPF(ctx context.Context, domain string, remoteIP net.IP, depth int) (au
 				return qualifierResult(qualifier), name + ":" + arg
 			}
 		case "a":
+			if !budget.consume() {
+				return authres.ResultPermError, "too many DNS lookups"
+			}
 			if hostMatches(ctx, remoteIP, mechanismDomain(arg, domain), cidr) {
 				return qualifierResult(qualifier), "a"
 			}
 		case "mx":
+			if !budget.consume() {
+				return authres.ResultPermError, "too many DNS lookups"
+			}
 			if mxMatches(ctx, remoteIP, mechanismDomain(arg, domain), cidr) {
 				return qualifierResult(qualifier), "mx"
 			}
@@ -71,7 +105,10 @@ func evalSPF(ctx context.Context, domain string, remoteIP net.IP, depth int) (au
 	}
 
 	if redirect != "" {
-		return evalSPF(ctx, redirect, remoteIP, depth+1)
+		if !budget.consume() {
+			return authres.ResultPermError, "too many DNS lookups"
+		}
+		return evalSPF(ctx, redirect, remoteIP, depth+1, budget)
 	}
 	return authres.ResultNeutral, "no SPF mechanism matched"
 }
@@ -159,6 +196,9 @@ func hostMatches(ctx context.Context, remoteIP net.IP, domain string, cidr strin
 	if err != nil {
 		return false
 	}
+	if len(addresses) > maxSPFAddresses {
+		addresses = addresses[:maxSPFAddresses]
+	}
 	for _, address := range addresses {
 		if ipMechanismMatches(remoteIP, address, cidr) {
 			return true
@@ -171,6 +211,9 @@ func mxMatches(ctx context.Context, remoteIP net.IP, domain string, cidr string)
 	records, err := net.DefaultResolver.LookupMX(ctx, domain)
 	if err != nil {
 		return false
+	}
+	if len(records) > maxSPFMXRecords {
+		records = records[:maxSPFMXRecords]
 	}
 	for _, record := range records {
 		if hostMatches(ctx, remoteIP, strings.TrimSuffix(record.Host, "."), cidr) {
