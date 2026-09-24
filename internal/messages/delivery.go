@@ -44,11 +44,19 @@ func NewService(client *ent.Client, blobs BlobStore, store *mailstore.Store, eve
 }
 
 func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
+	normalized := mailparse.NormalizeMessage(raw)
+	return s.DeliverParsed(ctx, normalized, mailparse.Parse(normalized), recipients, assessment)
+}
+
+// DeliverParsed stores a message that has already been normalized with
+// mailparse.NormalizeMessage and parsed once upstream. Only the header map is
+// recomputed from the stored bytes, since trace headers are prepended.
+func (s *Service) DeliverParsed(ctx context.Context, normalized []byte, metadata mailparse.Metadata, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
 	messageID := ids.New().String()
 	traceID := ids.New().String()
 	key := messageObjectKey(time.Now().UTC(), messageID)
-	stored := s.withTraceHeaders(mailparse.NormalizeMessage(raw), traceID, assessment.Header)
-	metadata := mailparse.Parse(stored)
+	stored := s.withTraceHeaders(normalized, traceID, assessment.Header)
+	metadata.Headers = mailparse.ParseHeaders(stored)
 
 	if err := s.blobs.PutMessage(ctx, key, stored); err != nil {
 		return nil, err

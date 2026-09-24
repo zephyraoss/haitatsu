@@ -63,8 +63,12 @@ func NewChecker(client *ent.Client, cfg func() config.SpamConfig, authID string,
 }
 
 func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recipients []routing.Result) Assessment {
+	return c.CheckParsed(ctx, raw, mailparse.Parse(raw), smtp, recipients)
+}
+
+// CheckParsed assesses raw using metadata already parsed from it by the caller.
+func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result) Assessment {
 	cfg := c.cfg()
-	metadata := mailparse.Parse(raw)
 	fromDomain := firstAddressDomain(metadata.From)
 	dkimResult, dkimDomain := verifyDKIM(raw)
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)

@@ -82,6 +82,16 @@ func Parse(data []byte) Metadata {
 	return metadata
 }
 
+// ParseHeaders returns the header map of data without walking MIME parts.
+func ParseHeaders(data []byte) map[string][]string {
+	reader, err := mail.CreateReader(bytes.NewReader(data))
+	if err != nil && reader == nil {
+		return map[string][]string{}
+	}
+	defer reader.Close()
+	return headerMap(reader.Header.Header)
+}
+
 func ExtractAttachment(data []byte, partIndex int) (Attachment, error) {
 	reader, err := mail.CreateReader(bytes.NewReader(data))
 	if err != nil && reader == nil {
