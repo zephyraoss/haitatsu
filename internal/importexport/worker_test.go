@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"entgo.io/ent/dialect"
@@ -282,6 +283,48 @@ func TestImportZipJob(t *testing.T) {
 	inbox := folderByName(t, client, mbox.ID, "INBOX")
 	if items := messagesInFolder(t, client, mbox.ID, inbox.ID); len(items) != 2 {
 		t.Errorf("INBOX has %d messages, want 2", len(items))
+	}
+}
+
+func TestImportLimitsFailJob(t *testing.T) {
+	ctx := context.Background()
+	client := newTestClient(t)
+	store := newFakeStore()
+	mbox := seedMailbox(t, client)
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	file, err := zw.Create("big.eml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(append(rawMessage("big"), bytes.Repeat([]byte("a"), 4096)...)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store.objects["import.zip"] = buf.Bytes()
+	zipJob := importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": "import.zip"}}
+
+	worker := &ImportWorker{client: client, store: store, limits: ImportLimits{MaxMessageBytes: 1024}}
+	if _, err := worker.importJob(ctx, zipJob); err == nil || !strings.Contains(err.Error(), "maximum message size") {
+		t.Fatalf("zip import err = %v, want per-message size error", err)
+	}
+
+	root := t.TempDir()
+	writeMaildirMessage(t, root, "cur/1.host:2,S", rawMessage("one"))
+	writeMaildirMessage(t, root, "cur/2.host:2,S", rawMessage("two"))
+	maildirJob := importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": root}}
+
+	worker = &ImportWorker{client: client, store: store, limits: ImportLimits{MaxEntries: 1}}
+	if _, err := worker.importJob(ctx, maildirJob); err == nil || !strings.Contains(err.Error(), "maximum of 1 messages") {
+		t.Fatalf("maildir import err = %v, want entry count error", err)
+	}
+
+	worker = &ImportWorker{client: client, store: store, limits: ImportLimits{MaxTotalBytes: int64(len(rawMessage("one"))) + 1}}
+	if _, err := worker.importJob(ctx, maildirJob); err == nil || !strings.Contains(err.Error(), "maximum total size") {
+		t.Fatalf("maildir import err = %v, want total size error", err)
 	}
 }
 

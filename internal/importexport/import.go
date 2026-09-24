@@ -35,7 +35,31 @@ import (
 const (
 	jobLeaseDuration      = 10 * time.Minute
 	jobLeaseRenewInterval = 2 * time.Minute
+
+	defaultMaxMessageBytes = 50 * 1024 * 1024
+	defaultMaxEntries      = 1_000_000
+	defaultMaxTotalBytes   = 50 * 1024 * 1024 * 1024
 )
+
+// ImportLimits bounds how much data a single import job may read into memory.
+type ImportLimits struct {
+	MaxMessageBytes int64
+	MaxEntries      int
+	MaxTotalBytes   int64
+}
+
+func (l ImportLimits) withDefaults() ImportLimits {
+	if l.MaxMessageBytes <= 0 {
+		l.MaxMessageBytes = defaultMaxMessageBytes
+	}
+	if l.MaxEntries <= 0 {
+		l.MaxEntries = defaultMaxEntries
+	}
+	if l.MaxTotalBytes <= 0 {
+		l.MaxTotalBytes = defaultMaxTotalBytes
+	}
+	return l
+}
 
 type ImportWorker struct {
 	db       *sql.DB
@@ -45,6 +69,60 @@ type ImportWorker struct {
 	events   *events.Service
 	workerID string
 	backend  database.Backend
+	limits   ImportLimits
+}
+
+// importBudget tracks per-job entry count and total bytes against ImportLimits.
+type importBudget struct {
+	limits  ImportLimits
+	entries int
+	bytes   int64
+}
+
+func newImportBudget(limits ImportLimits) *importBudget {
+	return &importBudget{limits: limits.withDefaults()}
+}
+
+func (b *importBudget) addEntry() error {
+	b.entries++
+	if b.entries > b.limits.MaxEntries {
+		return fmt.Errorf("import exceeds maximum of %d messages", b.limits.MaxEntries)
+	}
+	return nil
+}
+
+func (b *importBudget) addBytes(n int64) error {
+	b.bytes += n
+	if b.bytes > b.limits.MaxTotalBytes {
+		return fmt.Errorf("import exceeds maximum total size of %d bytes", b.limits.MaxTotalBytes)
+	}
+	return nil
+}
+
+// readLimited reads r fully, failing if it exceeds the per-message limit or the
+// remaining total budget.
+func (b *importBudget) readLimited(r io.Reader, label string) ([]byte, error) {
+	limit := b.limits.MaxMessageBytes
+	if remaining := b.limits.MaxTotalBytes - b.bytes; remaining < limit {
+		limit = remaining
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("import exceeds maximum total size of %d bytes", b.limits.MaxTotalBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		if limit < b.limits.MaxMessageBytes {
+			return nil, fmt.Errorf("import exceeds maximum total size of %d bytes", b.limits.MaxTotalBytes)
+		}
+		return nil, fmt.Errorf("%s exceeds maximum message size of %d bytes", label, b.limits.MaxMessageBytes)
+	}
+	if err := b.addBytes(int64(len(data))); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 type importJob struct {
@@ -60,6 +138,12 @@ func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstor
 		backend = backends[0]
 	}
 	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
+}
+
+// WithLimits sets the size limits applied to every import job.
+func (w *ImportWorker) WithLimits(limits ImportLimits) *ImportWorker {
+	w.limits = limits
+	return w
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -217,13 +301,14 @@ func (w *ImportWorker) importJob(ctx context.Context, job importJob) (int, error
 	}
 	folders := newFolderCache(inbox.ID)
 	progress := &importProgress{client: w.client, jobID: job.ID}
+	budget := newImportBudget(w.limits)
 	switch job.SourceType {
 	case "zip":
-		err = w.importZip(ctx, job, mbox, inbox.ID, progress)
+		err = w.importZip(ctx, job, mbox, inbox.ID, progress, budget)
 	case "maildir":
-		err = w.importMaildir(ctx, job, mbox, folders, progress)
+		err = w.importMaildir(ctx, job, mbox, folders, progress, budget)
 	case "imap":
-		err = w.importIMAP(ctx, job, mbox, folders, progress)
+		err = w.importIMAP(ctx, job, mbox, folders, progress, budget)
 	default:
 		err = fmt.Errorf("unsupported import source type %q", job.SourceType)
 	}
@@ -324,7 +409,7 @@ func canonicalFolderSegment(segment string) string {
 	return segment
 }
 
-func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string, progress *importProgress) error {
+func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.Mailbox, inboxID string, progress *importProgress, budget *importBudget) error {
 	key := sourceKey(job.Source)
 	if key == "" {
 		return fmt.Errorf("zip import requires source.object_key")
@@ -342,10 +427,14 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 		tmp.Close()
 		os.Remove(tmp.Name())
 	}()
-	size, err := io.Copy(tmp, reader)
+	maxArchive := budget.limits.MaxTotalBytes
+	size, err := io.Copy(tmp, io.LimitReader(reader, maxArchive+1))
 	reader.Close()
 	if err != nil {
 		return err
+	}
+	if size > maxArchive {
+		return fmt.Errorf("zip archive exceeds maximum size of %d bytes", maxArchive)
 	}
 	archive, err := zip.NewReader(tmp, size)
 	if err != nil {
@@ -356,7 +445,10 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 		if file.FileInfo().IsDir() || !strings.HasSuffix(strings.ToLower(file.Name), ".eml") {
 			continue
 		}
-		raw, err := readZipFile(file)
+		if err := budget.addEntry(); err != nil {
+			return err
+		}
+		raw, err := readZipFile(file, budget)
 		if err != nil {
 			return err
 		}
@@ -371,7 +463,7 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 	return nil
 }
 
-func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
+func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress, budget *importBudget) error {
 	root := strings.TrimSpace(sourceString(job.Source, "path"))
 	if root == "" {
 		return fmt.Errorf("maildir import requires source.path")
@@ -381,7 +473,10 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 		return err
 	}
 	for _, entry := range entries {
-		raw, err := os.ReadFile(entry.path)
+		if err := budget.addEntry(); err != nil {
+			return err
+		}
+		raw, err := readMaildirFile(entry.path, budget)
 		if err != nil {
 			return err
 		}
@@ -400,7 +495,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 	return nil
 }
 
-func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
+func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress, budget *importBudget) error {
 	client, err := dialIMAP(job.Source)
 	if err != nil {
 		return err
@@ -427,7 +522,7 @@ func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.
 		if err != nil {
 			return err
 		}
-		if err := w.importIMAPMailbox(ctx, client, mailboxName, job.MailboxID, folderID, mbox.PrimaryAddress, progress); err != nil {
+		if err := w.importIMAPMailbox(ctx, client, mailboxName, job.MailboxID, folderID, mbox.PrimaryAddress, progress, budget); err != nil {
 			return err
 		}
 	}
@@ -488,7 +583,7 @@ func destinationFolderName(remoteName string, delim string) string {
 
 const imapFetchBatchSize = 200
 
-func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, folderID string, primaryAddress string, progress *importProgress) error {
+func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient.Client, mailboxName string, mailboxID string, folderID string, primaryAddress string, progress *importProgress, budget *importBudget) error {
 	selected, err := client.Select(mailboxName, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
 		return err
@@ -498,14 +593,14 @@ func (w *ImportWorker) importIMAPMailbox(ctx context.Context, client *imapclient
 			return err
 		}
 		end := min(start+imapFetchBatchSize-1, selected.NumMessages)
-		if err := w.fetchIMAPBatch(ctx, client, start, end, mailboxID, folderID, primaryAddress, progress); err != nil {
+		if err := w.fetchIMAPBatch(ctx, client, start, end, mailboxID, folderID, primaryAddress, progress, budget); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Client, start uint32, end uint32, mailboxID string, folderID string, primaryAddress string, progress *importProgress) error {
+func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Client, start uint32, end uint32, mailboxID string, folderID string, primaryAddress string, progress *importProgress, budget *importBudget) error {
 	bodySection := &imap.FetchItemBodySection{}
 	var seqSet imap.SeqSet
 	seqSet.AddRange(start, end)
@@ -519,7 +614,10 @@ func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Cl
 		if remoteMessage == nil {
 			break
 		}
-		raw, flags, err := fetchMessageData(remoteMessage)
+		if err := budget.addEntry(); err != nil {
+			return closeWithError(err)
+		}
+		raw, flags, err := fetchMessageData(remoteMessage, budget)
 		if err != nil {
 			return closeWithError(err)
 		}
@@ -702,7 +800,7 @@ func imapTLSConfig(addr string, skipVerify bool) *tls.Config {
 	return &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify}
 }
 
-func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags, error) {
+func fetchMessageData(message *imapclient.FetchMessageData, budget *importBudget) ([]byte, importFlags, error) {
 	var raw []byte
 	var flags importFlags
 	for {
@@ -715,7 +813,7 @@ func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags
 			if data.Literal == nil {
 				continue
 			}
-			body, err := io.ReadAll(data.Literal)
+			body, err := budget.readLimited(data.Literal, "imap message")
 			if err != nil {
 				return nil, flags, err
 			}
@@ -820,13 +918,25 @@ func maildirFlags(filename string) importFlags {
 	return flags
 }
 
-func readZipFile(file *zip.File) ([]byte, error) {
+func readZipFile(file *zip.File, budget *importBudget) ([]byte, error) {
+	if file.UncompressedSize64 > uint64(budget.limits.MaxMessageBytes) {
+		return nil, fmt.Errorf("zip entry %q exceeds maximum message size of %d bytes", file.Name, budget.limits.MaxMessageBytes)
+	}
 	reader, err := file.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	return io.ReadAll(reader)
+	return budget.readLimited(reader, fmt.Sprintf("zip entry %q", file.Name))
+}
+
+func readMaildirFile(path string, budget *importBudget) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return budget.readLimited(f, fmt.Sprintf("maildir file %q", filepath.Base(path)))
 }
 
 func messageObjectKey(t time.Time, messageID string) string {
