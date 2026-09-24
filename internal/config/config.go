@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/mail"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -34,6 +36,33 @@ type Config struct {
 	Notifications NotificationConfig `pkl:"notifications" json:"notifications"`
 	Spam          SpamConfig         `pkl:"spam" json:"spam"`
 	Limits        LimitsConfig       `pkl:"limits" json:"limits"`
+	Imports       ImportsConfig      `pkl:"imports" json:"imports"`
+}
+
+// ImportsConfig controls mailbox import behaviour that is decided by the
+// operator rather than by API callers.
+type ImportsConfig struct {
+	// InsecureTLSHosts lists remote IMAP hosts (or host:port pairs) for which an
+	// import request may disable TLS certificate verification via
+	// source.skip_verify. Requests naming any other host are rejected.
+	InsecureTLSHosts []string `pkl:"insecure_tls_hosts" json:"insecure_tls_hosts"`
+}
+
+// AllowsInsecureTLS reports whether certificate verification may be disabled
+// for the given IMAP address.
+func (c ImportsConfig) AllowsInsecureTLS(addr string) bool {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	for _, allowed := range c.InsecureTLSHosts {
+		allowed = strings.ToLower(strings.TrimSpace(allowed))
+		if allowed != "" && (allowed == addr || allowed == host) {
+			return true
+		}
+	}
+	return false
 }
 
 type ServerConfig struct {
@@ -55,8 +84,9 @@ type IMAPConfig struct {
 }
 
 type SubmissionConfig struct {
-	StartTLSAddr string `pkl:"starttls_addr" json:"starttls_addr"`
-	TLSAddr      string `pkl:"tls_addr" json:"tls_addr"`
+	StartTLSAddr      string `pkl:"starttls_addr" json:"starttls_addr"`
+	TLSAddr           string `pkl:"tls_addr" json:"tls_addr"`
+	AllowInsecureAuth bool   `pkl:"allow_insecure_auth" json:"allow_insecure_auth"`
 }
 
 type RelayConfig struct {
@@ -66,6 +96,14 @@ type RelayConfig struct {
 	FromHost        string `pkl:"from_host" json:"from_host"`
 	MaxAttempts     int    `pkl:"max_attempts" json:"max_attempts"`
 	MaxRetryMinutes int    `pkl:"max_retry_minutes" json:"max_retry_minutes"`
+	TimeoutSeconds  int    `pkl:"timeout_seconds" json:"timeout_seconds"`
+}
+
+func (c RelayConfig) Timeout() time.Duration {
+	if c.TimeoutSeconds <= 0 {
+		return 60 * time.Second
+	}
+	return time.Duration(c.TimeoutSeconds) * time.Second
 }
 
 func (c RelayConfig) RetryPolicy() RetryPolicy {
@@ -162,6 +200,9 @@ type APIConfig struct {
 type WorkersConfig struct {
 	Enabled     bool `pkl:"enabled" json:"enabled"`
 	Concurrency int  `pkl:"concurrency" json:"concurrency"`
+	// MaildirImportRoot confines maildir imports to a server-local directory.
+	// Maildir imports are disabled when empty.
+	MaildirImportRoot string `pkl:"maildir_import_root" json:"maildir_import_root"`
 }
 
 type TLSConfig struct {
@@ -474,6 +515,9 @@ func (c Config) Validate() error {
 	if c.Workers.Concurrency < 0 {
 		problems = append(problems, "workers.concurrency must be >= 0")
 	}
+	if root := strings.TrimSpace(c.Workers.MaildirImportRoot); root != "" && !filepath.IsAbs(root) {
+		problems = append(problems, "workers.maildir_import_root must be an absolute path")
+	}
 	if c.Logging.AxiomEnabled {
 		if strings.TrimSpace(c.Logging.AxiomDataset) == "" {
 			problems = append(problems, "logging.axiom_dataset is required when Axiom logging is enabled")
@@ -525,8 +569,8 @@ func (c Config) Validate() error {
 	if c.IMAP.MaxConnectionsPerIP < 0 {
 		problems = append(problems, "imap.max_connections_per_ip must be >= 0")
 	}
-	if c.Relay.MaxAttempts < 0 || c.Relay.MaxRetryMinutes < 0 {
-		problems = append(problems, "relay.max_attempts and relay.max_retry_minutes must be >= 0")
+	if c.Relay.MaxAttempts < 0 || c.Relay.MaxRetryMinutes < 0 || c.Relay.TimeoutSeconds < 0 {
+		problems = append(problems, "relay.max_attempts, relay.max_retry_minutes and relay.timeout_seconds must be >= 0")
 	}
 	if c.Webhooks.MaxAttempts < 0 {
 		problems = append(problems, "webhooks.max_attempts must be >= 0")

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
+
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
@@ -72,15 +74,6 @@ func (s *Store) FolderByName(ctx context.Context, mailboxID string, name string)
 }
 
 func (s *Store) Attach(ctx context.Context, params Attach) (*ent.MailboxMessage, error) {
-	if params.EnforceQuota {
-		mbox, err := s.client.Mailbox.Get(ctx, params.MailboxID)
-		if err != nil {
-			return nil, err
-		}
-		if OverQuotaWith(mbox, params.SizeBytes) {
-			return nil, ErrOverQuota
-		}
-	}
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
 		return nil, err
@@ -93,8 +86,32 @@ func (s *Store) Attach(ctx context.Context, params Attach) (*ent.MailboxMessage,
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	s.notifier.Publish(ctx, Change{MailboxID: params.MailboxID, Container: FolderContainer(params.FolderID), Kind: ChangeExists, UID: item.UID})
+	s.NotifyAttached(ctx, params, item)
 	return item, nil
+}
+
+// AttachInTx attaches within the caller's transaction. The caller must call
+// NotifyAttached after committing.
+func (s *Store) AttachInTx(ctx context.Context, tx *ent.Tx, params Attach) (*ent.MailboxMessage, error) {
+	return attachInTx(ctx, tx.Client(), params)
+}
+
+func (s *Store) NotifyAttached(ctx context.Context, params Attach, item *ent.MailboxMessage) {
+	s.notifier.Publish(ctx, Change{MailboxID: params.MailboxID, Container: FolderContainer(params.FolderID), Kind: ChangeExists, UID: item.UID})
+}
+
+// LockMailbox takes a write lock on the mailbox row for the duration of tx so
+// that check-then-write sequences against the mailbox are serialized.
+func LockMailbox(ctx context.Context, tx *ent.Tx, mailboxID string) error {
+	n, err := tx.Client().Mailbox.Update().Where(mailbox.IDEQ(mailboxID)).AddUsedBytes(0).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		_, err := tx.Client().Mailbox.Get(ctx, mailboxID)
+		return err
+	}
+	return nil
 }
 
 func attachInTx(ctx context.Context, client *ent.Client, params Attach) (*ent.MailboxMessage, error) {
@@ -126,10 +143,42 @@ func attachInTx(ctx context.Context, client *ent.Client, params Attach) (*ent.Ma
 	if err != nil {
 		return nil, err
 	}
-	if _, err := client.Mailbox.UpdateOneID(params.MailboxID).AddUsedBytes(params.SizeBytes).Save(ctx); err != nil {
+	if err := addUsedBytes(ctx, client, params.MailboxID, params.SizeBytes, params.EnforceQuota); err != nil {
 		return nil, err
 	}
 	return item, nil
+}
+
+// addUsedBytes increments used_bytes; with enforceQuota the increment is a
+// single conditional UPDATE that fails with ErrOverQuota unless the new total
+// fits within quota_bytes, so the check and the write cannot race.
+func addUsedBytes(ctx context.Context, client *ent.Client, mailboxID string, size int64, enforceQuota bool) error {
+	if !enforceQuota {
+		_, err := client.Mailbox.UpdateOneID(mailboxID).AddUsedBytes(size).Save(ctx)
+		return err
+	}
+	n, err := client.Mailbox.Update().
+		Where(
+			mailbox.IDEQ(mailboxID),
+			mailbox.Or(
+				mailbox.QuotaBytesLTE(0),
+				func(s *sql.Selector) {
+					s.Where(sql.ExprP(s.C(mailbox.FieldUsedBytes)+" + ? <= "+s.C(mailbox.FieldQuotaBytes), size))
+				},
+			),
+		).
+		AddUsedBytes(size).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := client.Mailbox.Get(ctx, mailboxID); err != nil {
+			return err
+		}
+		return ErrOverQuota
+	}
+	return nil
 }
 
 func allocateFolderUID(ctx context.Context, client *ent.Client, folderID string) (uint32, error) {
