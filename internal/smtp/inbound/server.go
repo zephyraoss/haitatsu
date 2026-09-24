@@ -13,6 +13,7 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/bounce"
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/messages"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
@@ -22,6 +23,8 @@ import (
 )
 
 const maxBounceRecipients = 10
+
+const spamCheckTimeout = 30 * time.Second
 
 type Server struct {
 	server *smtp.Server
@@ -189,11 +192,19 @@ func (s *session) Data(r io.Reader) error {
 	if len(s.recipients) == 0 {
 		return nil
 	}
-	assessment := s.backend.spam.Check(context.Background(), raw, s.smtp, s.recipients)
+	normalized := mailparse.NormalizeMessage(raw)
+	metadata := mailparse.Parse(normalized)
+	spamCtx, cancel := context.WithTimeout(context.Background(), spamCheckTimeout)
+	assessment, err := s.backend.spam.CheckParsed(spamCtx, normalized, metadata, s.smtp, s.recipients)
+	cancel()
+	if err != nil {
+		slog.Error("inbound spam check failed", "error", err)
+		return temporarySMTPError("temporary local problem")
+	}
 	if assessment.Reject {
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "message rejected by policy"}
 	}
-	if _, err := s.backend.messages.Deliver(context.Background(), raw, s.recipients, assessment); err != nil {
+	if _, err := s.backend.messages.DeliverParsed(context.Background(), normalized, metadata, s.recipients, assessment); err != nil {
 		slog.Error("inbound delivery failed", "error", err)
 		return temporarySMTPError("temporary local problem")
 	}

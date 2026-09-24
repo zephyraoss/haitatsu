@@ -8,6 +8,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
@@ -126,5 +128,32 @@ func TestSenderAllowedViaRoute(t *testing.T) {
 	_, err = submission.Submit(ctx, mbox.ID, "alice@example.test", []byte("From: alice@example.test\r\nTo: a@x.test\r\nSubject: hi\r\n\r\nbody\r\n"), nil)
 	if !errors.Is(err, mailstore.ErrOverQuota) {
 		t.Fatalf("expected over quota, got %v", err)
+	}
+}
+
+func TestSubmitConcurrentRespectsHourlyLimit(t *testing.T) {
+	submission, mbox, _ := newSubmission(t, Limits{PerHour: 2})
+	raw := []byte("From: alice@example.test\r\nTo: a@x.test\r\nSubject: hi\r\n\r\nbody\r\n")
+	var wg sync.WaitGroup
+	var accepted atomic.Int32
+	for range 6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := submission.Submit(context.Background(), mbox.ID, "alice@example.test", raw, nil)
+			if err == nil {
+				accepted.Add(1)
+			} else if !errors.Is(err, ErrRateLimited) {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if accepted.Load() != 2 {
+		t.Fatalf("accepted %d submissions, want 2", accepted.Load())
+	}
+	jobs, err := submission.client.OutboundJob.Query().Count(context.Background())
+	if err != nil || jobs != 2 {
+		t.Fatalf("outbound jobs = %d (%v), want 2", jobs, err)
 	}
 }

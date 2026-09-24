@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/mail"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/emersion/go-msgauth/authres"
 	"github.com/emersion/go-msgauth/dkim"
@@ -62,15 +65,35 @@ func NewChecker(client *ent.Client, cfg func() config.SpamConfig, authID string,
 	return c
 }
 
-func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recipients []routing.Result) Assessment {
+// Check evaluates the message. It returns an error when a policy lookup fails,
+// in which case the caller must defer the message rather than accept it.
+func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recipients []routing.Result) (Assessment, error) {
+	return c.CheckParsed(ctx, raw, mailparse.Parse(raw), smtp, recipients)
+}
+
+// CheckParsed is Check for callers that already hold the parsed metadata of raw.
+func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result) (Assessment, error) {
 	cfg := c.cfg()
-	metadata := mailparse.Parse(raw)
 	fromDomain := firstAddressDomain(metadata.From)
+
+	var (
+		listed    bool
+		dnsblZone string
+		wg        sync.WaitGroup
+	)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		listed, dnsblZone = dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
+	}()
 	dkimResult, dkimDomain := verifyDKIM(raw)
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
 	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain, spfResult, spfDomain)
-	listKind, listAction := c.senderRuleMatch(ctx, metadata, smtp, recipients)
-	listed, dnsblZone := dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
+	listKind, listAction, err := c.senderRuleMatch(ctx, metadata, smtp, recipients)
+	wg.Wait()
+	if err != nil {
+		return Assessment{}, fmt.Errorf("sender rules: %w", err)
+	}
 
 	score, reasons := score(spfResult, dkimResult, dmarcResult, dmarcPolicy, listKind)
 	if listed {
@@ -122,7 +145,7 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 	assessment.Reject = score >= rejectThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
 	forcedJunk := (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
 	c.applyMailboxPolicy(ctx, raw, cfg, recipients, forcedJunk, &assessment)
-	return assessment
+	return assessment, nil
 }
 
 func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcResult authres.ResultValue, smtp SMTPContext, metadata mailparse.Metadata) string {
@@ -137,24 +160,29 @@ func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult au
 	})
 }
 
-func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result) (string, string) {
+func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result) (string, string, error) {
 	entries, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("global")).All(ctx)
 	if err != nil {
-		return "", ""
+		return "", "", err
 	}
-	mailboxIDs := recipientMailboxIDs(recipients)
-	for _, id := range mailboxIDs {
-		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("mailbox"), senderrule.ScopeRefEQ(id)).All(ctx)
-		if err == nil {
-			entries = append(entries, items...)
+	if mailboxIDs := recipientMailboxIDs(recipients); len(mailboxIDs) > 0 {
+		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("mailbox"), senderrule.ScopeRefIn(mailboxIDs...)).All(ctx)
+		if err != nil {
+			return "", "", err
 		}
+		position := make(map[string]int, len(mailboxIDs))
+		for i, id := range mailboxIDs {
+			position[id] = i
+		}
+		sort.SliceStable(items, func(a, b int) bool { return position[items[a].ScopeRef] < position[items[b].ScopeRef] })
+		entries = append(entries, items...)
 	}
 	for _, entry := range entries {
 		if matches(entry, metadata, smtp) {
-			return entry.Kind, entry.Action
+			return entry.Kind, entry.Action, nil
 		}
 	}
-	return "", ""
+	return "", "", nil
 }
 
 func verifyDKIM(raw []byte) (authres.ResultValue, string) {

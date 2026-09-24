@@ -128,7 +128,7 @@ func (w *ExportWorker) claim(ctx context.Context) (exportJob, string, bool, erro
 UPDATE export_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM export_jobs
-  WHERE status = 'queued' AND (locked_until IS NULL OR locked_until <= NOW())
+  WHERE status IN ('queued', 'processing') AND (locked_until IS NULL OR locked_until <= NOW())
   ORDER BY created_at
   FOR UPDATE SKIP LOCKED
   LIMIT 1
@@ -142,11 +142,11 @@ RETURNING id, mailbox_id
 UPDATE export_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
 WHERE id = (
   SELECT id FROM export_jobs
-  WHERE status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+  WHERE status IN ('queued', 'processing') AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
   ORDER BY created_at
   LIMIT 1
 )
-AND status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+AND status IN ('queued', 'processing') AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
 RETURNING id, mailbox_id
 `
 		args = []any{owner, now.Add(jobLeaseDuration), now, now, now}
@@ -169,6 +169,7 @@ RETURNING id, mailbox_id
 func (w *ExportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
 	ticker := time.NewTicker(jobLeaseRenewInterval)
 	defer ticker.Stop()
+	lastRenewed := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -179,12 +180,17 @@ func (w *ExportWorker) renewLease(ctx context.Context, cancel context.CancelFunc
 				SetLockedUntil(time.Now().Add(jobLeaseDuration)).
 				Save(ctx)
 			if err != nil {
+				if time.Since(lastRenewed) >= jobLeaseGiveUp {
+					cancel()
+					return
+				}
 				continue
 			}
 			if n == 0 {
 				cancel()
 				return
 			}
+			lastRenewed = time.Now()
 		}
 	}
 }
@@ -212,21 +218,17 @@ func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) (*os.File
 		os.Remove(tmp.Name())
 		return nil, 0, err
 	}
+	blobKeys, err := w.messageBlobKeys(ctx, items)
+	if err != nil {
+		return discard(err)
+	}
 	archive := zip.NewWriter(tmp)
 	for _, item := range items {
-		msg, err := w.client.Message.Query().Where(message.IDEQ(item.MessageID)).Only(ctx)
-		if err != nil {
-			return discard(err)
+		blobKey, ok := blobKeys[item.MessageID]
+		if !ok {
+			return discard(fmt.Errorf("message %s not found", item.MessageID))
 		}
-		raw, err := w.store.GetMessage(ctx, msg.BlobKey)
-		if err != nil {
-			return discard(err)
-		}
-		file, err := archive.Create(fmt.Sprintf("messages/%s.eml", msg.ID))
-		if err != nil {
-			return discard(err)
-		}
-		if _, err := file.Write(raw); err != nil {
+		if err := w.writeBlob(ctx, archive, item.MessageID, blobKey); err != nil {
 			return discard(err)
 		}
 	}
@@ -241,6 +243,39 @@ func (w *ExportWorker) buildZIP(ctx context.Context, mailboxID string) (*os.File
 		return discard(err)
 	}
 	return tmp, size, nil
+}
+
+func (w *ExportWorker) messageBlobKeys(ctx context.Context, items []*ent.MailboxMessage) (map[string]string, error) {
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.MessageID)
+	}
+	keys := make(map[string]string, len(ids))
+	for start := 0; start < len(ids); start += 500 {
+		chunk := ids[start:min(start+500, len(ids))]
+		rows, err := w.client.Message.Query().Where(message.IDIn(chunk...)).Select(message.FieldID, message.FieldBlobKey).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			keys[row.ID] = row.BlobKey
+		}
+	}
+	return keys, nil
+}
+
+func (w *ExportWorker) writeBlob(ctx context.Context, archive *zip.Writer, messageID string, blobKey string) error {
+	reader, err := w.store.GetObjectReader(ctx, blobKey)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	file, err := archive.Create(fmt.Sprintf("messages/%s.eml", messageID))
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(file, reader)
+	return err
 }
 
 func (w *ExportWorker) fail(ctx context.Context, job exportJob, owner string, cause error) error {
