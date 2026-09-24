@@ -4,13 +4,11 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +43,8 @@ type ImportWorker struct {
 	events   *events.Service
 	workerID string
 	backend  database.Backend
+
+	imapPolicy IMAPImportPolicy
 }
 
 type importJob struct {
@@ -60,6 +60,11 @@ func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstor
 		backend = backends[0]
 	}
 	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
+}
+
+// SetIMAPPolicy configures the operator policy applied to IMAP import sources.
+func (w *ImportWorker) SetIMAPPolicy(policy IMAPImportPolicy) {
+	w.imapPolicy = policy
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -401,7 +406,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 }
 
 func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	client, err := dialIMAP(job.Source)
+	client, err := dialIMAP(ctx, job.Source, w.imapPolicy)
 	if err != nil {
 		return err
 	}
@@ -677,29 +682,6 @@ func sourceStringSlice(source map[string]any, key string) []string {
 		}
 	}
 	return values
-}
-
-func dialIMAP(source map[string]any) (*imapclient.Client, error) {
-	addr := sourceString(source, "addr")
-	if addr == "" {
-		return nil, fmt.Errorf("imap import requires source.addr")
-	}
-	options := &imapclient.Options{TLSConfig: imapTLSConfig(addr, sourceBool(source, "skip_verify"))}
-	if sourceBool(source, "starttls") {
-		return imapclient.DialStartTLS(addr, options)
-	}
-	if tlsEnabled, ok := source["tls"].(bool); ok && !tlsEnabled {
-		return imapclient.DialInsecure(addr, options)
-	}
-	return imapclient.DialTLS(addr, options)
-}
-
-func imapTLSConfig(addr string, skipVerify bool) *tls.Config {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	return &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify}
 }
 
 func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags, error) {

@@ -65,6 +65,10 @@ api {
 workers {
   enabled = true
   concurrency = 2
+  // Optional: restrict IMAP import sources to these hostnames. Private/loopback/metadata ranges are always refused.
+  imap_import_allowed_hosts = new Listing<String> {}
+  // Allow plaintext or unverified-TLS IMAP imports when a job asks for them. Keep false in production.
+  imap_import_allow_insecure = false
 }
 
 tls {

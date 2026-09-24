@@ -162,6 +162,13 @@ type APIConfig struct {
 type WorkersConfig struct {
 	Enabled     bool `pkl:"enabled" json:"enabled"`
 	Concurrency int  `pkl:"concurrency" json:"concurrency"`
+	// IMAPImportAllowedHosts restricts IMAP import sources to these hostnames.
+	// When empty, any public host is allowed but private, loopback, link-local
+	// and metadata address ranges are always refused.
+	IMAPImportAllowedHosts []string `pkl:"imap_import_allowed_hosts" json:"imap_import_allowed_hosts"`
+	// IMAPImportAllowInsecure permits imports over plaintext or with TLS
+	// verification disabled when the job requests it.
+	IMAPImportAllowInsecure bool `pkl:"imap_import_allow_insecure" json:"imap_import_allow_insecure"`
 }
 
 type TLSConfig struct {
