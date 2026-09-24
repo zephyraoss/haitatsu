@@ -27,7 +27,13 @@ type Worker struct {
 	workerID string
 	backend  database.Backend
 	http     *http.Client
+	wake     chan struct{}
 }
+
+const (
+	minPollInterval = 250 * time.Millisecond
+	maxPollInterval = 30 * time.Second
+)
 
 type eventJob struct {
 	ID        string
@@ -42,7 +48,15 @@ func NewWorker(db *sql.DB, client *ent.Client, cfg func() config.WebhookConfig, 
 	if len(backends) > 0 {
 		backend = backends[0]
 	}
-	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, backend: backend, http: &http.Client{}}
+	return &Worker{db: db, client: client, cfg: cfg, metrics: metrics, workerID: workerID, backend: backend, http: &http.Client{}, wake: make(chan struct{}, 1)}
+}
+
+// Wake nudges idle loops to check for queued events immediately.
+func (w *Worker) Wake() {
+	select {
+	case w.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (w *Worker) Run(ctx context.Context, concurrency int) {
@@ -55,20 +69,35 @@ func (w *Worker) Run(ctx context.Context, concurrency int) {
 }
 
 func (w *Worker) loop(ctx context.Context) {
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	interval := minPollInterval
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			for {
-				processed, err := w.ProcessOne(ctx)
-				if err != nil || !processed || ctx.Err() != nil {
-					break
-				}
+		case <-w.wake:
+			if !timer.Stop() {
+				<-timer.C
+			}
+		case <-timer.C:
+		}
+		busy := false
+		for {
+			processed, err := w.ProcessOne(ctx)
+			if processed {
+				busy = true
+			}
+			if err != nil || !processed || ctx.Err() != nil {
+				break
 			}
 		}
+		if busy {
+			interval = minPollInterval
+		} else {
+			interval = min(interval*2, maxPollInterval)
+		}
+		timer.Reset(interval)
 	}
 }
 
