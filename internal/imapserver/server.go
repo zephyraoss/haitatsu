@@ -71,7 +71,7 @@ func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, blobs
 			imap.CapSASLIR:       {},
 		},
 		TLSConfig:    tlsConfig,
-		InsecureAuth: tlsConfig == nil,
+		InsecureAuth: tlsConfig == nil && cfg.AllowInsecureAuth,
 	})
 	return &Server{addr: cfg.Addr, server: server}
 }

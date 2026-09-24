@@ -146,6 +146,13 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	if strings.EqualFold(strings.TrimSpace(cfg.TLS.Mode), "storage") {
 		logger.Info("serving certificates from shared storage", "bucket", cfg.TLS.Storage.Bucket, "hostnames", cfg.InboundHostnames())
 	}
+	if tlsConfig == nil {
+		if cfg.IMAP.AllowInsecureAuth || cfg.Submission.AllowInsecureAuth {
+			logger.Warn("TLS is disabled and allow_insecure_auth is set: credentials will be accepted over cleartext connections", "imap", cfg.IMAP.AllowInsecureAuth, "submission", cfg.Submission.AllowInsecureAuth)
+		} else {
+			logger.Warn("TLS is disabled: IMAP and SMTP submission will reject authentication until TLS is configured or allow_insecure_auth is set")
+		}
+	}
 	smtpServer := inboundsmtp.New(cfg.SMTP, cfg.Server.PublicHostname, tlsConfig, resolver, messageService, bounceHandler, spamChecker, m, inboundsmtp.Options{
 		MaxMessageBytes:     cfg.InboundMessageSize(),
 		MaxRecipients:       cfg.InboundRecipients(),
