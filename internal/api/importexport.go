@@ -9,6 +9,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/importjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/importexport"
+	"github.com/zephyraoss/haitatsu/internal/storage"
 )
 
 func redactedImportJob(job *ent.ImportJob) *ent.ImportJob {
@@ -75,10 +76,15 @@ func (h *Handler) createImport(c fiber.Ctx) error {
 	}
 	switch req.SourceType {
 	case "zip":
-		if key, _ := req.Source["object_key"].(string); key == "" {
-			if key, _ := req.Source["key"].(string); key == "" {
-				return problem(c, fiber.StatusBadRequest, "source_invalid", "Zip import requires source.object_key")
-			}
+		key, _ := req.Source["object_key"].(string)
+		if key == "" {
+			key, _ = req.Source["key"].(string)
+		}
+		if key == "" {
+			return problem(c, fiber.StatusBadRequest, "source_invalid", "Zip import requires source.object_key")
+		}
+		if err := storage.ValidateImportKey(key); err != nil {
+			return problem(c, fiber.StatusBadRequest, "source_invalid", "Zip import source.object_key must be a normalized path under "+storage.ImportObjectPrefix)
 		}
 	case "maildir":
 		if path, _ := req.Source["path"].(string); path == "" {
