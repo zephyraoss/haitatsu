@@ -46,9 +46,22 @@ func NewService(client *ent.Client, blobs BlobStore, store *mailstore.Store, eve
 func (s *Service) Deliver(ctx context.Context, raw []byte, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
 	messageID := ids.New().String()
 	traceID := ids.New().String()
-	key := messageObjectKey(time.Now().UTC(), messageID)
 	stored := s.withTraceHeaders(mailparse.NormalizeMessage(raw), traceID, assessment.Header)
-	metadata := mailparse.Parse(stored)
+	return s.deliver(ctx, messageID, traceID, stored, mailparse.Parse(stored), recipients, assessment)
+}
+
+// DeliverParsed is Deliver for a message that is already normalized and
+// parsed; only the header map is re-read after trace headers are prepended.
+func (s *Service) DeliverParsed(ctx context.Context, normalized []byte, metadata mailparse.Metadata, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
+	messageID := ids.New().String()
+	traceID := ids.New().String()
+	stored := s.withTraceHeaders(normalized, traceID, assessment.Header)
+	metadata.Headers = mailparse.ParseHeaders(stored)
+	return s.deliver(ctx, messageID, traceID, stored, metadata, recipients, assessment)
+}
+
+func (s *Service) deliver(ctx context.Context, messageID string, traceID string, stored []byte, metadata mailparse.Metadata, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
+	key := messageObjectKey(time.Now().UTC(), messageID)
 
 	if err := s.blobs.PutMessage(ctx, key, stored); err != nil {
 		return nil, err
