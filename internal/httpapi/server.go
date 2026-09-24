@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	recovermw "github.com/gofiber/fiber/v3/middleware/recover"
 
 	"github.com/zephyraoss/haitatsu/internal/api"
 	"github.com/zephyraoss/haitatsu/internal/config"
@@ -33,6 +34,7 @@ type Reloader interface {
 
 func New(cfg *config.Holder, entClient *ent.Client, db *sql.DB, store MessageStore, mail *mailstore.Store, submission *outbound.Submission, checker *health.Checker, m *metrics.Metrics, reloader Reloader) *Server {
 	app := fiber.New(fiber.Config{AppName: "Haitatsu", BodyLimit: 64 * 1024 * 1024})
+	app.Use(recovermw.New())
 	app.Use(func(c fiber.Ctx) error {
 		c.Set("X-Haitatsu-Version", version.Version)
 		return c.Next()
