@@ -106,7 +106,7 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 
 	messageID := ids.New().String()
 	traceID := ids.New().String()
-	recipients = outboundRecipients(recipients, mailparse.Parse(mailparse.NormalizeMessage(raw)))
+	recipients = outboundRecipients(recipients, raw)
 	normalized := normalizeSubmittedMessage(raw, sender.Address, messageID, s.publicHostname, traceID, s.instanceName)
 	if err := s.enforceLimits(ctx, mbox, len(recipients)); err != nil {
 		return nil, err
@@ -176,10 +176,11 @@ func (s *Submission) limitsFor(mbox *ent.Mailbox) Limits {
 	return limits
 }
 
-func outboundRecipients(recipients []string, metadata mailparse.Metadata) []string {
+func outboundRecipients(recipients []string, raw []byte) []string {
 	if len(recipients) > 0 {
 		return dedupeAddresses(recipients)
 	}
+	metadata := mailparse.Parse(mailparse.NormalizeMessage(raw))
 	values := make([]string, 0, len(metadata.To)+len(metadata.CC)+len(metadata.BCC))
 	values = append(values, metadata.To...)
 	values = append(values, metadata.CC...)
