@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/label"
@@ -229,13 +230,105 @@ func softDeleteInTx(ctx context.Context, client *ent.Client, item *ent.MailboxMe
 	return err
 }
 
+const softDeleteBatchSize = 500
+
+var errSoftDeleteRace = errors.New("mailbox messages soft-deleted concurrently")
+
 func (s *Store) SoftDeleteMany(ctx context.Context, items []*ent.MailboxMessage) error {
+	var mailboxIDs []string
+	byMailbox := map[string][]*ent.MailboxMessage{}
+	for _, item := range items {
+		if item.DeletedAt != nil {
+			continue
+		}
+		if _, ok := byMailbox[item.MailboxID]; !ok {
+			mailboxIDs = append(mailboxIDs, item.MailboxID)
+		}
+		byMailbox[item.MailboxID] = append(byMailbox[item.MailboxID], item)
+	}
+	for _, mailboxID := range mailboxIDs {
+		group := byMailbox[mailboxID]
+		for start := 0; start < len(group); start += softDeleteBatchSize {
+			batch := group[start:min(start+softDeleteBatchSize, len(group))]
+			err := s.softDeleteBatch(ctx, mailboxID, batch)
+			if errors.Is(err, errSoftDeleteRace) {
+				err = s.softDeleteEach(ctx, batch)
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Store) softDeleteEach(ctx context.Context, items []*ent.MailboxMessage) error {
 	for _, item := range items {
 		if err := s.SoftDelete(ctx, item); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (s *Store) softDeleteBatch(ctx context.Context, mailboxID string, items []*ent.MailboxMessage) error {
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	if err := softDeleteManyInTx(ctx, tx.Client(), mailboxID, ids); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for _, item := range items {
+		s.notifier.Publish(ctx, Change{MailboxID: item.MailboxID, Container: FolderContainer(item.FolderID), Kind: ChangeExpunge, UID: item.UID})
+	}
+	return nil
+}
+
+func softDeleteManyInTx(ctx context.Context, client *ent.Client, mailboxID string, ids []string) error {
+	pending, err := client.MailboxMessage.Query().Where(mailboxmessage.IDIn(ids...), mailboxmessage.DeletedAtIsNil()).Select(mailboxmessage.FieldID, mailboxmessage.FieldMessageID).All(ctx)
+	if err != nil || len(pending) == 0 {
+		return err
+	}
+	pendingIDs := make([]string, 0, len(pending))
+	messageIDs := make([]string, 0, len(pending))
+	seen := make(map[string]struct{}, len(pending))
+	for _, item := range pending {
+		pendingIDs = append(pendingIDs, item.ID)
+		if _, ok := seen[item.MessageID]; !ok {
+			seen[item.MessageID] = struct{}{}
+			messageIDs = append(messageIDs, item.MessageID)
+		}
+	}
+	n, err := client.MailboxMessage.Update().Where(mailboxmessage.IDIn(pendingIDs...), mailboxmessage.DeletedAtIsNil()).SetDeletedAt(time.Now()).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if n != len(pending) {
+		return errSoftDeleteRace
+	}
+	messages, err := client.Message.Query().Where(message.IDIn(messageIDs...)).Select(message.FieldID, message.FieldSizeBytes).All(ctx)
+	if err != nil {
+		return err
+	}
+	sizes := make(map[string]int64, len(messages))
+	for _, msg := range messages {
+		sizes[msg.ID] = msg.SizeBytes
+	}
+	var total int64
+	for _, item := range pending {
+		total += sizes[item.MessageID]
+	}
+	_, err = client.Mailbox.UpdateOneID(mailboxID).AddUsedBytes(-total).Save(ctx)
+	return err
 }
 
 func (s *Store) SetFlags(ctx context.Context, item *ent.MailboxMessage, flags Flags) (*ent.MailboxMessage, error) {
@@ -361,14 +454,11 @@ func OverQuotaWith(mbox *ent.Mailbox, additional int64) bool {
 }
 
 func (s *Store) PurgeMailbox(ctx context.Context, mailboxID string) error {
-	items, err := s.client.MailboxMessage.Query().Where(mailboxmessage.MailboxIDEQ(mailboxID)).Select(mailboxmessage.FieldID).All(ctx)
-	if err != nil {
+	mailboxMessages := entsql.Select(mailboxmessage.FieldID).From(entsql.Table(mailboxmessage.Table)).Where(entsql.EQ(mailboxmessage.FieldMailboxID, mailboxID))
+	if _, err := s.client.MailboxMessageLabel.Delete().Where(func(sel *entsql.Selector) {
+		sel.Where(entsql.In(sel.C(mailboxmessagelabel.FieldMailboxMessageID), mailboxMessages))
+	}).Exec(ctx); err != nil {
 		return err
-	}
-	for _, item := range items {
-		if _, err := s.client.MailboxMessageLabel.Delete().Where(mailboxmessagelabel.MailboxMessageIDEQ(item.ID)).Exec(ctx); err != nil {
-			return err
-		}
 	}
 	if _, err := s.client.MailboxMessage.Delete().Where(mailboxmessage.MailboxIDEQ(mailboxID)).Exec(ctx); err != nil {
 		return err
@@ -379,7 +469,7 @@ func (s *Store) PurgeMailbox(ctx context.Context, mailboxID string) error {
 	if _, err := s.client.Folder.Delete().Where(folder.MailboxIDEQ(mailboxID)).Exec(ctx); err != nil {
 		return err
 	}
-	err = s.client.Mailbox.DeleteOneID(mailboxID).Exec(ctx)
+	err := s.client.Mailbox.DeleteOneID(mailboxID).Exec(ctx)
 	if ent.IsNotFound(err) {
 		return nil
 	}

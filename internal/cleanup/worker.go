@@ -186,11 +186,15 @@ func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message) error 
 			return nil
 		}
 	}
-	for _, item := range items {
-		if _, err := w.client.MailboxMessageLabel.Delete().Where(mailboxmessagelabel.MailboxMessageIDEQ(item.ID)).Exec(ctx); err != nil {
+	if len(items) > 0 {
+		ids := make([]string, 0, len(items))
+		for _, item := range items {
+			ids = append(ids, item.ID)
+		}
+		if _, err := w.client.MailboxMessageLabel.Delete().Where(mailboxmessagelabel.MailboxMessageIDIn(ids...)).Exec(ctx); err != nil {
 			return err
 		}
-		if err := w.client.MailboxMessage.DeleteOneID(item.ID).Exec(ctx); err != nil {
+		if _, err := w.client.MailboxMessage.Delete().Where(mailboxmessage.IDIn(ids...)).Exec(ctx); err != nil {
 			return err
 		}
 	}

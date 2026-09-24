@@ -221,3 +221,114 @@ func TestRecomputeUsedBytesRepairsDrift(t *testing.T) {
 		t.Fatalf("recomputed = %d, want 40", total)
 	}
 }
+
+func TestSoftDeleteManyBatchesAcrossMailboxes(t *testing.T) {
+	ctx := context.Background()
+	client, _ := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	first := testutil.SeedMailbox(t, store, "batch-a@example.com")
+	second := testutil.SeedMailbox(t, store, "batch-b@example.com")
+	firstInbox, _ := store.FolderByName(ctx, first.ID, "INBOX")
+	firstArchive, _ := store.FolderByName(ctx, first.ID, "Archive")
+	secondInbox, _ := store.FolderByName(ctx, second.ID, "INBOX")
+	shared := seedMessage(t, client, 40)
+	attach := func(mailboxID, folderID, messageID string, size int64) *ent.MailboxMessage {
+		item, err := store.Attach(ctx, mailstore.Attach{MailboxID: mailboxID, MessageID: messageID, FolderID: folderID, SizeBytes: size})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return item
+	}
+	a1 := attach(first.ID, firstInbox.ID, shared.ID, 40)
+	a2 := attach(first.ID, firstArchive.ID, seedMessage(t, client, 20).ID, 20)
+	a3 := attach(first.ID, firstInbox.ID, seedMessage(t, client, 7).ID, 7)
+	keep := attach(first.ID, firstInbox.ID, seedMessage(t, client, 3).ID, 3)
+	b1 := attach(second.ID, secondInbox.ID, shared.ID, 40)
+	b2 := attach(second.ID, secondInbox.ID, seedMessage(t, client, 11).ID, 11)
+	if err := store.SoftDelete(ctx, b2); err != nil {
+		t.Fatal(err)
+	}
+	changes, cancel := store.Notifier().Subscribe(mailstore.FolderContainer(firstInbox.ID))
+	defer cancel()
+	if err := store.SoftDeleteMany(ctx, []*ent.MailboxMessage{a1, a2, b1, a3, b2}); err != nil {
+		t.Fatal(err)
+	}
+	used := func(id string) int64 {
+		m, _ := client.Mailbox.Get(ctx, id)
+		return m.UsedBytes
+	}
+	if got := used(first.ID); got != 3 {
+		t.Fatalf("first used_bytes = %d, want 3", got)
+	}
+	if got := used(second.ID); got != 0 {
+		t.Fatalf("second used_bytes = %d, want 0", got)
+	}
+	for _, item := range []*ent.MailboxMessage{a1, a2, a3, b1} {
+		row, _ := client.MailboxMessage.Get(ctx, item.ID)
+		if row.DeletedAt == nil {
+			t.Fatalf("mailbox message %s should be soft deleted", item.ID)
+		}
+	}
+	if row, _ := client.MailboxMessage.Get(ctx, keep.ID); row.DeletedAt != nil {
+		t.Fatal("untargeted message must stay active")
+	}
+	var uids []uint32
+	for range 2 {
+		select {
+		case change := <-changes:
+			if change.Kind != mailstore.ChangeExpunge {
+				t.Fatalf("unexpected change %+v", change)
+			}
+			uids = append(uids, change.UID)
+		default:
+			t.Fatal("expected an expunge notification")
+		}
+	}
+	if uids[0] != a1.UID || uids[1] != a3.UID {
+		t.Fatalf("expunge uids = %v, want [%d %d]", uids, a1.UID, a3.UID)
+	}
+	if err := store.SoftDeleteMany(ctx, []*ent.MailboxMessage{a1, a3}); err != nil {
+		t.Fatal(err)
+	}
+	if got := used(first.ID); got != 3 {
+		t.Fatalf("repeated soft delete must be idempotent, used_bytes = %d", got)
+	}
+}
+
+func TestPurgeMailboxRemovesOnlyItsLabelLinks(t *testing.T) {
+	ctx := context.Background()
+	client, _ := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	gone := testutil.SeedMailbox(t, store, "purge@example.com")
+	kept := testutil.SeedMailbox(t, store, "kept@example.com")
+	seedLabeled := func(mailboxID string) {
+		inbox, _ := store.FolderByName(ctx, mailboxID, "INBOX")
+		label, err := store.CreateLabel(ctx, mailboxID, "Work")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 3 {
+			item, err := store.Attach(ctx, mailstore.Attach{MailboxID: mailboxID, MessageID: seedMessage(t, client, 1).ID, FolderID: inbox.ID, SizeBytes: 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.AddLabel(ctx, item, label.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	seedLabeled(gone.ID)
+	seedLabeled(kept.ID)
+	if err := store.PurgeMailbox(ctx, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if count, _ := client.MailboxMessageLabel.Query().Count(ctx); count != 3 {
+		t.Fatalf("label links remaining = %d, want 3", count)
+	}
+	if count, _ := client.MailboxMessage.Query().Count(ctx); count != 3 {
+		t.Fatalf("mailbox messages remaining = %d, want 3", count)
+	}
+	if _, err := client.Mailbox.Get(ctx, gone.ID); !ent.IsNotFound(err) {
+		t.Fatalf("purged mailbox lookup err = %v", err)
+	}
+}
