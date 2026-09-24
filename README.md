@@ -129,7 +129,7 @@ Listener addresses, database settings, S3, TLS, and worker enablement require a 
 |-------|------|
 | `database` | `driver`, `dsn`, `auth_token`, `namespace` |
 | `limits` | `max_message_size_bytes`, `max_inbound_recipients`, `max_submission_recipients`, `max_connections_per_ip`, `inbound_messages_per_minute_per_ip`, `default_outbound_per_hour`, `default_outbound_per_day`, `default_outbound_recipients_per_message` |
-| `relay` | `addr`, `username`, `password`, `from_host`, `max_attempts`, `max_retry_minutes` |
+| `relay` | `addr`, `username`, `password`, `from_host`, `max_attempts`, `max_retry_minutes`, `timeout_seconds` |
 | `webhooks` | `default_timeout_seconds`, `secret`, `endpoints`, `max_attempts` |
 | `spam` | `junk_threshold`, `reject_threshold`, `dnsbl_zones`, `dnsbl_score`, `require_helo`, `typesafe` |
 | `spam.typesafe` | `mode`, `api_key`, `model`, `timeout_ms`, `max_text_bytes`, `max_in_flight`, `max_requests_per_minute`, `spam_threshold`, `phishing_threshold` |

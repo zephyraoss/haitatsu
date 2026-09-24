@@ -2,9 +2,12 @@ package outbound
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/mail"
 	"net/smtp"
 	"regexp"
@@ -209,8 +212,72 @@ func (w *Worker) deliver(ctx context.Context, job claimedJob) deliveryResult {
 	return classifySMTPError(err)
 }
 
-func sendViaRelay(_ context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
-	return smtp.SendMail(cfg.Addr, relayAuth(cfg), from, recipients, raw)
+func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout())
+	defer cancel()
+
+	deadline, _ := ctx.Deadline()
+	dialer := &net.Dialer{Timeout: cfg.Timeout()}
+	conn, err := dialer.DialContext(ctx, "tcp", cfg.Addr)
+	if err != nil {
+		return err
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		conn.Close()
+		return err
+	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+
+	host, _, _ := strings.Cut(cfg.Addr, ":")
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return wrapCtxErr(ctx, err)
+	}
+	defer client.Close()
+	if err := client.Hello("localhost"); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return wrapCtxErr(ctx, err)
+		}
+	}
+	if auth := relayAuth(cfg); auth != nil {
+		if ok, _ := client.Extension("AUTH"); !ok {
+			return errors.New("smtp: server doesn't support AUTH")
+		}
+		if err := client.Auth(auth); err != nil {
+			return wrapCtxErr(ctx, err)
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	for _, rcpt := range recipients {
+		if err := client.Rcpt(rcpt); err != nil {
+			return wrapCtxErr(ctx, err)
+		}
+	}
+	wc, err := client.Data()
+	if err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	if _, err := wc.Write(raw); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	if err := wc.Close(); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	return wrapCtxErr(ctx, client.Quit())
+}
+
+func wrapCtxErr(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return fmt.Errorf("%w: %v", ctx.Err(), err)
+	}
+	return err
 }
 
 func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResult) error {

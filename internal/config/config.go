@@ -66,6 +66,14 @@ type RelayConfig struct {
 	FromHost        string `pkl:"from_host" json:"from_host"`
 	MaxAttempts     int    `pkl:"max_attempts" json:"max_attempts"`
 	MaxRetryMinutes int    `pkl:"max_retry_minutes" json:"max_retry_minutes"`
+	TimeoutSeconds  int    `pkl:"timeout_seconds" json:"timeout_seconds"`
+}
+
+func (c RelayConfig) Timeout() time.Duration {
+	if c.TimeoutSeconds <= 0 {
+		return 60 * time.Second
+	}
+	return time.Duration(c.TimeoutSeconds) * time.Second
 }
 
 func (c RelayConfig) RetryPolicy() RetryPolicy {
@@ -525,8 +533,8 @@ func (c Config) Validate() error {
 	if c.IMAP.MaxConnectionsPerIP < 0 {
 		problems = append(problems, "imap.max_connections_per_ip must be >= 0")
 	}
-	if c.Relay.MaxAttempts < 0 || c.Relay.MaxRetryMinutes < 0 {
-		problems = append(problems, "relay.max_attempts and relay.max_retry_minutes must be >= 0")
+	if c.Relay.MaxAttempts < 0 || c.Relay.MaxRetryMinutes < 0 || c.Relay.TimeoutSeconds < 0 {
+		problems = append(problems, "relay.max_attempts, relay.max_retry_minutes and relay.timeout_seconds must be >= 0")
 	}
 	if c.Webhooks.MaxAttempts < 0 {
 		problems = append(problems, "webhooks.max_attempts must be >= 0")
