@@ -106,7 +106,11 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 
 	messageID := ids.New().String()
 	traceID := ids.New().String()
-	recipients = outboundRecipients(recipients, mailparse.Parse(mailparse.NormalizeMessage(raw)))
+	if len(recipients) > 0 {
+		recipients = dedupeAddresses(recipients)
+	} else {
+		recipients = outboundRecipients(nil, mailparse.Parse(mailparse.NormalizeMessage(raw)))
+	}
 	fromAllowed := func(address string) (bool, error) { return s.SenderAllowed(ctx, mbox, address) }
 	normalized, err := normalizeSubmittedMessage(raw, sender.Address, fromAllowed, messageID, s.publicHostname, traceID, s.instanceName)
 	if err != nil {

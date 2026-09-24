@@ -106,6 +106,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	exportWorker := importexport.NewExportWorker(db.SQL(), db.Ent(), blobStore, eventService, cfg.Server.InstanceName, db.Backend())
 	importWorker := importexport.NewImportWorker(db.SQL(), db.Ent(), blobStore, mail, eventService, cfg.Server.InstanceName, db.Backend())
 	webhookWorker := webhooks.NewWorker(db.SQL(), db.Ent(), func() config.WebhookConfig { return holder.Get().Webhooks }, m, cfg.Server.InstanceName, db.Backend())
+	eventService.OnQueued(webhookWorker.Wake)
 	resolver := routing.NewResolver(db.Ent())
 	ruleEngine := rules.New(db.Ent(), mail, eventService)
 	messageService := messages.NewService(db.Ent(), blobStore, mail, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
