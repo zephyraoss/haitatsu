@@ -117,7 +117,7 @@ func dialIMAP(ctx context.Context, job importJob, imports config.ImportsConfig) 
 	}
 	skipVerify := sourceBool(source, "skip_verify")
 	if (plaintext || skipVerify) && !imports.AllowsInsecureTLS(addr) {
-		return nil, fmt.Errorf("imap import: source.skip_verify / source.tls=false: skip_verify is not permitted for %q; add the host to imports.insecure_tls_hosts", addr)
+		return nil, fmt.Errorf("imap import: insecure transport (source.tls=false or source.skip_verify) is not permitted for %q; add the host to imports.insecure_tls_hosts", addr)
 	}
 	if plaintext || skipVerify {
 		slog.Warn("imap import: insecure transport enabled", "import_id", job.ID, "mailbox_id", job.MailboxID, "addr", addr, "plaintext", plaintext, "skip_verify", skipVerify)

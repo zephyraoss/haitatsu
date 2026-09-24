@@ -56,7 +56,7 @@ func TestDialIMAPRejectsInsecureTransportByDefault(t *testing.T) {
 		{"addr": "8.8.8.8:143", "starttls": true, "skip_verify": true},
 	} {
 		_, err := dialIMAP(context.Background(), importJob{ID: "imp", Source: source}, config.ImportsConfig{})
-		if err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
+		if err == nil || !strings.Contains(err.Error(), "is not permitted") {
 			t.Errorf("%v: expected insecure transport rejection, got %v", source, err)
 		}
 	}
