@@ -128,7 +128,7 @@ func (w *ExportWorker) claim(ctx context.Context) (exportJob, string, bool, erro
 UPDATE export_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM export_jobs
-  WHERE status = 'queued' AND (locked_until IS NULL OR locked_until <= NOW())
+  WHERE status IN ('queued', 'processing') AND (locked_until IS NULL OR locked_until <= NOW())
   ORDER BY created_at
   FOR UPDATE SKIP LOCKED
   LIMIT 1
@@ -142,11 +142,11 @@ RETURNING id, mailbox_id
 UPDATE export_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
 WHERE id = (
   SELECT id FROM export_jobs
-  WHERE status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+  WHERE status IN ('queued', 'processing') AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
   ORDER BY created_at
   LIMIT 1
 )
-AND status = 'queued' AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
+AND status IN ('queued', 'processing') AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
 RETURNING id, mailbox_id
 `
 		args = []any{owner, now.Add(jobLeaseDuration), now, now, now}
@@ -169,6 +169,7 @@ RETURNING id, mailbox_id
 func (w *ExportWorker) renewLease(ctx context.Context, cancel context.CancelFunc, jobID string, owner string) {
 	ticker := time.NewTicker(jobLeaseRenewInterval)
 	defer ticker.Stop()
+	lastRenewed := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -179,12 +180,17 @@ func (w *ExportWorker) renewLease(ctx context.Context, cancel context.CancelFunc
 				SetLockedUntil(time.Now().Add(jobLeaseDuration)).
 				Save(ctx)
 			if err != nil {
+				if time.Since(lastRenewed) >= jobLeaseGiveUp {
+					cancel()
+					return
+				}
 				continue
 			}
 			if n == 0 {
 				cancel()
 				return
 			}
+			lastRenewed = time.Now()
 		}
 	}
 }

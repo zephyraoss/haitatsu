@@ -22,7 +22,7 @@ type DKIMKey struct {
 	// Selector holds the value of the "selector" field.
 	Selector string `json:"selector,omitempty"`
 	// PrivateKeyPem holds the value of the "private_key_pem" field.
-	PrivateKeyPem string `json:"private_key_pem,omitempty"`
+	PrivateKeyPem string `json:"-"`
 	// PublicKeyPem holds the value of the "public_key_pem" field.
 	PublicKeyPem string `json:"public_key_pem,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -140,8 +140,7 @@ func (_m *DKIMKey) String() string {
 	builder.WriteString("selector=")
 	builder.WriteString(_m.Selector)
 	builder.WriteString(", ")
-	builder.WriteString("private_key_pem=")
-	builder.WriteString(_m.PrivateKeyPem)
+	builder.WriteString("private_key_pem=<sensitive>")
 	builder.WriteString(", ")
 	builder.WriteString("public_key_pem=")
 	builder.WriteString(_m.PublicKeyPem)

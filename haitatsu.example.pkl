@@ -19,6 +19,7 @@ imap {
 submission {
   starttls_addr = "0.0.0.0:587"
   tls_addr = "0.0.0.0:465"
+  allow_insecure_auth = false
 }
 
 relay {
@@ -28,6 +29,7 @@ relay {
   from_host = "smtp.mailbaby.net"
   max_attempts = 30
   max_retry_minutes = 240
+  timeout_seconds = 60
 }
 
 database {
@@ -65,6 +67,13 @@ api {
 workers {
   enabled = true
   concurrency = 4
+  maildir_import_root = ""
+}
+
+imports {
+  // Remote IMAP hosts for which an import may set source.skip_verify to
+  // disable TLS certificate verification. Leave empty to always verify.
+  insecure_tls_hosts = new Listing<String> {}
 }
 
 tls {

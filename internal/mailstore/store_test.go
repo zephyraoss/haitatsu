@@ -2,9 +2,13 @@ package mailstore_test
 
 import (
 	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/testutil"
@@ -219,5 +223,51 @@ func TestRecomputeUsedBytesRepairsDrift(t *testing.T) {
 	}
 	if total != 40 {
 		t.Fatalf("recomputed = %d, want 40", total)
+	}
+}
+
+func TestAttachEnforcesQuotaAtomically(t *testing.T) {
+	ctx := context.Background()
+	client, _ := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	mbox := testutil.SeedMailbox(t, store, "atomic@example.com")
+	inbox, _ := store.FolderByName(ctx, mbox.ID, "INBOX")
+	if _, err := client.Mailbox.UpdateOneID(mbox.ID).SetQuotaBytes(100).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	attach := func(size int64) error {
+		_, err := store.Attach(ctx, mailstore.Attach{MailboxID: mbox.ID, MessageID: seedMessage(t, client, size).ID, FolderID: inbox.ID, SizeBytes: size, EnforceQuota: true})
+		return err
+	}
+	if err := attach(100); err != nil {
+		t.Fatalf("attach filling quota exactly: %v", err)
+	}
+	if err := attach(1); !errors.Is(err, mailstore.ErrOverQuota) {
+		t.Fatalf("expected ErrOverQuota, got %v", err)
+	}
+	m, _ := client.Mailbox.Get(ctx, mbox.ID)
+	if m.UsedBytes != 100 {
+		t.Fatalf("used_bytes = %d, want 100", m.UsedBytes)
+	}
+	if n, _ := client.MailboxMessage.Query().Where(mailboxmessage.MailboxIDEQ(mbox.ID)).Count(ctx); n != 1 {
+		t.Fatalf("rejected attach must not leave a mailbox message behind, got %d", n)
+	}
+
+	var wg sync.WaitGroup
+	var accepted atomic.Int32
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := store.Attach(ctx, mailstore.Attach{MailboxID: mbox.ID, MessageID: seedMessage(t, client, 30).ID, FolderID: inbox.ID, SizeBytes: 30, EnforceQuota: true}); err == nil {
+				accepted.Add(1)
+			} else if !errors.Is(err, mailstore.ErrOverQuota) {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if accepted.Load() != 0 {
+		t.Fatalf("accepted %d attaches over quota", accepted.Load())
 	}
 }

@@ -43,7 +43,10 @@ func TestAliasDeliveryUsesMailboxTypeSafeThresholds(t *testing.T) {
 	}, "mx.test", spam.WithTypeSafe(evaluator, nil))
 	raw := []byte("Subject: alias mail\r\nMessage-ID: <alias@local>\r\n\r\nContent to assess.\r\n")
 	recipients := []routing.Result{resolved}
-	a := checker.Check(ctx, raw, spam.SMTPContext{}, recipients)
+	a, err := checker.Check(ctx, raw, spam.SMTPContext{}, recipients)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if evaluator.calls != 1 || a.Junk || a.Score != 2 {
 		t.Fatalf("calls=%d assessment=%+v", evaluator.calls, a)
 	}
