@@ -35,16 +35,32 @@ import (
 const (
 	jobLeaseDuration      = 10 * time.Minute
 	jobLeaseRenewInterval = 2 * time.Minute
+
+	DefaultMaxMessageBytes int64 = 50 * 1024 * 1024
 )
 
 type ImportWorker struct {
-	db       *sql.DB
-	client   *ent.Client
-	store    Store
-	mail     *mailstore.Store
-	events   *events.Service
-	workerID string
-	backend  database.Backend
+	db              *sql.DB
+	client          *ent.Client
+	store           Store
+	mail            *mailstore.Store
+	events          *events.Service
+	workerID        string
+	backend         database.Backend
+	maxMessageBytes int64
+}
+
+type ErrMessageTooLarge struct {
+	Name  string
+	Size  int64
+	Limit int64
+}
+
+func (e *ErrMessageTooLarge) Error() string {
+	if e.Size > 0 {
+		return fmt.Sprintf("import: message %q is %d bytes, exceeds limit of %d bytes", e.Name, e.Size, e.Limit)
+	}
+	return fmt.Sprintf("import: message %q exceeds limit of %d bytes", e.Name, e.Limit)
 }
 
 type importJob struct {
@@ -60,6 +76,30 @@ func NewImportWorker(db *sql.DB, client *ent.Client, store Store, mail *mailstor
 		backend = backends[0]
 	}
 	return &ImportWorker{db: db, client: client, store: store, mail: mail, events: events, workerID: workerID, backend: backend}
+}
+
+// SetMaxMessageBytes caps the size of any single imported message. Values <= 0 fall back to DefaultMaxMessageBytes.
+func (w *ImportWorker) SetMaxMessageBytes(limit int64) {
+	w.maxMessageBytes = limit
+}
+
+func (w *ImportWorker) messageLimit() int64 {
+	if w.maxMessageBytes > 0 {
+		return w.maxMessageBytes
+	}
+	return DefaultMaxMessageBytes
+}
+
+// readBounded reads at most limit bytes from r, returning ErrMessageTooLarge if r holds more.
+func readBounded(r io.Reader, name string, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, &ErrMessageTooLarge{Name: name, Limit: limit}
+	}
+	return data, nil
 }
 
 func (w *ImportWorker) mailStore() *mailstore.Store {
@@ -356,7 +396,7 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 		if file.FileInfo().IsDir() || !strings.HasSuffix(strings.ToLower(file.Name), ".eml") {
 			continue
 		}
-		raw, err := readZipFile(file)
+		raw, err := readZipFile(file, w.messageLimit())
 		if err != nil {
 			return err
 		}
@@ -381,7 +421,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 		return err
 	}
 	for _, entry := range entries {
-		raw, err := os.ReadFile(entry.path)
+		raw, err := readMaildirFile(entry.path, w.messageLimit())
 		if err != nil {
 			return err
 		}
@@ -519,7 +559,7 @@ func (w *ImportWorker) fetchIMAPBatch(ctx context.Context, client *imapclient.Cl
 		if remoteMessage == nil {
 			break
 		}
-		raw, flags, err := fetchMessageData(remoteMessage)
+		raw, flags, err := fetchMessageData(remoteMessage, w.messageLimit())
 		if err != nil {
 			return closeWithError(err)
 		}
@@ -702,7 +742,7 @@ func imapTLSConfig(addr string, skipVerify bool) *tls.Config {
 	return &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify}
 }
 
-func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags, error) {
+func fetchMessageData(message *imapclient.FetchMessageData, limit int64) ([]byte, importFlags, error) {
 	var raw []byte
 	var flags importFlags
 	for {
@@ -715,7 +755,10 @@ func fetchMessageData(message *imapclient.FetchMessageData) ([]byte, importFlags
 			if data.Literal == nil {
 				continue
 			}
-			body, err := io.ReadAll(data.Literal)
+			if size := data.Literal.Size(); size > limit {
+				return nil, flags, &ErrMessageTooLarge{Name: fmt.Sprintf("seq %d", message.SeqNum), Size: size, Limit: limit}
+			}
+			body, err := readBounded(data.Literal, fmt.Sprintf("seq %d", message.SeqNum), limit)
 			if err != nil {
 				return nil, flags, err
 			}
@@ -820,13 +863,32 @@ func maildirFlags(filename string) importFlags {
 	return flags
 }
 
-func readZipFile(file *zip.File) ([]byte, error) {
+func readZipFile(file *zip.File, limit int64) ([]byte, error) {
+	if file.UncompressedSize64 > uint64(limit) {
+		return nil, &ErrMessageTooLarge{Name: file.Name, Size: int64(file.UncompressedSize64), Limit: limit}
+	}
 	reader, err := file.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	return io.ReadAll(reader)
+	return readBounded(reader, file.Name, limit)
+}
+
+func readMaildirFile(path string, limit int64) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > limit {
+		return nil, &ErrMessageTooLarge{Name: path, Size: info.Size(), Limit: limit}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return readBounded(f, path, limit)
 }
 
 func messageObjectKey(t time.Time, messageID string) string {

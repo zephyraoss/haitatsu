@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	stdsql "database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"entgo.io/ent/dialect"
@@ -282,6 +284,48 @@ func TestImportZipJob(t *testing.T) {
 	inbox := folderByName(t, client, mbox.ID, "INBOX")
 	if items := messagesInFolder(t, client, mbox.ID, inbox.ID); len(items) != 2 {
 		t.Errorf("INBOX has %d messages, want 2", len(items))
+	}
+}
+
+func TestImportRejectsOversizeMessages(t *testing.T) {
+	ctx := context.Background()
+	client := newTestClient(t)
+	store := newFakeStore()
+	worker := &ImportWorker{client: client, store: store, maxMessageBytes: 64}
+	mbox := seedMailbox(t, client)
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	file, err := zw.Create("big.eml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(bytes.Repeat([]byte("a"), 4096)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store.objects["big.zip"] = buf.Bytes()
+
+	var tooLarge *ErrMessageTooLarge
+	_, err = worker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": "big.zip"}})
+	if !errors.As(err, &tooLarge) {
+		t.Fatalf("zip import error = %v, want ErrMessageTooLarge", err)
+	}
+
+	root := t.TempDir()
+	writeMaildirMessage(t, root, "cur/1.host:2,S", bytes.Repeat([]byte("b"), 4096))
+	_, err = worker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": root}})
+	if !errors.As(err, &tooLarge) {
+		t.Fatalf("maildir import error = %v, want ErrMessageTooLarge", err)
+	}
+
+	if _, err := readBounded(strings.NewReader("hello"), "small", 5); err != nil {
+		t.Fatalf("readBounded at limit: %v", err)
+	}
+	if _, err := readBounded(strings.NewReader("hello!"), "big", 5); !errors.As(err, &tooLarge) {
+		t.Fatalf("readBounded over limit error = %v, want ErrMessageTooLarge", err)
 	}
 }
 
