@@ -443,10 +443,10 @@ func TestExportBuildZIP(t *testing.T) {
 
 func TestDialIMAPRejectsUnlistedSkipVerify(t *testing.T) {
 	job := importJob{ID: "imp", Source: map[string]any{"addr": "imap.example.com:993", "skip_verify": true}}
-	if _, err := dialIMAP(job, config.ImportsConfig{}); err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
+	if _, err := dialIMAP(context.Background(), job, config.ImportsConfig{}); err == nil || !strings.Contains(err.Error(), "is not permitted") {
 		t.Fatalf("expected skip_verify rejection, got %v", err)
 	}
-	if _, err := dialIMAP(job, config.ImportsConfig{InsecureTLSHosts: []string{"other.example.com"}}); err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
+	if _, err := dialIMAP(context.Background(), job, config.ImportsConfig{InsecureTLSHosts: []string{"other.example.com"}}); err == nil || !strings.Contains(err.Error(), "is not permitted") {
 		t.Fatalf("expected skip_verify rejection for unlisted host, got %v", err)
 	}
 }

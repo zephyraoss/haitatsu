@@ -4,14 +4,11 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -477,7 +474,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 }
 
 func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	client, err := dialIMAP(job, w.importsConfig())
+	client, err := dialIMAP(ctx, job, w.importsConfig())
 	if err != nil {
 		return err
 	}
@@ -753,37 +750,6 @@ func sourceStringSlice(source map[string]any, key string) []string {
 		}
 	}
 	return values
-}
-
-func dialIMAP(job importJob, imports config.ImportsConfig) (*imapclient.Client, error) {
-	source := job.Source
-	addr := sourceString(source, "addr")
-	if addr == "" {
-		return nil, fmt.Errorf("imap import requires source.addr")
-	}
-	skipVerify := sourceBool(source, "skip_verify")
-	if skipVerify {
-		if !imports.AllowsInsecureTLS(addr) {
-			return nil, fmt.Errorf("imap import: source.skip_verify is not permitted for %q; add the host to imports.insecure_tls_hosts", addr)
-		}
-		slog.Warn("imap import: TLS certificate verification disabled", "import_id", job.ID, "mailbox_id", job.MailboxID, "addr", addr)
-	}
-	options := &imapclient.Options{TLSConfig: imapTLSConfig(addr, skipVerify)}
-	if sourceBool(source, "starttls") {
-		return imapclient.DialStartTLS(addr, options)
-	}
-	if tlsEnabled, ok := source["tls"].(bool); ok && !tlsEnabled {
-		return imapclient.DialInsecure(addr, options)
-	}
-	return imapclient.DialTLS(addr, options)
-}
-
-func imapTLSConfig(addr string, skipVerify bool) *tls.Config {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	return &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify}
 }
 
 func fetchMessageData(message *imapclient.FetchMessageData, limit int64) ([]byte, importFlags, error) {
