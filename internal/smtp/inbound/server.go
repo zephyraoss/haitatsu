@@ -21,6 +21,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/spam"
 )
 
+const maxBounceRecipients = 10
+
 type Server struct {
 	server *smtp.Server
 }
@@ -100,6 +102,7 @@ type session struct {
 	mailFrom   string
 	recipients []routing.Result
 	bounceRcpt []bounce.Recipient
+	accepted   int
 	released   bool
 }
 
@@ -111,6 +114,7 @@ func (s *session) Mail(from string, _ *smtp.MailOptions) error {
 	s.smtp.MailFrom = from
 	s.recipients = nil
 	s.bounceRcpt = nil
+	s.accepted = 0
 	return nil
 }
 
@@ -118,6 +122,17 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 	if recipient, bounceDomain, valid := s.backend.bounces.ParseRecipient(context.Background(), to); bounceDomain {
 		if !valid {
 			return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 1, 1}, Message: "invalid bounce recipient"}
+		}
+		for _, existing := range s.bounceRcpt {
+			if existing.MessageID == recipient.MessageID {
+				return nil
+			}
+		}
+		if len(s.bounceRcpt) >= maxBounceRecipients {
+			return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 5, 3}, Message: "too many bounce recipients"}
+		}
+		if err := s.chargeRecipient(); err != nil {
+			return err
 		}
 		s.bounceRcpt = append(s.bounceRcpt, recipient)
 		return nil
@@ -141,8 +156,21 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 	if len(deliverable) == 0 {
 		return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 2, 2}, Message: "mailbox over quota"}
 	}
+	if err := s.chargeRecipient(); err != nil {
+		return err
+	}
 	result.Mailboxes = deliverable
 	s.recipients = append(s.recipients, result)
+	return nil
+}
+
+// chargeRecipient spends a rate-limit token for every accepted recipient after
+// the first, which is already covered by the token spent on MAIL FROM.
+func (s *session) chargeRecipient() error {
+	if s.accepted > 0 && !s.backend.limiter.Allow(s.smtp.RemoteIP) {
+		return &smtp.SMTPError{Code: 450, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "rate limit exceeded, try again later"}
+	}
+	s.accepted++
 	return nil
 }
 
@@ -154,11 +182,9 @@ func (s *session) Data(r io.Reader) error {
 	if err != nil {
 		return temporarySMTPError("temporary local problem")
 	}
-	for _, recipient := range s.bounceRcpt {
-		if err := s.backend.bounces.Record(context.Background(), recipient, raw); err != nil {
-			slog.Error("bounce processing failed", "error", err)
-			return temporarySMTPError("temporary local problem")
-		}
+	if err := s.backend.bounces.Record(context.Background(), s.bounceRcpt, raw); err != nil {
+		slog.Error("bounce processing failed", "error", err)
+		return temporarySMTPError("temporary local problem")
 	}
 	if len(s.recipients) == 0 {
 		return nil
@@ -178,6 +204,7 @@ func (s *session) Reset() {
 	s.mailFrom = ""
 	s.recipients = nil
 	s.bounceRcpt = nil
+	s.accepted = 0
 }
 
 func (s *session) Logout() error {
