@@ -12,6 +12,8 @@ import (
 	"github.com/emersion/go-message/textproto"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 )
 
 func (s *session) Fetch(w *goimapserver.FetchWriter, numSet imap.NumSet, options *imap.FetchOptions) error {
@@ -22,10 +24,39 @@ func (s *session) Fetch(w *goimapserver.FetchWriter, numSet imap.NumSet, options
 	if err := s.resync(ctx, nil, syncMode{}); err != nil {
 		return err
 	}
-	needsBlob := options.Envelope || options.BodyStructure != nil || len(options.BodySection) > 0 || len(options.BinarySection) > 0 || len(options.BinarySectionSize) > 0
-	needsMessage := needsBlob || options.RFC822Size
+	needsBlob := options.BodyStructure != nil || len(options.BodySection) > 0 || len(options.BinarySection) > 0 || len(options.BinarySectionSize) > 0
+	needsMessage := needsBlob || options.Envelope || options.RFC822Size
 	needsItem := options.InternalDate
-	for _, index := range s.view.selected(numSet) {
+	selected := s.view.selected(numSet)
+	var items map[string]*ent.MailboxMessage
+	if needsItem {
+		ids := make([]string, 0, len(selected))
+		for _, index := range selected {
+			if item := s.view.entries[index]; !item.gone {
+				ids = append(ids, item.itemID)
+			}
+		}
+		loaded, err := s.loadMailboxMessages(ctx, ids)
+		if err != nil {
+			return err
+		}
+		items = loaded
+	}
+	var msgs map[string]*ent.Message
+	if needsMessage {
+		ids := make([]string, 0, len(selected))
+		for _, index := range selected {
+			if item := s.view.entries[index]; !item.gone {
+				ids = append(ids, item.messageID)
+			}
+		}
+		loaded, err := s.loadMessages(ctx, ids)
+		if err != nil {
+			return err
+		}
+		msgs = loaded
+	}
+	for _, index := range selected {
 		item := s.view.entries[index]
 		if item.gone {
 			continue
@@ -36,36 +67,39 @@ func (s *session) Fetch(w *goimapserver.FetchWriter, numSet imap.NumSet, options
 		if options.Flags {
 			writer.WriteFlags(imapFlags(item.flags))
 		}
-		var mm *ent.MailboxMessage
 		if needsItem {
-			loaded, err := s.client.MailboxMessage.Get(ctx, item.itemID)
-			if err != nil {
-				if ent.IsNotFound(err) {
-					_ = writer.Close()
-					continue
-				}
-				return err
+			mm, ok := items[item.itemID]
+			if !ok {
+				_ = writer.Close()
+				continue
 			}
-			mm = loaded
 			writer.WriteInternalDate(mm.CreatedAt)
 		}
 		if needsMessage {
-			msg, err := s.client.Message.Get(ctx, item.messageID)
-			if err != nil {
-				if ent.IsNotFound(err) {
-					_ = writer.Close()
-					continue
-				}
-				return err
+			msg, ok := msgs[item.messageID]
+			if !ok {
+				_ = writer.Close()
+				continue
 			}
 			if options.RFC822Size {
 				writer.WriteRFC822Size(msg.SizeBytes)
 			}
-			if needsBlob {
-				raw, err := s.blobs.GetMessage(ctx, msg.BlobKey)
+			var raw []byte
+			if needsBlob || (options.Envelope && len(msg.Headers) == 0) {
+				loaded, err := s.blobs.GetMessage(ctx, msg.BlobKey)
 				if err != nil {
 					return err
 				}
+				raw = loaded
+			}
+			if options.Envelope {
+				header := storedHeader(msg.Headers)
+				if len(msg.Headers) == 0 {
+					header = messageHeader(raw)
+				}
+				writer.WriteEnvelope(goimapserver.ExtractEnvelope(header))
+			}
+			if needsBlob {
 				if err := writeBody(writer, raw, options); err != nil {
 					return err
 				}
@@ -82,6 +116,46 @@ func (s *session) Fetch(w *goimapserver.FetchWriter, numSet imap.NumSet, options
 		}
 	}
 	return nil
+}
+
+func (s *session) loadMailboxMessages(ctx context.Context, ids []string) (map[string]*ent.MailboxMessage, error) {
+	items := make(map[string]*ent.MailboxMessage, len(ids))
+	for start := 0; start < len(ids); start += 500 {
+		end := min(start+500, len(ids))
+		batch, err := s.client.MailboxMessage.Query().Where(mailboxmessage.IDIn(ids[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range batch {
+			items[item.ID] = item
+		}
+	}
+	return items, nil
+}
+
+func (s *session) loadMessages(ctx context.Context, ids []string) (map[string]*ent.Message, error) {
+	msgs := make(map[string]*ent.Message, len(ids))
+	for start := 0; start < len(ids); start += 500 {
+		end := min(start+500, len(ids))
+		batch, err := s.client.Message.Query().Where(message.IDIn(ids[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, msg := range batch {
+			msgs[msg.ID] = msg
+		}
+	}
+	return msgs, nil
+}
+
+func storedHeader(values map[string][]string) textproto.Header {
+	var header textproto.Header
+	for key, list := range values {
+		for _, value := range list {
+			header.Add(key, value)
+		}
+	}
+	return header
 }
 
 func (s *session) markSeen(ctx context.Context, index int, item entry) error {
@@ -113,9 +187,6 @@ func marksSeen(options *imap.FetchOptions) bool {
 }
 
 func writeBody(writer *goimapserver.FetchResponseWriter, raw []byte, options *imap.FetchOptions) error {
-	if options.Envelope {
-		writer.WriteEnvelope(goimapserver.ExtractEnvelope(messageHeader(raw)))
-	}
 	if options.BodyStructure != nil {
 		writer.WriteBodyStructure(goimapserver.ExtractBodyStructure(bytes.NewReader(raw)))
 	}
