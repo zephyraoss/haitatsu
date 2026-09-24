@@ -14,6 +14,7 @@ smtp {
 imap {
   addr = "0.0.0.0:143"
   max_connections_per_ip = 30
+  allow_insecure_auth = true
 }
 
 submission {

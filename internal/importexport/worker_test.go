@@ -23,6 +23,7 @@ import (
 	entfolder "github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/ids"
+	"github.com/zephyraoss/haitatsu/internal/storage"
 	"github.com/zephyraoss/haitatsu/internal/testutil"
 )
 
@@ -272,9 +273,9 @@ func TestImportZipJob(t *testing.T) {
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store.objects["import.zip"] = buf.Bytes()
+	store.objects["imports/import.zip"] = buf.Bytes()
 
-	job := importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": "import.zip"}}
+	job := importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": "imports/import.zip"}}
 	count, err := worker.importJob(ctx, job)
 	if err != nil {
 		t.Fatal(err)
@@ -285,6 +286,22 @@ func TestImportZipJob(t *testing.T) {
 	inbox := folderByName(t, client, mbox.ID, "INBOX")
 	if items := messagesInFolder(t, client, mbox.ID, inbox.ID); len(items) != 2 {
 		t.Errorf("INBOX has %d messages, want 2", len(items))
+	}
+}
+
+func TestImportZipJobRejectsKeysOutsideImportPrefix(t *testing.T) {
+	ctx := context.Background()
+	client := newTestClient(t)
+	store := newFakeStore()
+	worker := &ImportWorker{client: client, store: store}
+	mbox := seedMailbox(t, client)
+	store.objects["exports/other-job"] = []byte("zip")
+
+	for _, key := range []string{"exports/other-job", "messages/2024/01/01/x.eml", "imports/../exports/other-job", "imports/", "/imports/a.zip"} {
+		job := importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": key}}
+		if _, err := worker.importJob(ctx, job); !errors.Is(err, storage.ErrInvalidImportKey) {
+			t.Errorf("key %q: err = %v, want ErrInvalidImportKey", key, err)
+		}
 	}
 }
 
@@ -308,10 +325,10 @@ func TestImportRejectsOversizeMessages(t *testing.T) {
 	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	store.objects["big.zip"] = buf.Bytes()
+	store.objects["imports/big.zip"] = buf.Bytes()
 
 	var tooLarge *ErrMessageTooLarge
-	_, err = worker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": "big.zip"}})
+	_, err = worker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "zip", Source: map[string]any{"object_key": "imports/big.zip"}})
 	if !errors.As(err, &tooLarge) {
 		t.Fatalf("zip import error = %v, want ErrMessageTooLarge", err)
 	}
@@ -443,10 +460,10 @@ func TestExportBuildZIP(t *testing.T) {
 
 func TestDialIMAPRejectsUnlistedSkipVerify(t *testing.T) {
 	job := importJob{ID: "imp", Source: map[string]any{"addr": "imap.example.com:993", "skip_verify": true}}
-	if _, err := dialIMAP(job, config.ImportsConfig{}); err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
+	if _, err := dialIMAP(context.Background(), job, config.ImportsConfig{}); err == nil || !strings.Contains(err.Error(), "is not permitted") {
 		t.Fatalf("expected skip_verify rejection, got %v", err)
 	}
-	if _, err := dialIMAP(job, config.ImportsConfig{InsecureTLSHosts: []string{"other.example.com"}}); err == nil || !strings.Contains(err.Error(), "skip_verify is not permitted") {
+	if _, err := dialIMAP(context.Background(), job, config.ImportsConfig{InsecureTLSHosts: []string{"other.example.com"}}); err == nil || !strings.Contains(err.Error(), "is not permitted") {
 		t.Fatalf("expected skip_verify rejection for unlisted host, got %v", err)
 	}
 }

@@ -69,6 +69,9 @@ func (r outboundMessageRequest) messageBytes() ([]byte, error) {
 	if err := validateAddresses(r.BCC); err != nil {
 		return nil, fmt.Errorf("bcc: %w", err)
 	}
+	if err := validateHeaderValue(r.Subject); err != nil {
+		return nil, fmt.Errorf("subject: %w", err)
+	}
 	return buildMessage(r), nil
 }
 
@@ -105,7 +108,25 @@ func writePart(message *bytes.Buffer, boundary string, contentType string, body 
 }
 
 func writeHeader(message *bytes.Buffer, key string, value string) {
-	message.WriteString(key + ": " + strings.ReplaceAll(value, "\r\n", " ") + "\r\n")
+	message.WriteString(key + ": " + sanitizeHeaderValue(value) + "\r\n")
+}
+
+func sanitizeHeaderValue(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' {
+			return ' '
+		}
+		return r
+	}, value)
+}
+
+func validateHeaderValue(value string) error {
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return errors.New("must not contain control characters")
+		}
+	}
+	return nil
 }
 
 func validateAddresses(addresses []string) error {

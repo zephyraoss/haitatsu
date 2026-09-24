@@ -3,8 +3,10 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -41,6 +43,28 @@ func retryTransient(ctx context.Context, op func() error) error {
 func transientError(err error) bool {
 	resp := minio.ToErrorResponse(err)
 	return resp.StatusCode < 400 || resp.StatusCode >= 500
+}
+
+const ImportObjectPrefix = "imports/"
+
+var ErrInvalidImportKey = errors.New("import object key must be a normalized path under " + ImportObjectPrefix)
+
+// ValidateImportKey reports whether key is a normalized object key inside the
+// caller-supplied import namespace, rejecting anything that could reference
+// message blobs, export archives or other objects in the bucket.
+func ValidateImportKey(key string) error {
+	if !strings.HasPrefix(key, ImportObjectPrefix) || len(key) == len(ImportObjectPrefix) {
+		return ErrInvalidImportKey
+	}
+	if strings.ContainsAny(key, "\\\x00") {
+		return ErrInvalidImportKey
+	}
+	for _, segment := range strings.Split(key, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return ErrInvalidImportKey
+		}
+	}
+	return nil
 }
 
 type Client struct {
@@ -99,7 +123,12 @@ func (c *Client) GetObject(ctx context.Context, key string) ([]byte, error) {
 	return data, nil
 }
 
+// GetObjectReader streams an object from the import namespace. Keys outside
+// ImportObjectPrefix are rejected before any request is made.
 func (c *Client) GetObjectReader(ctx context.Context, key string) (io.ReadCloser, error) {
+	if err := ValidateImportKey(key); err != nil {
+		return nil, err
+	}
 	var reader io.ReadCloser
 	err := retryTransient(ctx, func() error {
 		object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})

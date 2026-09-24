@@ -42,10 +42,36 @@ type Config struct {
 // ImportsConfig controls mailbox import behaviour that is decided by the
 // operator rather than by API callers.
 type ImportsConfig struct {
+	// AllowedHosts, when non-empty, restricts remote IMAP imports to these
+	// hostnames. Listed hosts may resolve to private addresses. When empty, any
+	// public host is allowed but private, loopback, link-local and metadata
+	// ranges are always refused.
+	AllowedHosts []string `pkl:"allowed_hosts" json:"allowed_hosts"`
 	// InsecureTLSHosts lists remote IMAP hosts (or host:port pairs) for which an
 	// import request may disable TLS certificate verification via
-	// source.skip_verify. Requests naming any other host are rejected.
+	// source.skip_verify or connect in plaintext via source.tls = false.
+	// Requests naming any other host are rejected.
 	InsecureTLSHosts []string `pkl:"insecure_tls_hosts" json:"insecure_tls_hosts"`
+}
+
+// AllowsHost reports whether the given IMAP hostname passes the allowlist. An
+// empty allowlist permits every host.
+func (c ImportsConfig) AllowsHost(host string) bool {
+	if len(c.AllowedHosts) == 0 {
+		return true
+	}
+	return c.HostExplicitlyAllowed(host)
+}
+
+// HostExplicitlyAllowed reports whether host appears in AllowedHosts.
+func (c ImportsConfig) HostExplicitlyAllowed(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, allowed := range c.AllowedHosts {
+		if allowed = strings.ToLower(strings.TrimSpace(allowed)); allowed != "" && allowed == host {
+			return true
+		}
+	}
+	return false
 }
 
 // AllowsInsecureTLS reports whether certificate verification may be disabled
@@ -81,6 +107,7 @@ type SMTPConfig struct {
 type IMAPConfig struct {
 	Addr                string `pkl:"addr" json:"addr"`
 	MaxConnectionsPerIP int    `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
+	AllowInsecureAuth   bool   `pkl:"allow_insecure_auth" json:"allow_insecure_auth"`
 }
 
 type SubmissionConfig struct {

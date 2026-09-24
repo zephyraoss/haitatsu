@@ -44,7 +44,7 @@ func New(cfg config.SubmissionConfig, domain string, tlsConfig *tls.Config, clie
 		tlsServer = newServer(cfg.TLSAddr, domain, tlsConfig, false, backend, opts)
 	}
 	return &Server{
-		startTLS: newServer(cfg.StartTLSAddr, domain, tlsConfig, cfg.AllowInsecureAuth, backend, opts),
+		startTLS: newServer(cfg.StartTLSAddr, domain, tlsConfig, tlsConfig == nil && cfg.AllowInsecureAuth, backend, opts),
 		tls:      tlsServer,
 	}
 }

@@ -19,12 +19,16 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
-	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailaddr"
+	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
-const verpPrefix = "bounces+"
+const (
+	verpPrefix          = "bounces+"
+	maxStatusBlocks     = 64
+	maxStatusRecipients = 32
+)
 
 type Store interface {
 	PutMessage(ctx context.Context, key string, data []byte) error
@@ -89,23 +93,47 @@ func (h *Handler) ParseRecipient(ctx context.Context, address string) (Recipient
 	return Recipient{Address: address, MessageID: parsed.String()}, true, true
 }
 
-func (h *Handler) Record(ctx context.Context, recipient Recipient, raw []byte) error {
-	key := fmt.Sprintf("bounces/%s/%s.eml", recipient.MessageID, ids.New().String())
+func (h *Handler) Record(ctx context.Context, recipients []Recipient, raw []byte) error {
+	recipients = uniqueRecipients(recipients)
+	if len(recipients) == 0 {
+		return nil
+	}
+	sum := sha256Hex(raw)
+	key := fmt.Sprintf("bounces/sha256/%s.eml", sum)
 	if err := h.store.PutMessage(ctx, key, raw); err != nil {
 		return err
 	}
-	_, err := h.client.BounceEvent.Create().
-		SetMessageID(recipient.MessageID).
-		SetRecipient(recipient.Address).
-		SetBlobKey(key).
-		SetSha256(sha256Hex(raw)).
-		SetSizeBytes(int64(len(raw))).
-		SetDetails(bounceDetails(raw)).
-		Save(ctx)
-	if err == nil {
+	details := bounceDetails(raw)
+	creates := make([]*ent.BounceEventCreate, 0, len(recipients))
+	for _, recipient := range recipients {
+		creates = append(creates, h.client.BounceEvent.Create().
+			SetMessageID(recipient.MessageID).
+			SetRecipient(recipient.Address).
+			SetBlobKey(key).
+			SetSha256(sum).
+			SetSizeBytes(int64(len(raw))).
+			SetDetails(details))
+	}
+	if _, err := h.client.BounceEvent.CreateBulk(creates...).Save(ctx); err != nil {
+		return err
+	}
+	for range creates {
 		h.metrics.MessageBounced()
 	}
-	return err
+	return nil
+}
+
+func uniqueRecipients(recipients []Recipient) []Recipient {
+	seen := make(map[string]struct{}, len(recipients))
+	unique := make([]Recipient, 0, len(recipients))
+	for _, recipient := range recipients {
+		if _, ok := seen[recipient.MessageID]; ok {
+			continue
+		}
+		seen[recipient.MessageID] = struct{}{}
+		unique = append(unique, recipient)
+	}
+	return unique
 }
 
 func bounceDetails(raw []byte) map[string]any {
@@ -119,7 +147,7 @@ func bounceDetails(raw []byte) map[string]any {
 		return details
 	}
 	reader := multipart.NewReader(message.Body, params["boundary"])
-	for {
+	for parts := 0; parts < mailparse.MaxParts; parts++ {
 		part, err := reader.NextPart()
 		if err == io.EOF {
 			break
@@ -130,7 +158,7 @@ func bounceDetails(raw []byte) map[string]any {
 		if partContentType(part) != "message/delivery-status" {
 			continue
 		}
-		status, err := io.ReadAll(part)
+		status, err := io.ReadAll(io.LimitReader(part, mailparse.MaxStatusBytes))
 		if err != nil {
 			return details
 		}
@@ -156,6 +184,9 @@ func parseDeliveryStatus(data []byte) map[string]any {
 	}
 	recipients := make([]map[string]any, 0, len(blocks)-1)
 	for _, block := range blocks[1:] {
+		if len(recipients) >= maxStatusRecipients {
+			break
+		}
 		recipient := map[string]any{}
 		setHeaderDetails(recipient, block, map[string]string{
 			"Original-Recipient": "original_recipient",
@@ -183,7 +214,9 @@ func parseDeliveryStatus(data []byte) map[string]any {
 func deliveryStatusBlocks(data []byte) []textproto.MIMEHeader {
 	var blocks []textproto.MIMEHeader
 	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
-	for _, block := range strings.Split(normalized, "\n\n") {
+	for len(normalized) > 0 && len(blocks) < maxStatusBlocks {
+		block, rest, _ := strings.Cut(normalized, "\n\n")
+		normalized = rest
 		block = strings.TrimSpace(block)
 		if block == "" {
 			continue
@@ -191,9 +224,6 @@ func deliveryStatusBlocks(data []byte) []textproto.MIMEHeader {
 		reader := textproto.NewReader(bufio.NewReader(strings.NewReader(block + "\r\n\r\n")))
 		header, err := reader.ReadMIMEHeader()
 		if err != nil || len(header) == 0 {
-			continue
-		}
-		if len(header) == 0 {
 			continue
 		}
 		blocks = append(blocks, header)
