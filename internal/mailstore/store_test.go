@@ -229,8 +229,7 @@ func TestSetFlagsManyUpdatesAndNotifiesEachMessage(t *testing.T) {
 	defer cancelLabel()
 
 	flags := mailstore.Flags{Seen: true, Keywords: []string{"$Important"}}
-	ids := []string{items[0].ID, items[2].ID, items[1].ID, "missing"}
-	if err := store.SetFlagsMany(ctx, ids, flags); err != nil {
+	if err := store.SetFlagsMany(ctx, []*ent.MailboxMessage{items[0], items[2], items[1]}, flags); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range items {

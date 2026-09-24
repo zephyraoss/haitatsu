@@ -18,6 +18,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessagelabel"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 	"github.com/zephyraoss/haitatsu/internal/ratelimit"
@@ -338,35 +339,39 @@ func (s *session) Status(mailboxName string, options *imap.StatusOptions) (*imap
 		return data, nil
 	}
 	if options.NumMessages || options.NumUnseen || options.NumDeleted || options.Size {
-		entries, err := s.loadEntries(ctx, c)
-		if err != nil {
-			return nil, err
-		}
-		total := uint32(len(entries))
-		var unseen, deleted uint32
-		for _, item := range entries {
-			if !item.flags.Seen {
-				unseen++
-			}
-			if item.flags.Deleted {
-				deleted++
-			}
-		}
-		if options.NumMessages {
-			data.NumMessages = &total
-		}
-		if options.NumUnseen {
-			data.NumUnseen = &unseen
-		}
-		if options.NumDeleted {
-			data.NumDeleted = &deleted
-		}
-		if options.Size {
-			size, err := s.sizeOf(ctx, entries)
+		if c.isLabel() {
+			entries, err := s.loadEntries(ctx, c)
 			if err != nil {
 				return nil, err
 			}
-			data.Size = &size
+			total := uint32(len(entries))
+			var unseen, deleted uint32
+			for _, item := range entries {
+				if !item.flags.Seen {
+					unseen++
+				}
+				if item.flags.Deleted {
+					deleted++
+				}
+			}
+			if options.NumMessages {
+				data.NumMessages = &total
+			}
+			if options.NumUnseen {
+				data.NumUnseen = &unseen
+			}
+			if options.NumDeleted {
+				data.NumDeleted = &deleted
+			}
+			if options.Size {
+				size, err := s.sizeOf(ctx, entries)
+				if err != nil {
+					return nil, err
+				}
+				data.Size = &size
+			}
+		} else if err := s.folderStatus(ctx, c.folder.ID, options, data); err != nil {
+			return nil, err
 		}
 	}
 	if options.AppendLimit && s.appendLimit > 0 {
@@ -374,6 +379,50 @@ func (s *session) Status(mailboxName string, options *imap.StatusOptions) (*imap
 		data.AppendLimit = &limit
 	}
 	return data, nil
+}
+
+func (s *session) folderStatus(ctx context.Context, folderID string, options *imap.StatusOptions, data *imap.StatusData) error {
+	live := []predicate.MailboxMessage{mailboxmessage.FolderIDEQ(folderID), mailboxmessage.DeletedAtIsNil()}
+	if options.NumMessages {
+		count, err := s.client.MailboxMessage.Query().Where(live...).Count(ctx)
+		if err != nil {
+			return err
+		}
+		total := uint32(count)
+		data.NumMessages = &total
+	}
+	if options.NumUnseen {
+		count, err := s.client.MailboxMessage.Query().Where(append(slices.Clone(live), mailboxmessage.ReadEQ(false))...).Count(ctx)
+		if err != nil {
+			return err
+		}
+		unseen := uint32(count)
+		data.NumUnseen = &unseen
+	}
+	if options.NumDeleted {
+		count, err := s.client.MailboxMessage.Query().Where(append(slices.Clone(live), mailboxmessage.ImapDeletedEQ(true))...).Count(ctx)
+		if err != nil {
+			return err
+		}
+		deleted := uint32(count)
+		data.NumDeleted = &deleted
+	}
+	if options.Size {
+		items, err := s.client.MailboxMessage.Query().Where(live...).Select(mailboxmessage.FieldMessageID).All(ctx)
+		if err != nil {
+			return err
+		}
+		entries := make([]entry, 0, len(items))
+		for _, item := range items {
+			entries = append(entries, entry{messageID: item.MessageID})
+		}
+		size, err := s.sizeOf(ctx, entries)
+		if err != nil {
+			return err
+		}
+		data.Size = &size
+	}
+	return nil
 }
 
 func (s *session) sizeOf(ctx context.Context, entries []entry) (int64, error) {
@@ -487,18 +536,28 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 	if err := s.resync(ctx, nil, syncMode{}); err != nil {
 		return err
 	}
-	indexes := s.view.selected(numSet)
-	nextFlags := make([]mailstore.Flags, len(indexes))
-	groups := make(map[string][]string)
-	var groupOrder []string
-	groupFlags := make(map[string]mailstore.Flags)
-	for i, index := range indexes {
+	selected := s.view.selected(numSet)
+	itemsByID, err := s.loadMailboxMessages(ctx, selected)
+	if err != nil {
+		return err
+	}
+	type flagGroup struct {
+		flags mailstore.Flags
+		items []*ent.MailboxMessage
+	}
+	groups := map[string]*flagGroup{}
+	order := []string{}
+	nextFlags := make(map[int]mailstore.Flags, len(selected))
+	for _, index := range selected {
 		item := s.view.entries[index]
 		if item.gone {
 			continue
 		}
+		mm, ok := itemsByID[item.itemID]
+		if !ok {
+			continue
+		}
 		next := item.flags
-		next.Keywords = slices.Clone(next.Keywords)
 		switch flags.Op {
 		case imap.StoreFlagsSet:
 			next = mailstore.ParseFlags(storeFlagStrings(flags.Flags))
@@ -511,25 +570,28 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 				next.Set(string(flag), false)
 			}
 		}
-		nextFlags[i] = next
-		key := strings.Join(next.List(), " ")
-		if _, ok := groups[key]; !ok {
-			groupOrder = append(groupOrder, key)
-			groupFlags[key] = next
+		nextFlags[index] = next
+		key := strings.Join(next.List(), "\x00")
+		group, ok := groups[key]
+		if !ok {
+			group = &flagGroup{flags: next}
+			groups[key] = group
+			order = append(order, key)
 		}
-		groups[key] = append(groups[key], item.itemID)
+		group.items = append(group.items, mm)
 	}
-	for _, key := range groupOrder {
-		if err := s.store.SetFlagsMany(ctx, groups[key], groupFlags[key]); err != nil {
+	for _, key := range order {
+		group := groups[key]
+		if err := s.store.SetFlagsMany(ctx, group.items, group.flags); err != nil {
 			return err
 		}
 	}
-	for i, index := range indexes {
-		item := s.view.entries[index]
-		if item.gone {
+	for _, index := range selected {
+		next, ok := nextFlags[index]
+		if !ok {
 			continue
 		}
-		next := nextFlags[i]
+		item := s.view.entries[index]
 		s.view.entries[index].flags = next
 		if !flags.Silent {
 			writer := w.CreateMessage(uint32(index + 1))
