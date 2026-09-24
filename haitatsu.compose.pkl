@@ -19,6 +19,7 @@ imap {
 submission {
   starttls_addr = "0.0.0.0:587"
   tls_addr = "0.0.0.0:465"
+  allow_insecure_auth = true
 }
 
 relay {

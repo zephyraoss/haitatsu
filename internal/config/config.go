@@ -55,8 +55,9 @@ type IMAPConfig struct {
 }
 
 type SubmissionConfig struct {
-	StartTLSAddr string `pkl:"starttls_addr" json:"starttls_addr"`
-	TLSAddr      string `pkl:"tls_addr" json:"tls_addr"`
+	StartTLSAddr      string `pkl:"starttls_addr" json:"starttls_addr"`
+	TLSAddr           string `pkl:"tls_addr" json:"tls_addr"`
+	AllowInsecureAuth bool   `pkl:"allow_insecure_auth" json:"allow_insecure_auth"`
 }
 
 type RelayConfig struct {
