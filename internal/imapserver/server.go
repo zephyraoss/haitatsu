@@ -32,7 +32,6 @@ type Server struct {
 type Options struct {
 	MaxConnectionsPerIP int
 	AppendLimit         int64
-	AllowPlaintextAuth  bool
 }
 
 func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, blobs MessageStore, store *mailstore.Store, m *metrics.Metrics, opts Options) *Server {
@@ -72,7 +71,7 @@ func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, blobs
 			imap.CapSASLIR:       {},
 		},
 		TLSConfig:    tlsConfig,
-		InsecureAuth: tlsConfig == nil && opts.AllowPlaintextAuth,
+		InsecureAuth: tlsConfig == nil && cfg.AllowInsecureAuth,
 	})
 	return &Server{addr: cfg.Addr, server: server}
 }

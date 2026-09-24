@@ -30,6 +30,11 @@ type harness struct {
 
 func newHarness(t *testing.T, limits outbound.Limits) *harness {
 	t.Helper()
+	return newHarnessWithConfig(t, limits, config.SubmissionConfig{AllowInsecureAuth: true})
+}
+
+func newHarnessWithConfig(t *testing.T, limits outbound.Limits, cfg config.SubmissionConfig) *harness {
+	t.Helper()
 	client, _ := testutil.NewClient(t)
 	store := testutil.NewMailStore(t, client)
 	blobs := testutil.NewFakeStore()
@@ -48,7 +53,9 @@ func newHarness(t *testing.T, limits outbound.Limits) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(config.SubmissionConfig{StartTLSAddr: listener.Addr().String(), TLSAddr: "127.0.0.1:0"}, "mail.example.test", nil, client, submission, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 5, AllowPlaintextAuth: true})
+	cfg.StartTLSAddr = listener.Addr().String()
+	cfg.TLSAddr = "127.0.0.1:0"
+	server := New(cfg, "mail.example.test", nil, client, submission, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 5})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	return &harness{client: client, store: store, mbox: mbox, addr: listener.Addr().String()}
@@ -126,5 +133,17 @@ func TestSubmissionEnforcesOutboundLimits(t *testing.T) {
 	err := submit(h.addr, "carol@example.test", password, "carol@example.test", []string{"dave@remote.test"}, body)
 	if err == nil || !strings.Contains(err.Error(), "450") {
 		t.Fatalf("rate limited submission should return 450, got %v", err)
+	}
+}
+
+func TestSubmissionRejectsPlaintextAuthByDefault(t *testing.T) {
+	h := newHarnessWithConfig(t, outbound.Limits{}, config.SubmissionConfig{})
+	body := "From: carol@example.test\r\nTo: dave@remote.test\r\nSubject: hi\r\n\r\nhello\r\n"
+	if err := submit(h.addr, "carol@example.test", password, "carol@example.test", []string{"dave@remote.test"}, body); err == nil {
+		t.Fatal("plaintext auth without TLS should be rejected unless explicitly allowed")
+	}
+	jobs, _ := h.client.OutboundJob.Query().All(context.Background())
+	if len(jobs) != 0 {
+		t.Fatalf("jobs = %+v", jobs)
 	}
 }

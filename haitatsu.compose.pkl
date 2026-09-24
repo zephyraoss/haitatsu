@@ -14,11 +14,13 @@ smtp {
 imap {
   addr = "0.0.0.0:143"
   max_connections_per_ip = 30
+  allow_insecure_auth = true
 }
 
 submission {
   starttls_addr = "0.0.0.0:587"
   tls_addr = "0.0.0.0:465"
+  allow_insecure_auth = true
 }
 
 relay {
@@ -28,6 +30,7 @@ relay {
   from_host = "localhost"
   max_attempts = 30
   max_retry_minutes = 240
+  timeout_seconds = 60
 }
 
 database {
@@ -65,12 +68,11 @@ api {
 workers {
   enabled = true
   concurrency = 2
+  maildir_import_root = ""
 }
 
 tls {
   mode = "off"
-  // Only honoured when TLS is off: allow IMAP/SMTP submission to accept credentials over cleartext (dev only).
-  allow_plaintext_auth = true
   cert_file = ""
   key_file = ""
   acme_email = ""

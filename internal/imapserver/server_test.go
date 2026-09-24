@@ -49,7 +49,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := imapserver.New(config.IMAPConfig{Addr: listener.Addr().String()}, nil, client, blobs, store, metrics.New(), imapserver.Options{MaxConnectionsPerIP: 10, AppendLimit: 1 << 20, AllowPlaintextAuth: true})
+	server := imapserver.New(config.IMAPConfig{Addr: listener.Addr().String(), AllowInsecureAuth: true}, nil, client, blobs, store, metrics.New(), imapserver.Options{MaxConnectionsPerIP: 10, AppendLimit: 1 << 20})
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Shutdown(context.Background()) })
 	return &harness{t: t, client: client, store: store, blobs: blobs, mbox: mbox, addr: listener.Addr().String()}

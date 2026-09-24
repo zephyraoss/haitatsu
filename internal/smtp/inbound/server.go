@@ -22,6 +22,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/spam"
 )
 
+const spamCheckTimeout = 30 * time.Second
+
 type Server struct {
 	server *smtp.Server
 }
@@ -166,7 +168,13 @@ func (s *session) Data(r io.Reader) error {
 	}
 	normalized := mailparse.NormalizeMessage(raw)
 	metadata := mailparse.Parse(normalized)
-	assessment := s.backend.spam.CheckParsed(context.Background(), normalized, metadata, s.smtp, s.recipients)
+	spamCtx, cancel := context.WithTimeout(context.Background(), spamCheckTimeout)
+	assessment, err := s.backend.spam.CheckParsed(spamCtx, normalized, metadata, s.smtp, s.recipients)
+	cancel()
+	if err != nil {
+		slog.Error("inbound spam check failed", "error", err)
+		return temporarySMTPError("temporary local problem")
+	}
 	if assessment.Reject {
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "message rejected by policy"}
 	}

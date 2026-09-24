@@ -30,7 +30,6 @@ type Options struct {
 	MaxMessageBytes     int64
 	MaxRecipients       int
 	MaxConnectionsPerIP int
-	AllowPlaintextAuth  bool
 }
 
 func New(cfg config.SubmissionConfig, domain string, tlsConfig *tls.Config, client *ent.Client, submission *outbound.Submission, opts Options) *Server {
@@ -42,10 +41,10 @@ func New(cfg config.SubmissionConfig, domain string, tlsConfig *tls.Config, clie
 	}
 	var tlsServer *smtp.Server
 	if tlsConfig != nil {
-		tlsServer = newServer(cfg.TLSAddr, domain, tlsConfig, backend, opts)
+		tlsServer = newServer(cfg.TLSAddr, domain, tlsConfig, false, backend, opts)
 	}
 	return &Server{
-		startTLS: newServer(cfg.StartTLSAddr, domain, tlsConfig, backend, opts),
+		startTLS: newServer(cfg.StartTLSAddr, domain, tlsConfig, tlsConfig == nil && cfg.AllowInsecureAuth, backend, opts),
 		tls:      tlsServer,
 	}
 }
@@ -80,7 +79,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.tls.Shutdown(ctx)
 }
 
-func newServer(addr string, domain string, tlsConfig *tls.Config, backend smtp.Backend, opts Options) *smtp.Server {
+func newServer(addr string, domain string, tlsConfig *tls.Config, allowInsecureAuth bool, backend smtp.Backend, opts Options) *smtp.Server {
 	server := smtp.NewServer(backend)
 	server.Addr = addr
 	server.Domain = domain
@@ -90,7 +89,7 @@ func newServer(addr string, domain string, tlsConfig *tls.Config, backend smtp.B
 	server.MaxRecipients = opts.MaxRecipients
 	server.MaxLineLength = 4000
 	server.TLSConfig = tlsConfig
-	server.AllowInsecureAuth = tlsConfig == nil && opts.AllowPlaintextAuth
+	server.AllowInsecureAuth = allowInsecureAuth
 	return server
 }
 

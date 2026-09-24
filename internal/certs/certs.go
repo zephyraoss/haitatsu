@@ -43,7 +43,10 @@ func manualTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	}, nil
 }
 
 func storageTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {

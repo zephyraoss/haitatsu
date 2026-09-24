@@ -107,6 +107,46 @@ func TestClaimSQLiteOutboundJob(t *testing.T) {
 	}
 }
 
+func TestClaimReclaimsExpiredProcessingJob(t *testing.T) {
+	ctx := context.Background()
+	client, db := testutil.NewClient(t)
+	worker := NewWorker(db, client, testutil.NewFakeStore(), func() config.RelayConfig { return config.RelayConfig{} }, metrics.New(), nil, "worker", database.BackendSQLite)
+	create := func() string {
+		job, err := client.OutboundJob.Create().
+			SetMailboxID("mailbox").
+			SetMessageID("message").
+			SetReturnPath("sender@example.test").
+			SetRecipients([]string{"recipient@example.test"}).
+			Save(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return job.ID
+	}
+	live := create()
+	if _, err := client.OutboundJob.UpdateOneID(live).SetStatus("processing").SetLockedBy("dead").SetLockedUntil(time.Now().Add(time.Hour)).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := worker.claim(ctx); err != nil || ok {
+		t.Fatalf("live lease must not be reclaimed: ok=%v err=%v", ok, err)
+	}
+	stale := create()
+	if _, err := client.OutboundJob.UpdateOneID(stale).SetStatus("processing").SetLockedBy("dead").SetLockedUntil(time.Now().Add(-time.Minute)).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	job, ok, err := worker.claim(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || job.ID != stale {
+		t.Fatalf("expired lease should be reclaimed: claimed=%+v ok=%v", job, ok)
+	}
+	after, _ := client.OutboundJob.Get(ctx, stale)
+	if after.LockedBy != "worker" {
+		t.Fatalf("locked_by = %v", after.LockedBy)
+	}
+}
+
 func TestClaimLibSQLRemoteOutboundJob(t *testing.T) {
 	endpoint := os.Getenv("HAITATSU_TEST_LIBSQL_URL")
 	if endpoint == "" {

@@ -49,7 +49,10 @@ func TestTypeSafeDeliveryAndReload(t *testing.T) {
 	}
 	checker := spam.NewChecker(client, func() config.SpamConfig { return holder.Get().Spam }, "mx.test", spam.WithTypeSafe(evaluator, nil))
 	raw := []byte("Subject: content test\r\nMessage-ID: <test@local>\r\n\r\nA message with content to evaluate.\r\n")
-	assessment := checker.Check(ctx, raw, spam.SMTPContext{RemoteIP: "127.0.0.1"}, recipients)
+	assessment, err := checker.Check(ctx, raw, spam.SMTPContext{RemoteIP: "127.0.0.1"}, recipients)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if evaluator.calls != 1 || !assessment.Junk || assessment.Reject || assessment.Score != 0 {
 		t.Fatalf("calls=%d assessment=%+v", evaluator.calls, assessment)
 	}
@@ -82,7 +85,10 @@ func TestTypeSafeDeliveryAndReload(t *testing.T) {
 			t.Fatalf("%s in %s: %d messages", target.mailbox.PrimaryAddress, target.folder, len(items))
 		}
 	}
-	next := checker.Check(ctx, raw, spam.SMTPContext{RemoteIP: "127.0.0.1"}, recipients)
+	next, err := checker.Check(ctx, raw, spam.SMTPContext{RemoteIP: "127.0.0.1"}, recipients)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if evaluator.calls != 1 || next.Junk {
 		t.Fatalf("reload not applied: calls=%d result=%+v", evaluator.calls, next)
 	}

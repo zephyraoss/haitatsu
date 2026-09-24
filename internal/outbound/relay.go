@@ -2,9 +2,12 @@ package outbound
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/mail"
 	"net/smtp"
 	"regexp"
@@ -131,7 +134,7 @@ func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
 UPDATE outbound_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM outbound_jobs
-  WHERE status IN ('queued', 'retry')
+  WHERE status IN ('queued', 'retry', 'processing')
     AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
     AND (locked_until IS NULL OR locked_until <= NOW())
   ORDER BY created_at
@@ -147,13 +150,13 @@ RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
 WHERE id = (
   SELECT id FROM outbound_jobs
-  WHERE status IN ('queued', 'retry')
+  WHERE status IN ('queued', 'retry', 'processing')
     AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
     AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
   ORDER BY created_at
   LIMIT 1
 )
-AND status IN ('queued', 'retry')
+AND status IN ('queued', 'retry', 'processing')
 AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
 AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
 RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
@@ -209,8 +212,79 @@ func (w *Worker) deliver(ctx context.Context, job claimedJob) deliveryResult {
 	return classifySMTPError(err)
 }
 
-func sendViaRelay(_ context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
-	return smtp.SendMail(cfg.Addr, relayAuth(cfg), from, recipients, raw)
+func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout())
+	defer cancel()
+
+	deadline, _ := ctx.Deadline()
+	dialer := &net.Dialer{Timeout: cfg.Timeout()}
+	conn, err := dialer.DialContext(ctx, "tcp", cfg.Addr)
+	if err != nil {
+		return err
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		conn.Close()
+		return err
+	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+
+	host, _, _ := strings.Cut(cfg.Addr, ":")
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return wrapCtxErr(ctx, err)
+	}
+	defer client.Close()
+	if err := client.Hello("localhost"); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return wrapCtxErr(ctx, err)
+		}
+	}
+	if auth := relayAuth(cfg); auth != nil {
+		if ok, _ := client.Extension("AUTH"); !ok {
+			return errors.New("smtp: server doesn't support AUTH")
+		}
+		if err := client.Auth(auth); err != nil {
+			return wrapCtxErr(ctx, err)
+		}
+	}
+	if err := client.Mail(from); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	for _, rcpt := range recipients {
+		if err := client.Rcpt(rcpt); err != nil {
+			return wrapCtxErr(ctx, err)
+		}
+	}
+	wc, err := client.Data()
+	if err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	if _, err := wc.Write(raw); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	if err := wc.Close(); err != nil {
+		return wrapCtxErr(ctx, err)
+	}
+	return wrapCtxErr(ctx, client.Quit())
+}
+
+func wrapCtxErr(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("%w: %v", ctx.Err(), err)
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return fmt.Errorf("%w: %v", context.DeadlineExceeded, err)
+	}
+	return err
 }
 
 func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResult) error {
