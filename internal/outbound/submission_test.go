@@ -1,6 +1,7 @@
 package outbound
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestNormalizeSubmittedMessageThunderbirdSeparator(t *testing.T) {
 	traceID := "01KS9Z9ZSKKJPNVEEQS9ZTYVE4"
 	node := "haitatsu-haitatsu"
 
-	normalized := normalizeSubmittedMessage(raw, "wafwaf@emails.ax", "msg-id", "emails.ax", traceID, node)
+	normalized, _ := normalizeSubmittedMessage(raw, "wafwaf@emails.ax", allowAll, "msg-id", "emails.ax", traceID, node)
 	header, body := mailparse.SplitHeaderBody(normalized)
 
 	if strings.Contains(string(header), "7bitX-Haitatsu") {
@@ -51,7 +52,7 @@ func TestNormalizeSubmittedMessageTraceHeadersInHeaderBlock(t *testing.T) {
 	traceID := "01KS9YFB8STSRGGJWN5CFW398S"
 	node := "haitatsu-haitatsu"
 
-	normalized := normalizeSubmittedMessage(raw, "wafwaf@emails.ax", "msg-id", "emails.ax", traceID, node)
+	normalized, _ := normalizeSubmittedMessage(raw, "wafwaf@emails.ax", allowAll, "msg-id", "emails.ax", traceID, node)
 	lower := strings.ToLower(string(normalized))
 	if !strings.Contains(lower, strings.ToLower(traceID)) || !strings.Contains(lower, "x-haitatsu-trace-id") {
 		t.Fatalf("normalized message missing trace header: %q", normalized)
@@ -69,5 +70,54 @@ func TestNormalizeSubmittedMessageTraceHeadersInHeaderBlock(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "Hello from the body.") {
 		t.Fatalf("body content missing: %q", body)
+	}
+}
+
+func allowAll(string) (bool, error) { return true, nil }
+
+func onlyAllow(addresses ...string) senderCheck {
+	return func(address string) (bool, error) {
+		for _, allowed := range addresses {
+			if strings.EqualFold(allowed, address) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+}
+
+func TestNormalizeSubmittedMessageRejectsUnauthorizedFrom(t *testing.T) {
+	raw := []byte("From: CEO <ceo@example.test>\r\nTo: victim@other.test\r\nSubject: urgent\r\n\r\nwire money\r\n")
+	_, err := normalizeSubmittedMessage(raw, "alice@example.test", onlyAllow("alice@example.test"), "id", "mail.example.test", "trace", "node")
+	if !errors.Is(err, ErrSenderNotAllowed) {
+		t.Fatalf("expected ErrSenderNotAllowed, got %v", err)
+	}
+	_, err = normalizeSubmittedMessageFallback(raw, "alice@example.test", onlyAllow("alice@example.test"), "id", "mail.example.test", "trace", "node")
+	if !errors.Is(err, ErrSenderNotAllowed) {
+		t.Fatalf("fallback: expected ErrSenderNotAllowed, got %v", err)
+	}
+}
+
+func TestNormalizeSubmittedMessageRejectsMixedFromList(t *testing.T) {
+	raw := []byte("From: alice@example.test,\r\n ceo@example.test\r\nTo: victim@other.test\r\n\r\nbody\r\n")
+	_, err := normalizeSubmittedMessage(raw, "alice@example.test", onlyAllow("alice@example.test"), "id", "mail.example.test", "trace", "node")
+	if !errors.Is(err, ErrSenderNotAllowed) {
+		t.Fatalf("expected ErrSenderNotAllowed, got %v", err)
+	}
+	_, err = normalizeSubmittedMessageFallback(raw, "alice@example.test", onlyAllow("alice@example.test"), "id", "mail.example.test", "trace", "node")
+	if !errors.Is(err, ErrSenderNotAllowed) {
+		t.Fatalf("fallback: expected ErrSenderNotAllowed, got %v", err)
+	}
+}
+
+func TestNormalizeSubmittedMessageAcceptsAuthorizedFromAndFillsMissing(t *testing.T) {
+	raw := []byte("From: Alice <alice@example.test>\r\nTo: victim@other.test\r\n\r\nbody\r\n")
+	out, err := normalizeSubmittedMessage(raw, "alice@example.test", onlyAllow("alice@example.test"), "id", "mail.example.test", "trace", "node")
+	if err != nil || !strings.Contains(string(out), "From: Alice <alice@example.test>") {
+		t.Fatalf("authorized From should be preserved: %v %q", err, out)
+	}
+	out, err = normalizeSubmittedMessage([]byte("To: victim@other.test\r\n\r\nbody\r\n"), "alice@example.test", onlyAllow(), "id", "mail.example.test", "trace", "node")
+	if err != nil || !strings.Contains(string(out), "From: alice@example.test") {
+		t.Fatalf("missing From should be set to envelope sender: %v %q", err, out)
 	}
 }

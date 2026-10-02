@@ -16,7 +16,9 @@ const (
 	maxSPFLookups = 10
 	// RFC 7208 §4.6.4: at most 10 MX names resolved per mx mechanism.
 	maxSPFMXHosts = 10
-	spfTimeout    = 20 * time.Second
+	// Cap on A/AAAA answers evaluated per host.
+	maxSPFAddresses = 10
+	spfTimeout      = 20 * time.Second
 )
 
 // spfLookups is the shared DNS lookup budget for one SPF evaluation.
@@ -48,6 +50,9 @@ func checkSPF(ctx context.Context, smtp SMTPContext) (authres.ResultValue, strin
 func evalSPF(ctx context.Context, domain string, remoteIP net.IP, depth int, lookups *spfLookups) (authres.ResultValue, string) {
 	if depth > maxSPFDepth {
 		return authres.ResultPermError, "too many SPF includes or redirects"
+	}
+	if err := ctx.Err(); err != nil {
+		return authres.ResultTempError, err.Error()
 	}
 	record, result, reason := lookupSPF(ctx, domain)
 	if result != "" {
@@ -195,6 +200,9 @@ func hostMatches(ctx context.Context, remoteIP net.IP, domain string, cidr strin
 	addresses, err := net.DefaultResolver.LookupHost(ctx, domain)
 	if err != nil {
 		return false
+	}
+	if len(addresses) > maxSPFAddresses {
+		addresses = addresses[:maxSPFAddresses]
 	}
 	for _, address := range addresses {
 		if ipMechanismMatches(remoteIP, address, cidr) {

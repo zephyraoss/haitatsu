@@ -21,10 +21,19 @@ type searchCandidate struct {
 }
 
 type searchContext struct {
-	ctx     context.Context
-	session *session
-	rawLoad map[string][]byte
+	ctx       context.Context
+	session   *session
+	scanned   int
+	blobBytes int64
 }
+
+const (
+	searchBatchSize    = 500
+	searchMaxMessages  = 100_000
+	searchMaxBlobBytes = int64(256) << 20
+)
+
+var errSearchTooLarge = &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeLimit, Text: "Search exceeds server limits; narrow the criteria"}
 
 func (s *session) Search(kind goimapserver.NumKind, criteria *imap.SearchCriteria, options *imap.SearchOptions) (*imap.SearchData, error) {
 	if s.view == nil {
@@ -34,22 +43,22 @@ func (s *session) Search(kind goimapserver.NumKind, criteria *imap.SearchCriteri
 	if err := s.resync(ctx, nil, syncMode{}); err != nil {
 		return nil, err
 	}
-	candidates, err := s.searchCandidates(ctx)
-	if err != nil {
-		return nil, err
-	}
-	sc := &searchContext{ctx: ctx, session: s, rawLoad: map[string][]byte{}}
+	sc := &searchContext{ctx: ctx, session: s}
 	var seqSet imap.SeqSet
 	var uidSet imap.UIDSet
 	var count uint32
 	var minNum, maxNum uint32
-	for _, candidate := range candidates {
-		matched, err := sc.matches(criteria, candidate)
+	err := s.searchCandidates(ctx, func(candidate searchCandidate) error {
+		sc.scanned++
+		if sc.scanned > searchMaxMessages {
+			return errSearchTooLarge
+		}
+		matched, err := sc.matches(criteria, &candidate)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if !matched {
-			continue
+			return nil
 		}
 		count++
 		num := uint32(candidate.index + 1)
@@ -65,6 +74,10 @@ func (s *session) Search(kind goimapserver.NumKind, criteria *imap.SearchCriteri
 		if num > maxNum {
 			maxNum = num
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	data := &imap.SearchData{Count: count, Min: minNum, Max: maxNum}
 	if kind == goimapserver.NumKindUID {
@@ -75,76 +88,77 @@ func (s *session) Search(kind goimapserver.NumKind, criteria *imap.SearchCriteri
 	return data, nil
 }
 
-func (s *session) searchCandidates(ctx context.Context) ([]searchCandidate, error) {
+func (s *session) searchCandidates(ctx context.Context, visit func(searchCandidate) error) error {
 	entries := s.view.entries
-	ids := make([]string, 0, len(entries))
-	for _, item := range entries {
-		if !item.gone {
-			ids = append(ids, item.itemID)
+	for start := 0; start < len(entries); start += searchBatchSize {
+		end := min(start+searchBatchSize, len(entries))
+		ids := make([]string, 0, end-start)
+		for _, item := range entries[start:end] {
+			if !item.gone {
+				ids = append(ids, item.itemID)
+			}
 		}
-	}
-	items := map[string]*ent.MailboxMessage{}
-	for start := 0; start < len(ids); start += 500 {
-		end := min(start+500, len(ids))
-		batch, err := s.client.MailboxMessage.Query().Where(mailboxmessage.IDIn(ids[start:end]...)).All(ctx)
+		if len(ids) == 0 {
+			continue
+		}
+		itemRows, err := s.client.MailboxMessage.Query().Where(mailboxmessage.IDIn(ids...)).All(ctx)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		for _, item := range batch {
+		items := make(map[string]*ent.MailboxMessage, len(itemRows))
+		messageIDs := make([]string, 0, len(itemRows))
+		for _, item := range itemRows {
 			items[item.ID] = item
+			messageIDs = append(messageIDs, item.MessageID)
 		}
-	}
-	messageIDs := make([]string, 0, len(items))
-	for _, item := range items {
-		messageIDs = append(messageIDs, item.MessageID)
-	}
-	msgs := map[string]*ent.Message{}
-	for start := 0; start < len(messageIDs); start += 500 {
-		end := min(start+500, len(messageIDs))
-		batch, err := s.client.Message.Query().Where(message.IDIn(messageIDs[start:end]...)).All(ctx)
+		msgRows, err := s.client.Message.Query().Where(message.IDIn(messageIDs...)).All(ctx)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		for _, msg := range batch {
+		msgs := make(map[string]*ent.Message, len(msgRows))
+		for _, msg := range msgRows {
 			msgs[msg.ID] = msg
 		}
+		for offset, item := range entries[start:end] {
+			if item.gone {
+				continue
+			}
+			mm, ok := items[item.itemID]
+			if !ok {
+				continue
+			}
+			msg, ok := msgs[mm.MessageID]
+			if !ok {
+				continue
+			}
+			if err := visit(searchCandidate{index: start + offset, entry: item, item: mm, msg: msg}); err != nil {
+				return err
+			}
+		}
 	}
-	candidates := make([]searchCandidate, 0, len(entries))
-	for index, item := range entries {
-		if item.gone {
-			continue
-		}
-		mm, ok := items[item.itemID]
-		if !ok {
-			continue
-		}
-		msg, ok := msgs[mm.MessageID]
-		if !ok {
-			continue
-		}
-		candidates = append(candidates, searchCandidate{index: index, entry: item, item: mm, msg: msg})
-	}
-	return candidates, nil
+	return nil
 }
 
 func (sc *searchContext) raw(candidate *searchCandidate) ([]byte, error) {
 	if candidate.raw != nil {
 		return candidate.raw, nil
 	}
-	if cached, ok := sc.rawLoad[candidate.msg.ID]; ok {
-		candidate.raw = cached
-		return cached, nil
+	if sc.blobBytes+candidate.msg.SizeBytes > searchMaxBlobBytes {
+		return nil, errSearchTooLarge
 	}
 	raw, err := sc.session.blobs.GetMessage(sc.ctx, candidate.msg.BlobKey)
 	if err != nil {
 		return nil, err
 	}
-	sc.rawLoad[candidate.msg.ID] = raw
+	sc.blobBytes += int64(len(raw))
+	if sc.blobBytes > searchMaxBlobBytes {
+		return nil, errSearchTooLarge
+	}
 	candidate.raw = raw
 	return raw, nil
 }
 
-func (sc *searchContext) matches(criteria *imap.SearchCriteria, candidate searchCandidate) (bool, error) {
+func (sc *searchContext) matches(criteria *imap.SearchCriteria, candidate *searchCandidate) (bool, error) {
 	if criteria == nil {
 		return true, nil
 	}
@@ -198,7 +212,7 @@ func (sc *searchContext) matches(criteria *imap.SearchCriteria, candidate search
 		}
 	}
 	if len(criteria.Body) > 0 || len(criteria.Text) > 0 {
-		raw, err := sc.raw(&candidate)
+		raw, err := sc.raw(candidate)
 		if err != nil {
 			return false, err
 		}

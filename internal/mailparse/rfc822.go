@@ -38,6 +38,11 @@ func SplitHeaderBody(raw []byte) (header, body []byte) {
 	return splitHeaderBodyLines(raw)
 }
 
+// splitHeaderBodyRFC822 mirrors go-message's textproto.ReadHeader line rules:
+// a line ends at LF (with an optional preceding CR), the header block ends at
+// the first line that is empty after stripping its terminator, and a line
+// starting with SP/HTAB (even if it holds nothing else) is a folded
+// continuation of the previous field rather than a terminator.
 func splitHeaderBodyRFC822(raw []byte) (header, body []byte, ok bool) {
 	reader := bufio.NewReader(bytes.NewReader(raw))
 	var headerBuf bytes.Buffer
@@ -45,7 +50,10 @@ func splitHeaderBodyRFC822(raw []byte) (header, body []byte, ok bool) {
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
-			if isHeaderTerminatorLine(line) && headerBuf.Len() > 0 {
+			if isHeaderTerminatorLine(line) {
+				if headerBuf.Len() == 0 {
+					return nil, raw, true
+				}
 				foundEnd = true
 				break
 			}
@@ -69,7 +77,9 @@ func splitHeaderBodyRFC822(raw []byte) (header, body []byte, ok bool) {
 }
 
 func isHeaderTerminatorLine(line []byte) bool {
-	return len(bytes.TrimSpace(bytes.TrimRight(line, "\r\n"))) == 0
+	line = bytes.TrimSuffix(line, []byte("\n"))
+	line = bytes.TrimSuffix(line, []byte("\r"))
+	return len(line) == 0
 }
 
 func splitAtSeparator(raw, separator []byte, headerEnd, bodyStart int) (header, body []byte, ok bool) {

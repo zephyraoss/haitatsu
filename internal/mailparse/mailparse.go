@@ -34,8 +34,8 @@ type Attachment struct {
 }
 
 func Parse(data []byte) Metadata {
-	reader, err := mail.CreateReader(bytes.NewReader(data))
-	if err != nil && reader == nil {
+	reader, _ := newBoundedReader(bytes.NewReader(data))
+	if reader == nil {
 		return Metadata{Headers: map[string][]string{}}
 	}
 	defer reader.Close()
@@ -65,6 +65,9 @@ func Parse(data []byte) Metadata {
 		partIndex++
 		if attachment, ok := attachmentMetadata(part, partIndex); ok {
 			size, _ := io.Copy(io.Discard, part.Body)
+			if len(metadata.Attachments) >= MaxAttachments {
+				continue
+			}
 			attachment["size_bytes"] = size
 			metadata.Attachments = append(metadata.Attachments, attachment)
 			continue
@@ -93,8 +96,8 @@ func ParseHeaders(data []byte) map[string][]string {
 }
 
 func ExtractAttachment(data []byte, partIndex int) (Attachment, error) {
-	reader, err := mail.CreateReader(bytes.NewReader(data))
-	if err != nil && reader == nil {
+	reader, err := newBoundedReader(bytes.NewReader(data))
+	if reader == nil {
 		return Attachment{}, err
 	}
 	defer reader.Close()

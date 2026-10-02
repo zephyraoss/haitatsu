@@ -36,8 +36,8 @@ func TLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 }
 
 func manualTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
-	if cfg.CertFile == "" && cfg.KeyFile == "" {
-		return nil, nil
+	if cfg.CertFile == "" || cfg.KeyFile == "" {
+		return nil, fmt.Errorf("tls mode %q requires cert_file and key_file (set tls.mode = \"off\" to disable TLS)", "manual")
 	}
 	cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
 	if err != nil {

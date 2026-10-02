@@ -4,14 +4,11 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +29,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
+	"github.com/zephyraoss/haitatsu/internal/storage"
 )
 
 const (
@@ -405,6 +403,9 @@ func (w *ImportWorker) importZip(ctx context.Context, job importJob, mbox *ent.M
 	if key == "" {
 		return fmt.Errorf("zip import requires source.object_key")
 	}
+	if err := storage.ValidateImportKey(key); err != nil {
+		return err
+	}
 	reader, err := w.store.GetObjectReader(ctx, key)
 	if err != nil {
 		return err
@@ -477,7 +478,7 @@ func (w *ImportWorker) importMaildir(ctx context.Context, job importJob, mbox *e
 }
 
 func (w *ImportWorker) importIMAP(ctx context.Context, job importJob, mbox *ent.Mailbox, folders *folderCache, progress *importProgress) error {
-	client, err := dialIMAP(job, w.importsConfig())
+	client, err := dialIMAP(ctx, job, w.importsConfig())
 	if err != nil {
 		return err
 	}
@@ -753,37 +754,6 @@ func sourceStringSlice(source map[string]any, key string) []string {
 		}
 	}
 	return values
-}
-
-func dialIMAP(job importJob, imports config.ImportsConfig) (*imapclient.Client, error) {
-	source := job.Source
-	addr := sourceString(source, "addr")
-	if addr == "" {
-		return nil, fmt.Errorf("imap import requires source.addr")
-	}
-	skipVerify := sourceBool(source, "skip_verify")
-	if skipVerify {
-		if !imports.AllowsInsecureTLS(addr) {
-			return nil, fmt.Errorf("imap import: source.skip_verify is not permitted for %q; add the host to imports.insecure_tls_hosts", addr)
-		}
-		slog.Warn("imap import: TLS certificate verification disabled", "import_id", job.ID, "mailbox_id", job.MailboxID, "addr", addr)
-	}
-	options := &imapclient.Options{TLSConfig: imapTLSConfig(addr, skipVerify)}
-	if sourceBool(source, "starttls") {
-		return imapclient.DialStartTLS(addr, options)
-	}
-	if tlsEnabled, ok := source["tls"].(bool); ok && !tlsEnabled {
-		return imapclient.DialInsecure(addr, options)
-	}
-	return imapclient.DialTLS(addr, options)
-}
-
-func imapTLSConfig(addr string, skipVerify bool) *tls.Config {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-	return &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify}
 }
 
 func fetchMessageData(message *imapclient.FetchMessageData, limit int64) ([]byte, importFlags, error) {
