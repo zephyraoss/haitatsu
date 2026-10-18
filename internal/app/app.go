@@ -56,6 +56,7 @@ type App struct {
 	cleanup    *cleanup.Worker
 	exports    *importexport.ExportWorker
 	imports    *importexport.ImportWorker
+	reloadMu   sync.Mutex
 }
 
 func New(ctx context.Context, opts Options) (*App, error) {
@@ -282,6 +283,8 @@ func (a *App) NotifyReload(signals ...os.Signal) {
 }
 
 func (a *App) Reload(ctx context.Context) error {
+	a.reloadMu.Lock()
+	defer a.reloadMu.Unlock()
 	next, err := config.Load(ctx, a.configPath)
 	if err != nil {
 		return fmt.Errorf("load reload config: %w", err)
