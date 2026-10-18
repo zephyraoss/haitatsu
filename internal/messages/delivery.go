@@ -199,6 +199,11 @@ func (s *Service) withTraceHeaders(raw []byte, traceID string, authResults strin
 	if authResults == "" {
 		authResults = s.publicHostname + "; none"
 	}
+	header, body := mailparse.SplitHeaderBody(raw)
+	for _, key := range []string{"Authentication-Results", "X-Haitatsu-Trace-ID", "X-Haitatsu-Node"} {
+		header = mailparse.RemoveHeaderField(header, key)
+	}
+	raw = mailparse.JoinHeaderBody(header, body)
 	headers := fmt.Sprintf("Received: by %s (Haitatsu/0.1; %s) with SMTP; %s\r\nAuthentication-Results: %s\r\nX-Haitatsu-Trace-ID: %s\r\nX-Haitatsu-Node: %s\r\n", s.publicHostname, s.instanceName, stamp, authResults, traceID, s.instanceName)
 	return append([]byte(headers), raw...)
 }
