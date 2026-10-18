@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"mime"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,8 @@ type mailboxMessageResponse struct {
 	Message        *ent.Message        `json:"message"`
 	Labels         []*ent.Label        `json:"labels"`
 }
+
+var postgresPlaceholder = regexp.MustCompile(`\$[0-9]+`)
 
 const messageSearchVector = "to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(from_addresses::text, '') || ' ' || coalesce(to_addresses::text, '') || ' ' || coalesce(cc_addresses::text, '') || ' ' || coalesce(text_body_extract, '') || ' ' || coalesce(html_body_extract, '') || ' ' || coalesce(attachments::text, ''))"
 
@@ -97,13 +100,7 @@ func (h *Handler) listMessages(c fiber.Ctx) error {
 		if err := h.applyMailboxSearch(c, query, search); err != nil {
 			return problem(c, fiber.StatusBadRequest, "invalid_message_search", err.Error())
 		}
-		ids, err := h.searchMessageIDs(c, search)
-		if err != nil {
-			return problem(c, fiber.StatusInternalServerError, "message_search_failed", "Failed to search messages")
-		}
-		if ids != nil {
-			query.Where(mailboxmessage.MessageIDIn(ids...))
-		}
+		query.Where(messageSearchPredicate(search, h.dialect))
 	}
 
 	items, err := query.All(c.Context())
@@ -491,40 +488,38 @@ func (h *Handler) applyMailboxSearch(c fiber.Ctx, query *ent.MailboxMessageQuery
 	return nil
 }
 
-func (h *Handler) searchMessageIDs(c fiber.Ctx, search messageSearch) ([]string, error) {
-	query, args := messageSearchQuery(search, h.dialect)
-	if query == "" {
-		return nil, nil
-	}
-	rows, err := h.db.QueryContext(c.Context(), query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, rows.Err()
-}
-
-func messageSearchQuery(search messageSearch, dbDialect string) (string, []any) {
+func messageSearchClause(search messageSearch, dbDialect string, messageIDColumn string) (string, []any) {
 	where, args := messageSearchWhere(search, dbDialect)
 	if len(where) == 0 {
 		return "", nil
 	}
-	query := "SELECT id FROM messages WHERE " + strings.Join(where, " AND ") + " ORDER BY created_at DESC"
+	from := "messages"
 	if len(search.Terms) > 0 && dbDialect == dialect.Postgres {
-		query = "SELECT id FROM messages, websearch_to_tsquery('english', $1) query WHERE " + strings.Join(where, " AND ") + " ORDER BY ts_rank(" + messageSearchVector + ", query) DESC, created_at DESC"
+		from = "messages, websearch_to_tsquery('english', $1) query"
 	} else if sqliteFTSQuery(search.Terms) != "" {
-		query = "SELECT messages.id FROM messages JOIN messages_search ON messages_search.message_id = messages.id WHERE " + strings.Join(where, " AND ") + " ORDER BY bm25(messages_search), messages.created_at DESC"
+		from = "messages JOIN messages_search ON messages_search.message_id = messages.id"
 	}
-	return query, args
+	return "EXISTS (SELECT 1 FROM " + from + " WHERE messages.id = " + messageIDColumn + " AND " + strings.Join(where, " AND ") + ")", args
+}
+
+func messageSearchPredicate(search messageSearch, dbDialect string) predicate.MailboxMessage {
+	return func(s *entsql.Selector) {
+		clause, args := messageSearchClause(search, dbDialect, s.C(mailboxmessage.FieldMessageID))
+		if clause == "" {
+			return
+		}
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			query := clause
+			if dbDialect == dialect.Postgres {
+				offset := b.Total()
+				query = postgresPlaceholder.ReplaceAllStringFunc(query, func(match string) string {
+					n, _ := strconv.Atoi(match[1:])
+					return "$" + strconv.Itoa(n+offset)
+				})
+			}
+			b.Join(entsql.Expr(query, args...))
+		}))
+	}
 }
 
 func messageSearchWhere(search messageSearch, dbDialect string) ([]string, []any) {
