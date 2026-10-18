@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
@@ -122,12 +123,12 @@ func (s *Service) deliver(ctx context.Context, messageID string, traceID string,
 	s.metrics.MessageDelivered(len(deliveries))
 	if s.rules != nil {
 		if err := s.rules.Apply(ctx, message, deliveries); err != nil {
-			return nil, err
+			slog.Error("routing rules failed", "message_id", message.ID, "error", err)
 		}
 	}
 	if s.events != nil {
 		if err := s.events.EmitMessageReceived(ctx, message, recipients); err != nil {
-			return nil, err
+			slog.Error("message received event failed", "message_id", message.ID, "error", err)
 		}
 	}
 	return message, nil
