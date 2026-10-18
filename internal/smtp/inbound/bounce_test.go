@@ -46,6 +46,24 @@ func seedHostedDomain(t *testing.T, h *harness) {
 	}
 }
 
+func bounceAddress(t *testing.T, h *harness) string {
+	t.Helper()
+	messageID := ulid.Make().String()
+	if _, err := h.client.OutboundJob.Create().SetMailboxID(h.mbox.ID).SetMessageID(messageID).SetReturnPath("bounces+" + messageID + "@example.test").SetRecipients([]string{"rcpt@remote.test"}).Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return "bounces+" + strings.ToLower(messageID) + "@example.test"
+}
+
+func TestInboundRejectsBounceForUnknownMessage(t *testing.T) {
+	h := newHarness(t, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 100, MaxConnectionsPerIP: 5, MessagesPerMinute: 1000})
+	seedHostedDomain(t, h)
+	err := send(h.addr, "mailer-daemon@remote.test", "bounces+"+strings.ToLower(ulid.Make().String())+"@example.test", "Subject: failure\r\n\r\nundeliverable\r\n")
+	if err == nil || !strings.Contains(err.Error(), "550") {
+		t.Fatalf("bounce for unknown message should be rejected with 550, got %v", err)
+	}
+}
+
 func bounceObjects(h *harness) int {
 	count := 0
 	for key := range h.blobs.Objects {
@@ -59,10 +77,10 @@ func bounceObjects(h *harness) int {
 func TestInboundBounceStoresPayloadOnceAndCapsRecipients(t *testing.T) {
 	h := newHarness(t, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 100, MaxConnectionsPerIP: 5, MessagesPerMinute: 1000})
 	seedHostedDomain(t, h)
-	duplicate := "bounces+" + strings.ToLower(ulid.Make().String()) + "@example.test"
+	duplicate := bounceAddress(t, h)
 	recipients := []string{duplicate, duplicate}
 	for range maxBounceRecipients + 5 {
-		recipients = append(recipients, "bounces+"+strings.ToLower(ulid.Make().String())+"@example.test")
+		recipients = append(recipients, bounceAddress(t, h))
 	}
 	errs := sendMany(t, h.addr, recipients, "From: mailer-daemon@remote.test\r\nSubject: failure\r\n\r\nundeliverable\r\n")
 	rejected := 0
@@ -99,7 +117,7 @@ func TestInboundChargesRateLimitPerRecipient(t *testing.T) {
 	seedHostedDomain(t, h)
 	var recipients []string
 	for range 5 {
-		recipients = append(recipients, "bounces+"+strings.ToLower(ulid.Make().String())+"@example.test")
+		recipients = append(recipients, bounceAddress(t, h))
 	}
 	errs := sendMany(t, h.addr, recipients, "From: mailer-daemon@remote.test\r\nSubject: failure\r\n\r\nundeliverable\r\n")
 	for i, err := range errs {

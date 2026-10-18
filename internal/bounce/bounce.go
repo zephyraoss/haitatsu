@@ -19,6 +19,7 @@ import (
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/mailaddr"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
@@ -46,11 +47,24 @@ func (d dkimHostedDomains) IsHosted(ctx context.Context, domain string) (bool, e
 	return d.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).Exist(ctx)
 }
 
+type outboundJobChecker interface {
+	HasOutboundJob(ctx context.Context, messageID string) (bool, error)
+}
+
+type entOutboundJobs struct {
+	client *ent.Client
+}
+
+func (j entOutboundJobs) HasOutboundJob(ctx context.Context, messageID string) (bool, error) {
+	return j.client.OutboundJob.Query().Where(outboundjob.MessageIDEQ(messageID)).Exist(ctx)
+}
+
 type Handler struct {
 	client  *ent.Client
 	store   Store
 	metrics *metrics.Metrics
 	hosted  hostedDomainChecker
+	jobs    outboundJobChecker
 }
 
 type Recipient struct {
@@ -64,6 +78,7 @@ func NewHandler(client *ent.Client, store Store, metrics *metrics.Metrics) *Hand
 		store:   store,
 		metrics: metrics,
 		hosted:  dkimHostedDomains{client: client},
+		jobs:    entOutboundJobs{client: client},
 	}
 }
 
@@ -88,6 +103,10 @@ func (h *Handler) ParseRecipient(ctx context.Context, address string) (Recipient
 	}
 	hosted, err := h.hosted.IsHosted(ctx, domain)
 	if err != nil || !hosted {
+		return Recipient{}, true, false
+	}
+	exists, err := h.jobs.HasOutboundJob(ctx, parsed.String())
+	if err != nil || !exists {
 		return Recipient{}, true, false
 	}
 	return Recipient{Address: address, MessageID: parsed.String()}, true, true

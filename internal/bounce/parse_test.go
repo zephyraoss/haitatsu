@@ -13,8 +13,16 @@ func (f fakeHosted) IsHosted(_ context.Context, domain string) (bool, error) {
 	return f.domains[domain], nil
 }
 
+type fakeJobs struct {
+	ids map[string]bool
+}
+
+func (f fakeJobs) HasOutboundJob(_ context.Context, messageID string) (bool, error) {
+	return f.ids[messageID], nil
+}
+
 func TestParseRecipientValidVERP(t *testing.T) {
-	h := &Handler{hosted: fakeHosted{domains: map[string]bool{"emails.ax": true}}}
+	h := &Handler{hosted: fakeHosted{domains: map[string]bool{"emails.ax": true}}, jobs: fakeJobs{ids: map[string]bool{"01ARZ3NDEKTSV4RRFFQ69G5FAV": true}}}
 	recipient, isBounce, valid := h.ParseRecipient(context.Background(), "bounces+01ARZ3NDEKTSV4RRFFQ69G5FAV@emails.ax")
 	if !isBounce || !valid {
 		t.Fatalf("expected valid bounce, got isBounce=%v valid=%v", isBounce, valid)
