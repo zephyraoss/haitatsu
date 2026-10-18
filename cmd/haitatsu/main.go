@@ -39,11 +39,12 @@ func main() {
 		slog.Error("failed to initialize", "error", err)
 		os.Exit(1)
 	}
-	defer runtime.Close()
 
 	runtime.NotifyReload(syscall.SIGHUP)
 
-	if err := runtime.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+	err = runtime.Run(ctx)
+	runtime.Close()
+	if err != nil && !errors.Is(err, context.Canceled) {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}

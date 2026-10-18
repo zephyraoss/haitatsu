@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 
 	"github.com/zephyraoss/haitatsu/internal/bounce"
 	"github.com/zephyraoss/haitatsu/internal/certs"
@@ -229,19 +230,26 @@ func (a *App) Run(ctx context.Context) error {
 func (a *App) shutdown() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.config.Get().Server.ShutdownTimeout())
 	defer cancel()
-	if err := a.server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown http server: %w", err)
+	servers := []struct {
+		name     string
+		shutdown func(context.Context) error
+	}{
+		{"http", a.server.Shutdown},
+		{"smtp", a.smtp.Shutdown},
+		{"imap", a.imap.Shutdown},
+		{"submission", a.submission.Shutdown},
 	}
-	if err := a.smtp.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown smtp server: %w", err)
+	errs := make([]error, len(servers))
+	var wg sync.WaitGroup
+	for i, server := range servers {
+		wg.Go(func() {
+			if err := server.shutdown(shutdownCtx); err != nil {
+				errs[i] = fmt.Errorf("shutdown %s server: %w", server.name, err)
+			}
+		})
 	}
-	if err := a.imap.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown imap server: %w", err)
-	}
-	if err := a.submission.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown submission server: %w", err)
-	}
-	return nil
+	wg.Wait()
+	return errors.Join(errs...)
 }
 
 func (a *App) NotifyReload(signals ...os.Signal) {
