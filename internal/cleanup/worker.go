@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
+
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
@@ -16,6 +18,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
@@ -129,9 +132,10 @@ func (w *Worker) cleanupExpiredExports(ctx context.Context) error {
 
 func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 	cutoff := time.Now().Add(-24 * time.Hour)
+	retention := time.Now().Add(-30 * 24 * time.Hour)
 	var lastID string
 	for {
-		query := w.client.Message.Query().Where(message.CreatedAtLT(cutoff)).Order(message.ByID()).Limit(200)
+		query := w.client.Message.Query().Where(message.CreatedAtLT(cutoff), unreferencedMessage(retention)).Order(message.ByID()).Limit(200)
 		if lastID != "" {
 			query.Where(message.IDGT(lastID))
 		}
@@ -139,12 +143,9 @@ func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if len(messages) == 0 {
-			return nil
-		}
 		for _, msg := range messages {
 			lastID = msg.ID
-			if err := w.maybeDeleteMessage(ctx, msg); err != nil {
+			if err := w.deleteMessageRows(ctx, msg); err != nil {
 				return err
 			}
 		}
@@ -154,22 +155,22 @@ func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 	}
 }
 
-func (w *Worker) maybeDeleteMessage(ctx context.Context, msg *ent.Message) error {
-	active, err := w.client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(msg.ID), mailboxmessage.DeletedAtIsNil()).Count(ctx)
-	if err != nil {
-		return err
+func unreferencedMessage(retention time.Time) predicate.Message {
+	return func(s *sql.Selector) {
+		builder := sql.Dialect(s.Dialect())
+		items := builder.Table(mailboxmessage.Table)
+		jobs := builder.Table(outboundjob.Table)
+		s.Where(sql.And(
+			sql.NotExists(builder.Select(items.C(mailboxmessage.FieldID)).From(items).Where(sql.And(
+				sql.ColumnsEQ(items.C(mailboxmessage.FieldMessageID), s.C(message.FieldID)),
+				sql.Or(sql.IsNull(items.C(mailboxmessage.FieldDeletedAt)), sql.GTE(items.C(mailboxmessage.FieldDeletedAt), retention)),
+			))),
+			sql.NotExists(builder.Select(jobs.C(outboundjob.FieldID)).From(jobs).Where(sql.And(
+				sql.ColumnsEQ(jobs.C(outboundjob.FieldMessageID), s.C(message.FieldID)),
+				sql.In(jobs.C(outboundjob.FieldStatus), "queued", "retry", "processing"),
+			))),
+		))
 	}
-	if active > 0 {
-		return nil
-	}
-	pending, err := w.client.OutboundJob.Query().Where(outboundjob.MessageIDEQ(msg.ID), outboundjob.StatusIn("queued", "retry", "processing")).Count(ctx)
-	if err != nil {
-		return err
-	}
-	if pending > 0 {
-		return nil
-	}
-	return w.deleteMessageRows(ctx, msg)
 }
 
 func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message) error {
