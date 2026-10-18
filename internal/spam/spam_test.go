@@ -5,6 +5,9 @@ import (
 
 	"github.com/emersion/go-msgauth/authres"
 	"github.com/emersion/go-msgauth/dmarc"
+
+	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/mailparse"
 )
 
 func TestScoreDMARCPolicyOnlyOnFailure(t *testing.T) {
@@ -38,4 +41,15 @@ func contains(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestFromAllowRuleRequiresAuthentication(t *testing.T) {
+	entry := &ent.SenderRule{Kind: "allow", MatchType: "domain", Value: "bank.test"}
+	metadata := mailparse.Metadata{From: []string{"boss@bank.test"}}
+	if matches(entry, metadata, SMTPContext{}, false) {
+		t.Fatal("unauthenticated from must not match an allow rule")
+	}
+	if !matches(entry, metadata, SMTPContext{}, true) {
+		t.Fatal("authenticated from should match an allow rule")
+	}
 }
