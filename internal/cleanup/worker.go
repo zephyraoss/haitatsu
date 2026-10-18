@@ -2,6 +2,7 @@ package cleanup
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -58,25 +59,22 @@ func (w *Worker) runOnce(ctx context.Context) {
 }
 
 func (w *Worker) Cleanup(ctx context.Context) error {
-	if err := w.cleanupTrash(ctx); err != nil {
-		return err
+	return errors.Join(
+		w.cleanupTrash(ctx),
+		w.cleanupDeletedMailboxes(ctx),
+		w.cleanupExpiredExports(ctx),
+		w.cleanupOrphanedMessages(ctx),
+		w.recoverStaleLeases(ctx),
+		w.cleanupAuthLockouts(ctx),
+		w.updateQueueDepth(ctx),
+	)
+}
+
+func ignoreNotFound(err error) error {
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	if err := w.cleanupDeletedMailboxes(ctx); err != nil {
-		return err
-	}
-	if err := w.cleanupExpiredExports(ctx); err != nil {
-		return err
-	}
-	if err := w.cleanupOrphanedMessages(ctx); err != nil {
-		return err
-	}
-	if err := w.recoverStaleLeases(ctx); err != nil {
-		return err
-	}
-	if err := w.cleanupAuthLockouts(ctx); err != nil {
-		return err
-	}
-	return w.updateQueueDepth(ctx)
+	return err
 }
 
 func (w *Worker) cleanupTrash(ctx context.Context) error {
@@ -122,7 +120,7 @@ func (w *Worker) cleanupExpiredExports(ctx context.Context) error {
 		if err := w.store.DeleteObject(ctx, job.ObjectKey); err != nil {
 			return err
 		}
-		if err := w.client.ExportJob.DeleteOneID(job.ID).Exec(ctx); err != nil {
+		if err := ignoreNotFound(w.client.ExportJob.DeleteOneID(job.ID).Exec(ctx)); err != nil {
 			return err
 		}
 	}
@@ -202,7 +200,7 @@ func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message) error 
 			return err
 		}
 	}
-	return w.client.Message.DeleteOneID(msg.ID).Exec(ctx)
+	return ignoreNotFound(w.client.Message.DeleteOneID(msg.ID).Exec(ctx))
 }
 
 func (w *Worker) recoverStaleLeases(ctx context.Context) error {
