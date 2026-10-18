@@ -511,6 +511,11 @@ var (
 				Columns: []*schema.Column{MessagesColumns[2]},
 			},
 			{
+				Name:    "message_sha256",
+				Unique:  false,
+				Columns: []*schema.Column{MessagesColumns[4]},
+			},
+			{
 				Name:    "message_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{MessagesColumns[18]},
