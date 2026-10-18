@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/mail"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +34,11 @@ import (
 )
 
 const maxAppPasswords = 50
+
+var (
+	mailboxStatuses = []string{"active", "disabled"}
+	routeTypes      = []string{"alias", "pattern", "catch_all"}
+)
 
 type Handler struct {
 	client   *ent.Client
@@ -213,6 +220,9 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	if err := req.validate(); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_mailbox", err.Error())
+	}
 	thresholds, err := parseSpamThresholds(req.SpamThresholds)
 	if err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_spam_thresholds", err.Error())
@@ -270,6 +280,9 @@ func (h *Handler) updateMailbox(c fiber.Ctx) error {
 	var req mailboxRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
+	}
+	if err := req.validate(); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_mailbox", err.Error())
 	}
 	thresholds, err := parseSpamThresholds(req.SpamThresholds)
 	if err != nil {
@@ -452,6 +465,9 @@ func (h *Handler) createRoute(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	if err := h.validateRoute(c.Context(), req); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_route", err.Error())
+	}
 	if req.SourceAddress == "" || req.Type == "" {
 		return problem(c, fiber.StatusBadRequest, "invalid_route", "Source address and type are required")
 	}
@@ -489,6 +505,9 @@ func (h *Handler) updateRoute(c fiber.Ctx) error {
 	var req routeRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
+	}
+	if err := h.validateRoute(c.Context(), req); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_route", err.Error())
 	}
 	update := h.client.Route.UpdateOneID(c.Params("id"))
 	if req.SourceAddress != "" {
@@ -907,6 +926,35 @@ func validateOutboundLimits(limits map[string]int64) error {
 		}
 		if value < 0 {
 			return fmt.Errorf("outbound limit %q must be >= 0", key)
+		}
+	}
+	return nil
+}
+
+func (r mailboxRequest) validate() error {
+	if r.Status != "" && !slices.Contains(mailboxStatuses, r.Status) {
+		return fmt.Errorf("status must be one of %s", strings.Join(mailboxStatuses, ", "))
+	}
+	if r.QuotaBytes != nil && *r.QuotaBytes < 0 {
+		return errors.New("quota_bytes must not be negative")
+	}
+	return nil
+}
+
+func (h *Handler) validateRoute(ctx context.Context, r routeRequest) error {
+	if r.Type != "" && !slices.Contains(routeTypes, r.Type) {
+		return fmt.Errorf("type must be one of %s", strings.Join(routeTypes, ", "))
+	}
+	if len(r.Destinations) == 0 {
+		return nil
+	}
+	found, err := h.client.Mailbox.Query().Where(mailbox.IDIn(r.Destinations...)).IDs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range r.Destinations {
+		if !slices.Contains(found, id) {
+			return fmt.Errorf("destination %s is not a mailbox", id)
 		}
 	}
 	return nil
