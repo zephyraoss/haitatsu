@@ -10,8 +10,8 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -326,12 +326,15 @@ func relayAuth(cfg config.RelayConfig) smtp.Auth {
 
 func classifySMTPError(err error) deliveryResult {
 	message := err.Error()
-	code := smtpCode(message)
-	enhanced := enhancedStatusCode(message)
-	if code >= 500 {
-		return permanentFailure(code, enhanced, message)
+	var smtpErr *textproto.Error
+	if !errors.As(err, &smtpErr) {
+		return deliveryResult{Classification: "temporary", Response: message}
 	}
-	return deliveryResult{Code: code, EnhancedStatusCode: enhanced, Classification: "temporary", Response: message}
+	enhanced := enhancedStatusCode(smtpErr.Msg)
+	if smtpErr.Code >= 500 {
+		return permanentFailure(smtpErr.Code, enhanced, message)
+	}
+	return deliveryResult{Code: smtpErr.Code, EnhancedStatusCode: enhanced, Classification: "temporary", Response: message}
 }
 
 func localFailure(err error) deliveryResult {
@@ -342,17 +345,7 @@ func permanentFailure(code int, enhanced string, response string) deliveryResult
 	return deliveryResult{Code: code, EnhancedStatusCode: enhanced, Classification: "permanent", Response: response}
 }
 
-var smtpCodePattern = regexp.MustCompile(`\b([245][0-9]{2})\b`)
-var enhancedCodePattern = regexp.MustCompile(`\b[245]\.\d+\.\d+\b`)
-
-func smtpCode(message string) int {
-	match := smtpCodePattern.FindStringSubmatch(message)
-	if len(match) != 2 {
-		return 0
-	}
-	code, _ := strconv.Atoi(match[1])
-	return code
-}
+var enhancedCodePattern = regexp.MustCompile(`^[245]\.\d{1,3}\.\d{1,3}\b`)
 
 func enhancedStatusCode(message string) string {
 	return enhancedCodePattern.FindString(message)

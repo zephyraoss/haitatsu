@@ -3,6 +3,7 @@ package outbound
 import (
 	"context"
 	"errors"
+	"net/textproto"
 	"os"
 	"testing"
 	"time"
@@ -40,15 +41,15 @@ func TestRelayRetryPolicyBacksOffExponentially(t *testing.T) {
 }
 
 func TestClassifySMTPError(t *testing.T) {
-	permanent := classifySMTPError(errors.New("550 5.1.1 user unknown"))
+	permanent := classifySMTPError(&textproto.Error{Code: 550, Msg: "5.1.1 user unknown"})
 	if permanent.Classification != "permanent" || permanent.Code != 550 || permanent.EnhancedStatusCode != "5.1.1" {
 		t.Fatalf("unexpected %+v", permanent)
 	}
-	temporary := classifySMTPError(errors.New("451 4.7.1 try later"))
+	temporary := classifySMTPError(&textproto.Error{Code: 451, Msg: "4.7.1 try later"})
 	if temporary.Classification != "temporary" || temporary.Code != 451 {
 		t.Fatalf("unexpected %+v", temporary)
 	}
-	network := classifySMTPError(errors.New("dial tcp: connection refused"))
+	network := classifySMTPError(errors.New("dial tcp 10.0.0.1:587: connect: connection refused"))
 	if network.Classification != "temporary" || network.Code != 0 {
 		t.Fatalf("unexpected %+v", network)
 	}
