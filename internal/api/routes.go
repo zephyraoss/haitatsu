@@ -874,14 +874,10 @@ func cursorTime(t time.Time) string {
 }
 
 func cursorPredicate[P ~func(*entsql.Selector)](createdAtField string, idField string, cur cursor) P {
-	createdAt, err := time.Parse(time.RFC3339Nano, cur.CreatedAt)
-	if err != nil {
-		createdAt = time.Time{}
-	}
 	return P(func(s *entsql.Selector) {
 		s.Where(entsql.Or(
-			entsql.LT(s.C(createdAtField), createdAt),
-			entsql.And(entsql.EQ(s.C(createdAtField), createdAt), entsql.LT(s.C(idField), cur.ID)),
+			entsql.LT(s.C(createdAtField), cur.CreatedAt),
+			entsql.And(entsql.EQ(s.C(createdAtField), cur.CreatedAt), entsql.LT(s.C(idField), cur.ID)),
 		))
 	})
 }
