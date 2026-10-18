@@ -44,6 +44,7 @@ type App struct {
 	configPath string
 	config     *config.Holder
 	logger     *slog.Logger
+	closeLog   func()
 	database   *database.Client
 	storage    *storage.Client
 	notifier   *mailstore.Notifier
@@ -69,7 +70,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	logger, err := logging.New(cfg.Logging)
+	logger, closeLog, err := logging.New(cfg.Logging)
 	if err != nil {
 		return nil, fmt.Errorf("configure logging: %w", err)
 	}
@@ -95,7 +96,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	holder := config.NewHolder(cfg)
 	notifier := mailstore.NewNotifier(cfg.Server.InstanceName, database.NewChangeBus(db.SQL(), db.Backend()))
 	mail := mailstore.New(db.Ent(), notifier)
-	runtime := &App{configPath: opts.ConfigPath, config: holder, logger: logger, database: db, storage: blobStore, notifier: notifier}
+	runtime := &App{configPath: opts.ConfigPath, config: holder, logger: logger, closeLog: closeLog, database: db, storage: blobStore, notifier: notifier}
 	m := metrics.New()
 	checker := health.NewChecker(db, blobStore)
 	submissionService := outbound.NewSubmission(db.Ent(), blobStore, mail, cfg.Server.PublicHostname, cfg.Server.InstanceName, func() outbound.Limits {
@@ -296,7 +297,7 @@ func (a *App) Reload(ctx context.Context) error {
 		return fmt.Errorf("reload requires restart: %v", impact.StructuralChanges)
 	}
 
-	logger, err := logging.New(next.Logging)
+	logger, closeLog, err := logging.New(next.Logging)
 	if err != nil {
 		return fmt.Errorf("configure reloaded logging: %w", err)
 	}
@@ -304,6 +305,8 @@ func (a *App) Reload(ctx context.Context) error {
 	a.config.Set(next)
 	a.logger = logger
 	slog.SetDefault(logger)
+	a.closeLog()
+	a.closeLog = closeLog
 	if next.Workers.Concurrency != current.Workers.Concurrency {
 		a.logger.Warn("workers.concurrency changed; new value applies after restart", "current", current.Workers.Concurrency, "next", next.Workers.Concurrency)
 	}
@@ -317,5 +320,8 @@ func (a *App) Close() {
 	}
 	if a.database != nil {
 		a.database.Close()
+	}
+	if a.closeLog != nil {
+		a.closeLog()
 	}
 }
