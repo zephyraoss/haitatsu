@@ -21,6 +21,15 @@ func TestDMARCAlignment(t *testing.T) {
 	}
 }
 
+func TestDNSBLHitIgnoresErrorCodes(t *testing.T) {
+	if !dnsblHit(parseIP("127.0.0.2")) {
+		t.Fatal("127.0.0.2 should be listed")
+	}
+	if dnsblHit(parseIP("127.255.255.254")) {
+		t.Fatal("127.255.255.x is an error code, not a listing")
+	}
+}
+
 func TestReverseIP(t *testing.T) {
 	if got := reverseIP(parseIP("192.0.2.10")); got != "10.2.0.192" {
 		t.Fatalf("v4 reverse = %q", got)

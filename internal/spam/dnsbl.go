@@ -41,7 +41,7 @@ func dnsblListed(ctx context.Context, remoteIP string, zones []string) (bool, st
 			if err != nil || len(addrs) == 0 {
 				return
 			}
-			listed[i] = strings.HasPrefix(addrs[0].IP.String(), "127.")
+			listed[i] = dnsblHit(addrs[0].IP)
 		}(i, zone)
 	}
 	wg.Wait()
@@ -51,6 +51,11 @@ func dnsblListed(ctx context.Context, remoteIP string, zones []string) (bool, st
 		}
 	}
 	return false, ""
+}
+
+func dnsblHit(ip net.IP) bool {
+	v4 := ip.To4()
+	return v4 != nil && v4[0] == 127 && !(v4[1] == 255 && v4[2] == 255)
 }
 
 func reverseIP(ip net.IP) string {
