@@ -41,7 +41,7 @@ func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, blobs
 		NewSession: func(conn *goimapserver.Conn) (goimapserver.Session, *goimapserver.GreetingData, error) {
 			ip := remoteIP(conn.NetConn())
 			if !gate.Acquire(ip) {
-				return nil, nil, &imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeLimit, Text: "too many connections from your address"}
+				return nil, nil, &imap.Error{Type: imap.StatusResponseTypeBye, Code: imap.ResponseCodeLimit, Text: "too many connections from your address"}
 			}
 			m.IMAPSessionStart()
 			return &session{
