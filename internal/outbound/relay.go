@@ -13,6 +13,7 @@ import (
 	"net/textproto"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
@@ -86,9 +87,11 @@ func (w *Worker) Run(ctx context.Context, concurrency int) {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
+	var wg sync.WaitGroup
 	for range concurrency {
-		go w.loop(ctx)
+		wg.Go(func() { w.loop(ctx) })
 	}
+	wg.Wait()
 }
 
 func (w *Worker) loop(ctx context.Context) {

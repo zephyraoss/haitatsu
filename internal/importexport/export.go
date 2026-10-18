@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/database"
@@ -52,9 +53,11 @@ func (w *ExportWorker) Run(ctx context.Context, concurrency int) {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
+	var wg sync.WaitGroup
 	for range concurrency {
-		go w.loop(ctx)
+		wg.Go(func() { w.loop(ctx) })
 	}
+	wg.Wait()
 }
 
 func (w *ExportWorker) loop(ctx context.Context) {

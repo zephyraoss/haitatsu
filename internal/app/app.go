@@ -186,6 +186,9 @@ func New(ctx context.Context, opts Options) (*App, error) {
 func (a *App) Run(ctx context.Context) error {
 	cfg := a.config.Get()
 	a.notifier.Start(ctx)
+	workerCtx, stopWorkers := context.WithCancel(ctx)
+	defer stopWorkers()
+	var workers sync.WaitGroup
 	errCh := make(chan error, 4)
 	go func() {
 		a.logger.Info("starting http api", "addr", cfg.Server.APIAddr)
@@ -205,31 +208,32 @@ func (a *App) Run(ctx context.Context) error {
 	}()
 	if cfg.Workers.Enabled {
 		a.logger.Info("starting outbound relay workers", "concurrency", cfg.Workers.Concurrency)
-		a.relay.Run(ctx, cfg.Workers.Concurrency)
+		workers.Go(func() { a.relay.Run(workerCtx, cfg.Workers.Concurrency) })
 		a.logger.Info("starting webhook workers", "concurrency", cfg.Workers.Concurrency)
-		a.webhooks.Run(ctx, cfg.Workers.Concurrency)
+		workers.Go(func() { a.webhooks.Run(workerCtx, cfg.Workers.Concurrency) })
 		a.logger.Info("starting cleanup worker")
-		a.cleanup.Run(ctx)
+		workers.Go(func() { a.cleanup.Run(workerCtx) })
 		a.logger.Info("starting import export workers", "concurrency", cfg.Workers.Concurrency)
-		a.exports.Run(ctx, cfg.Workers.Concurrency)
-		a.imports.Run(ctx, cfg.Workers.Concurrency)
+		workers.Go(func() { a.exports.Run(workerCtx, cfg.Workers.Concurrency) })
+		workers.Go(func() { a.imports.Run(workerCtx, cfg.Workers.Concurrency) })
 	}
 
 	select {
 	case <-ctx.Done():
-		if err := a.shutdown(); err != nil {
+		if err := a.shutdown(stopWorkers, &workers); err != nil {
 			return err
 		}
 		return ctx.Err()
 	case err := <-errCh:
-		_ = a.shutdown()
+		_ = a.shutdown(stopWorkers, &workers)
 		return err
 	}
 }
 
-func (a *App) shutdown() error {
+func (a *App) shutdown(stopWorkers context.CancelFunc, workers *sync.WaitGroup) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.config.Get().Server.ShutdownTimeout())
 	defer cancel()
+	stopWorkers()
 	servers := []struct {
 		name     string
 		shutdown func(context.Context) error
@@ -248,6 +252,18 @@ func (a *App) shutdown() error {
 			}
 		})
 	}
+	wg.Go(func() {
+		done := make(chan struct{})
+		go func() {
+			workers.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-shutdownCtx.Done():
+			a.logger.Warn("workers did not stop before shutdown timeout")
+		}
+	})
 	wg.Wait()
 	return errors.Join(errs...)
 }

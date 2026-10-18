@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -141,9 +142,11 @@ func (w *ImportWorker) Run(ctx context.Context, concurrency int) {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
+	var wg sync.WaitGroup
 	for range concurrency {
-		go w.loop(ctx)
+		wg.Go(func() { w.loop(ctx) })
 	}
+	wg.Wait()
 }
 
 func (w *ImportWorker) loop(ctx context.Context) {

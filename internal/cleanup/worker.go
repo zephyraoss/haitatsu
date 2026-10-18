@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -44,8 +45,9 @@ func New(client *ent.Client, store Store, mail *mailstore.Store, metrics *metric
 }
 
 func (w *Worker) Run(ctx context.Context) {
-	go w.sampleQueueDepth(ctx)
-	go func() {
+	var wg sync.WaitGroup
+	wg.Go(func() { w.sampleQueueDepth(ctx) })
+	wg.Go(func() {
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
 		w.runOnce(ctx)
@@ -57,7 +59,8 @@ func (w *Worker) Run(ctx context.Context) {
 				w.runOnce(ctx)
 			}
 		}
-	}()
+	})
+	wg.Wait()
 }
 
 func (w *Worker) runOnce(ctx context.Context) {
