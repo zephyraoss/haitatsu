@@ -61,7 +61,7 @@ func TestFinishSchedulesRetryAndEventuallyFails(t *testing.T) {
 	notifier := &recordingNotifier{}
 	cfg := config.RelayConfig{Addr: "relay:25", MaxAttempts: 2}
 	worker := NewWorker(nil, client, testutil.NewFakeStore(), func() config.RelayConfig { return cfg }, metrics.New(), notifier, "w1", database.BackendSQLite)
-	job, err := client.OutboundJob.Create().SetMailboxID("m").SetMessageID("msg").SetReturnPath("bounces+msg@example.test").SetRecipients([]string{"a@x.test"}).Save(ctx)
+	job, err := client.OutboundJob.Create().SetMailboxID("m").SetMessageID("msg").SetReturnPath("bounces+msg@example.test").SetRecipients([]string{"a@x.test"}).SetLockedBy("w1").Save(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +77,10 @@ func TestFinishSchedulesRetryAndEventuallyFails(t *testing.T) {
 		t.Fatal("must not notify before exhausting retries")
 	}
 	claimed.Attempts = 1
+	if err := worker.finish(ctx, claimed, deliveryResult{Classification: "temporary", Response: "451"}); err == nil {
+		t.Fatal("finish must not update a job locked by another worker")
+	}
+	client.OutboundJob.UpdateOneID(job.ID).SetLockedBy("w1").ExecX(ctx)
 	if err := worker.finish(ctx, claimed, deliveryResult{Classification: "temporary", Response: "451"}); err != nil {
 		t.Fatal(err)
 	}

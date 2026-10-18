@@ -19,6 +19,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
@@ -106,21 +107,21 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	result := w.deliver(ctx, job)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	w.metrics.WorkerJob("outbound", result.Classification)
 	if result.Classification == "success" {
 		w.metrics.MessageSent()
 	}
-	if _, err := w.client.OutboundAttempt.Create().
+	_, attemptErr := w.client.OutboundAttempt.Create().
 		SetOutboundJobID(job.ID).
 		SetMessageID(job.MessageID).
 		SetClassification(result.Classification).
 		SetResponse(result.Response).
 		SetNillableSMTPCode(codePtr(result.Code)).
 		SetEnhancedStatusCode(result.EnhancedStatusCode).
-		Save(ctx); err != nil {
-		return true, err
-	}
-	return true, w.finish(ctx, job, result)
+		Save(ctx)
+	return true, errors.Join(attemptErr, w.finish(ctx, job, result))
 }
 
 func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
@@ -144,7 +145,8 @@ WHERE id = (
 RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 `
 	now := time.Now().UTC()
-	args := []any{w.workerID, now.Add(5 * time.Minute)}
+	lockedUntil := now.Add(w.cfg().Timeout() + 4*time.Minute)
+	args := []any{w.workerID, lockedUntil}
 	if w.backend.SQLiteFamily() {
 		query = `
 UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
@@ -161,7 +163,7 @@ AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
 AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
 RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 `
-		args = []any{w.workerID, now.Add(5 * time.Minute), now, now, now, now, now}
+		args = []any{w.workerID, lockedUntil, now, now, now, now, now}
 	}
 	row := tx.QueryRowContext(ctx, query, args...)
 
@@ -270,7 +272,8 @@ func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, reci
 	if err := wc.Close(); err != nil {
 		return wrapCtxErr(ctx, err)
 	}
-	return wrapCtxErr(ctx, client.Quit())
+	_ = client.Quit()
+	return nil
 }
 
 func wrapCtxErr(ctx context.Context, err error) error {
@@ -289,7 +292,7 @@ func wrapCtxErr(ctx context.Context, err error) error {
 
 func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResult) error {
 	policy := w.cfg().RetryPolicy()
-	update := w.client.OutboundJob.UpdateOneID(job.ID).ClearLockedBy().ClearLockedUntil()
+	update := w.client.OutboundJob.UpdateOneID(job.ID).Where(outboundjob.LockedByEQ(w.workerID)).ClearLockedBy().ClearLockedUntil()
 	failed := false
 	switch result.Classification {
 	case "success":
