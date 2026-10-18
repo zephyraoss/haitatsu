@@ -4,3 +4,12 @@ haitatsu-linux-amd64
 cache
 tmp
 *.log
+prod/
+.env
+.github
+docs
+deploy
+*.md
+haitatsu.compose.pkl
+compose.yaml
+Taskfile.yml
