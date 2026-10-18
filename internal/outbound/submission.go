@@ -184,24 +184,36 @@ func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, mbox
 		return ErrTooManyRecipients
 	}
 	if limits.PerHour > 0 {
-		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mbox.ID), outboundjob.CreatedAtGTE(time.Now().Add(-time.Hour))).Count(ctx)
+		count, err := recipientsSince(ctx, client, mbox.ID, time.Now().Add(-time.Hour))
 		if err != nil {
 			return err
 		}
-		if int64(count) >= limits.PerHour {
+		if count+int64(recipientCount) > limits.PerHour {
 			return ErrRateLimited
 		}
 	}
 	if limits.PerDay > 0 {
-		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mbox.ID), outboundjob.CreatedAtGTE(time.Now().Add(-24*time.Hour))).Count(ctx)
+		count, err := recipientsSince(ctx, client, mbox.ID, time.Now().Add(-24*time.Hour))
 		if err != nil {
 			return err
 		}
-		if int64(count) >= limits.PerDay {
+		if count+int64(recipientCount) > limits.PerDay {
 			return ErrRateLimited
 		}
 	}
 	return nil
+}
+
+func recipientsSince(ctx context.Context, client *ent.Client, mailboxID string, since time.Time) (int64, error) {
+	jobs, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mailboxID), outboundjob.CreatedAtGTE(since)).Select(outboundjob.FieldRecipients).All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	for _, job := range jobs {
+		count += int64(len(job.Recipients))
+	}
+	return count, nil
 }
 
 func (s *Submission) limitsFor(mbox *ent.Mailbox) Limits {

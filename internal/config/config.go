@@ -466,6 +466,19 @@ func (c Config) InboundMessagesPerMinute() int {
 	return 120
 }
 
+func (c LimitsConfig) withOutboundDefaults() LimitsConfig {
+	if c.DefaultOutboundPerHour == 0 {
+		c.DefaultOutboundPerHour = 200
+	}
+	if c.DefaultOutboundPerDay == 0 {
+		c.DefaultOutboundPerDay = 2000
+	}
+	if c.DefaultOutboundRecipients == 0 {
+		c.DefaultOutboundRecipients = 50
+	}
+	return c
+}
+
 type ReloadImpact struct {
 	StructuralChanges []string
 }
@@ -487,6 +500,7 @@ func Load(ctx context.Context, path string) (*Config, error) {
 	if err := json.Unmarshal([]byte(output), &cfg); err != nil {
 		return nil, fmt.Errorf("decode pkl json: %w", err)
 	}
+	cfg.Limits = cfg.Limits.withOutboundDefaults()
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err

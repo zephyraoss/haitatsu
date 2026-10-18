@@ -62,6 +62,15 @@ func TestSubmitEnforcesHourlyLimit(t *testing.T) {
 	}
 }
 
+func TestSubmitHourlyLimitCountsRecipients(t *testing.T) {
+	submission, mbox, _ := newSubmission(t, Limits{PerHour: 2})
+	raw := []byte("From: alice@example.test\r\nTo: a@x.test, b@x.test, c@x.test\r\nSubject: hi\r\n\r\nbody\r\n")
+	_, err := submission.Submit(context.Background(), mbox.ID, "alice@example.test", raw, nil)
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("expected ErrRateLimited, got %v", err)
+	}
+}
+
 func TestSubmitMailboxOverrideBeatsDefaults(t *testing.T) {
 	submission, mbox, _ := newSubmission(t, Limits{PerHour: 1})
 	if _, err := submission.client.Mailbox.UpdateOneID(mbox.ID).SetOutboundLimits(map[string]int64{"per_hour": 5}).Save(context.Background()); err != nil {
