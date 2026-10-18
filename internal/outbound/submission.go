@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/emersion/go-msgauth/dkim"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
@@ -97,7 +98,7 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 		return nil, ErrSenderNotAllowed
 	}
 	domain := addressDomain(sender.Address)
-	key, err := s.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).First(ctx)
+	key, err := s.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).Order(dkimkey.ByCreatedAt(entsql.OrderDesc()), dkimkey.ByID(entsql.OrderDesc())).First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, ErrDKIMKeyNotFound
