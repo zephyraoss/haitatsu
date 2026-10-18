@@ -21,6 +21,15 @@ func TestDMARCAlignment(t *testing.T) {
 	}
 }
 
+func TestDMARCFromDomainRejectsMixedDomains(t *testing.T) {
+	if got := dmarcFromDomain([]string{"a@example.com", "b@example.com"}); got != "example.com" {
+		t.Fatalf("same domain = %q", got)
+	}
+	if got := dmarcFromDomain([]string{"a@example.com", "b@example.org"}); got != "" {
+		t.Fatalf("mixed domains = %q", got)
+	}
+}
+
 func TestDNSBLHitIgnoresErrorCodes(t *testing.T) {
 	if !dnsblHit(parseIP("127.0.0.2")) {
 		t.Fatal("127.0.0.2 should be listed")

@@ -74,7 +74,8 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 // CheckParsed is Check for callers that already hold the parsed metadata of raw.
 func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result) (Assessment, error) {
 	cfg := c.cfg()
-	fromDomain := firstAddressDomain(metadata.From)
+	fromAddresses, fromErr := mailparse.FromAddresses(raw)
+	fromDomain := dmarcFromDomain(fromAddresses)
 
 	var (
 		listed    bool
@@ -89,6 +90,9 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 	dkimResult, dkimDomain, dkimPassing := verifyDKIM(ctx, raw)
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
 	dmarcResult, dmarcPolicy := checkDMARC(ctx, fromDomain, dkimPassing, spfResult, spfDomain)
+	if fromErr != nil || (len(fromAddresses) > 0 && fromDomain == "") {
+		dmarcResult, dmarcPolicy = authres.ResultFail, dmarc.PolicyQuarantine
+	}
 	listKind, listAction, err := c.senderRuleMatch(ctx, metadata, smtp, recipients)
 	wg.Wait()
 	if err != nil {
@@ -139,7 +143,7 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 			"dnsbl":        dnsblZone,
 		},
 	}
-	assessment.Header = c.authResultsHeader(spfResult, dkimResult, dmarcResult, smtp, metadata)
+	assessment.Header = c.authResultsHeader(spfResult, dkimResult, dmarcResult, smtp, fromDomain)
 	dmarcFailed := dmarcResult == authres.ResultFail
 	assessment.Junk = score >= junkThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
 	assessment.Reject = score >= rejectThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
@@ -148,7 +152,7 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 	return assessment, nil
 }
 
-func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcResult authres.ResultValue, smtp SMTPContext, metadata mailparse.Metadata) string {
+func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcResult authres.ResultValue, smtp SMTPContext, fromDomain string) string {
 	mailFromDomain := addressDomain(smtp.MailFrom)
 	if mailFromDomain == "" {
 		mailFromDomain = smtp.MailFrom
@@ -156,7 +160,7 @@ func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult au
 	return authres.Format(c.authID, []authres.Result{
 		&authres.SPFResult{Value: spfResult, From: mailFromDomain, Helo: smtp.HELO},
 		&authres.DKIMResult{Value: dkimResult},
-		&authres.DMARCResult{Value: dmarcResult, From: firstAddressDomain(metadata.From)},
+		&authres.DMARCResult{Value: dmarcResult, From: fromDomain},
 	})
 }
 
@@ -306,6 +310,18 @@ func firstAddressDomain(addresses []string) string {
 		return ""
 	}
 	return addressDomain(addresses[0])
+}
+
+func dmarcFromDomain(addresses []string) string {
+	var domain string
+	for _, address := range addresses {
+		current := addressDomain(address)
+		if current == "" || (domain != "" && current != domain) {
+			return ""
+		}
+		domain = current
+	}
+	return domain
 }
 
 func addressDomain(address string) string {

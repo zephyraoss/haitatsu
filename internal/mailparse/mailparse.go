@@ -95,6 +95,25 @@ func ParseHeaders(data []byte) map[string][]string {
 	return headerMap(reader.Header.Header)
 }
 
+func FromAddresses(data []byte) ([]string, error) {
+	entity, err := message.Read(bytes.NewReader(data))
+	if entity == nil {
+		return nil, err
+	}
+	var addresses []string
+	fields := entity.Header.FieldsByKey("From")
+	for fields.Next() {
+		list, err := mail.ParseAddressList(fields.Value())
+		if err != nil {
+			return nil, err
+		}
+		for _, address := range list {
+			addresses = append(addresses, strings.ToLower(address.Address))
+		}
+	}
+	return addresses, nil
+}
+
 func ExtractAttachment(data []byte, partIndex int) (Attachment, error) {
 	reader, err := newBoundedReader(bytes.NewReader(data))
 	if reader == nil {
