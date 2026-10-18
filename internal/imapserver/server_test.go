@@ -497,6 +497,28 @@ func TestCloseAfterExamine(t *testing.T) {
 	}
 }
 
+func TestStoreAddKeepsConcurrentFlags(t *testing.T) {
+	h := newHarness(t)
+	item := h.deliver("INBOX", "one", mailstore.Flags{})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.store.SetFlags(context.Background(), item, mailstore.Flags{Flagged: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Store(imap.SeqSetNum(1), &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagSeen}}, nil).Collect(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := h.client.MailboxMessage.Get(context.Background(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.Read || !reloaded.Flagged {
+		t.Fatalf("flags after +FLAGS = %+v", mailstore.FlagsOf(reloaded))
+	}
+}
+
 func TestStatusCountsFolderAndLabel(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

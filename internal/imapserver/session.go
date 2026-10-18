@@ -531,7 +531,7 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 		if !ok {
 			continue
 		}
-		next := item.flags
+		next := mailstore.FlagsOf(mm)
 		switch flags.Op {
 		case imap.StoreFlagsSet:
 			next = mailstore.ParseFlags(storeFlagStrings(flags.Flags))
