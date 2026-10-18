@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 )
 
@@ -144,6 +145,21 @@ func outboundProblem(c fiber.Ctx, err error) error {
 	}
 	if errors.Is(err, outbound.ErrDKIMKeyNotFound) {
 		return problem(c, fiber.StatusConflict, "dkim_key_not_found", "DKIM key is not configured for sender domain")
+	}
+	if errors.Is(err, outbound.ErrRateLimited) {
+		return problem(c, fiber.StatusTooManyRequests, "rate_limited", "Outbound rate limit exceeded")
+	}
+	if errors.Is(err, outbound.ErrTooManyRecipients) {
+		return problem(c, fiber.StatusUnprocessableEntity, "too_many_recipients", "Too many recipients")
+	}
+	if errors.Is(err, outbound.ErrInvalidHeader) {
+		return problem(c, fiber.StatusUnprocessableEntity, "invalid_header", "Message contains an invalid header field name")
+	}
+	if errors.Is(err, outbound.ErrOverQuota) {
+		return problem(c, fiber.StatusRequestEntityTooLarge, "over_quota", "Mailbox is over quota")
+	}
+	if ent.IsNotFound(err) {
+		return problem(c, fiber.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 	return problem(c, fiber.StatusInternalServerError, "outbound_failed", "Failed to create outbound message")
 }
