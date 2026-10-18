@@ -9,7 +9,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -17,11 +19,14 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundattempt"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
+
+const historyRetention = 90 * 24 * time.Hour
 
 type Store interface {
 	DeleteObject(ctx context.Context, key string) error
@@ -69,6 +74,7 @@ func (w *Worker) Cleanup(ctx context.Context) error {
 		w.cleanupOrphanedMessages(ctx),
 		w.recoverStaleLeases(ctx),
 		w.cleanupAuthLockouts(ctx),
+		w.pruneHistory(ctx),
 		w.updateQueueDepth(ctx),
 	)
 }
@@ -226,6 +232,16 @@ func (w *Worker) recoverStaleLeases(ctx context.Context) error {
 func (w *Worker) cleanupAuthLockouts(ctx context.Context) error {
 	_, err := w.client.AuthLockout.Delete().Where(authlockout.WindowStartLT(time.Now().Add(-24 * time.Hour))).Exec(ctx)
 	return err
+}
+
+func (w *Worker) pruneHistory(ctx context.Context) error {
+	cutoff := time.Now().Add(-historyRetention)
+	_, eventErr := w.client.EventLog.Delete().Where(eventlog.StatusNotIn("queued", "retry", "processing"), eventlog.CreatedAtLT(cutoff)).Exec(ctx)
+	_, auditErr := w.client.AuditEvent.Delete().Where(auditevent.CreatedAtLT(cutoff)).Exec(ctx)
+	_, bounceErr := w.client.BounceEvent.Delete().Where(bounceevent.CreatedAtLT(cutoff)).Exec(ctx)
+	_, attemptErr := w.client.OutboundAttempt.Delete().Where(outboundattempt.CreatedAtLT(cutoff)).Exec(ctx)
+	_, jobErr := w.client.OutboundJob.Delete().Where(outboundjob.StatusIn("sent", "failed"), outboundjob.UpdatedAtLT(cutoff)).Exec(ctx)
+	return errors.Join(eventErr, auditErr, bounceErr, attemptErr, jobErr)
 }
 
 func (w *Worker) sampleQueueDepth(ctx context.Context) {
