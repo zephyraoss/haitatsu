@@ -357,8 +357,7 @@ func normalizeSubmittedMessage(raw []byte, from string, fromAllowed senderCheck,
 
 func normalizeSubmittedMessageFallback(raw []byte, from string, fromAllowed senderCheck, messageID string, hostname string, traceID string, node string) ([]byte, error) {
 	header, body := mailparse.SplitHeaderBody(raw)
-	body = mailparse.StripHaitatsuHeadersFromBody(body)
-	header = mailparse.RemoveHeaderField(header, "Bcc")
+	header = mailparse.RemoveHeaderField(mailparse.StripHaitatsuHeaders(header), "Bcc")
 	var extra [][]byte
 	if values := headerValues(header, "From"); len(values) == 0 {
 		extra = append(extra, []byte("From: "+from))

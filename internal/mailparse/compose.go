@@ -2,11 +2,11 @@ package mailparse
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/mail"
 	"net/textproto"
 	"sort"
+	"strings"
 )
 
 func InjectHeaders(raw []byte, mutate func(textproto.MIMEHeader)) ([]byte, error) {
@@ -18,8 +18,12 @@ func InjectHeaders(raw []byte, mutate func(textproto.MIMEHeader)) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	body = StripHaitatsuHeadersFromBody(body)
 	h := textproto.MIMEHeader(msg.Header)
+	for key := range h {
+		if strings.HasPrefix(strings.ToLower(key), "x-haitatsu-") {
+			delete(h, key)
+		}
+	}
 	mutate(h)
 	return FormatRFC822(h, body), nil
 }
@@ -34,7 +38,8 @@ func FormatRFC822(h textproto.MIMEHeader, body []byte) []byte {
 	var buf bytes.Buffer
 	for _, key := range keys {
 		for _, value := range h[key] {
-			fmt.Fprintf(&buf, "%s: %s\r\n", key, value)
+			buf.WriteString(foldHeaderLine(key, value))
+			buf.WriteString("\r\n")
 		}
 	}
 	buf.WriteString("\r\n")
@@ -42,26 +47,43 @@ func FormatRFC822(h textproto.MIMEHeader, body []byte) []byte {
 	return buf.Bytes()
 }
 
-func StripHaitatsuHeadersFromBody(body []byte) []byte {
-	if len(body) == 0 {
-		return body
-	}
-	var out bytes.Buffer
-	for len(body) > 0 {
-		line, rest, hasNext := bytes.Cut(body, []byte("\n"))
-		if !hasNext {
-			rest = nil
+func foldHeaderLine(key string, value string) string {
+	line := key + ": " + value
+	minimum := len(key) + 2
+	var b strings.Builder
+	for len(line) > 78 {
+		i := strings.LastIndexAny(line[:78], " \t")
+		if i < minimum {
+			i = strings.IndexAny(line[minimum:], " \t")
+			if i < 0 {
+				break
+			}
+			i += minimum
 		}
-		trimmed := bytes.TrimSpace(bytes.TrimRight(line, "\r"))
-		if len(trimmed) > 0 && bytes.HasPrefix(bytes.ToLower(trimmed), []byte("x-haitatsu-")) {
-			body = rest
+		b.WriteString(line[:i])
+		b.WriteString("\r\n")
+		line = line[i:]
+		minimum = len(line) - len(strings.TrimLeft(line, " \t")) + 1
+	}
+	b.WriteString(line)
+	return b.String()
+}
+
+func StripHaitatsuHeaders(header []byte) []byte {
+	lines := bytes.Split(header, []byte("\n"))
+	kept := make([][]byte, 0, len(lines))
+	skipping := false
+	for _, line := range lines {
+		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+			if !skipping {
+				kept = append(kept, line)
+			}
 			continue
 		}
-		out.Write(line)
-		if hasNext {
-			out.WriteByte('\n')
+		skipping = bytes.HasPrefix(bytes.ToLower(line), []byte("x-haitatsu-"))
+		if !skipping {
+			kept = append(kept, line)
 		}
-		body = rest
 	}
-	return out.Bytes()
+	return bytes.Join(kept, []byte("\n"))
 }
