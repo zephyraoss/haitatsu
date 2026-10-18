@@ -106,6 +106,7 @@ type SMTPConfig struct {
 
 type IMAPConfig struct {
 	Addr                string `pkl:"addr" json:"addr"`
+	TLSAddr             string `pkl:"tls_addr" json:"tls_addr"`
 	MaxConnectionsPerIP int    `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
 	AllowInsecureAuth   bool   `pkl:"allow_insecure_auth" json:"allow_insecure_auth"`
 }
@@ -715,7 +716,7 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	if c.SMTP.InboundAddr != next.SMTP.InboundAddr {
 		changes = append(changes, "smtp listener")
 	}
-	if c.IMAP.Addr != next.IMAP.Addr {
+	if c.IMAP.Addr != next.IMAP.Addr || c.IMAP.TLSAddr != next.IMAP.TLSAddr {
 		changes = append(changes, "imap listener")
 	}
 	if c.Submission != next.Submission {

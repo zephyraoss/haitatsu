@@ -25,8 +25,10 @@ type MessageStore interface {
 }
 
 type Server struct {
-	addr   string
-	server *goimapserver.Server
+	addr      string
+	tlsAddr   string
+	tlsConfig *tls.Config
+	server    *goimapserver.Server
 }
 
 type Options struct {
@@ -74,13 +76,30 @@ func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, blobs
 		TLSConfig:    tlsConfig,
 		InsecureAuth: tlsConfig == nil && cfg.AllowInsecureAuth,
 	})
-	return &Server{addr: cfg.Addr, server: server}
+	srv := &Server{addr: cfg.Addr, tlsConfig: tlsConfig, server: server}
+	if tlsConfig != nil {
+		srv.tlsAddr = cfg.TLSAddr
+	}
+	return srv
 }
 
 func (s *Server) Listen() error {
-	listener, err := net.Listen("tcp", s.addr)
+	if s.tlsAddr == "" {
+		return s.listen(s.addr, nil)
+	}
+	errCh := make(chan error, 2)
+	go func() { errCh <- s.listen(s.addr, nil) }()
+	go func() { errCh <- s.listen(s.tlsAddr, s.tlsConfig) }()
+	return <-errCh
+}
+
+func (s *Server) listen(addr string, tlsConfig *tls.Config) error {
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
+	}
+	if tlsConfig != nil {
+		listener = tls.NewListener(listener, tlsConfig)
 	}
 	return s.server.Serve(listener)
 }
