@@ -169,6 +169,13 @@ func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metada
 	if err != nil {
 		return "", "", err
 	}
+	if domains := recipientDomains(recipients); len(domains) > 0 {
+		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("domain"), senderrule.ScopeRefIn(domains...)).All(ctx)
+		if err != nil {
+			return "", "", err
+		}
+		entries = append(entries, items...)
+	}
 	if mailboxIDs := recipientMailboxIDs(recipients); len(mailboxIDs) > 0 {
 		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("mailbox"), senderrule.ScopeRefIn(mailboxIDs...)).All(ctx)
 		if err != nil {
@@ -346,6 +353,20 @@ func recipientMailboxIDs(recipients []routing.Result) []string {
 		}
 	}
 	return ids
+}
+
+func recipientDomains(recipients []routing.Result) []string {
+	seen := map[string]struct{}{}
+	var domains []string
+	for _, recipient := range recipients {
+		domain := addressDomain(recipient.OriginalRecipient)
+		if _, ok := seen[domain]; ok || domain == "" {
+			continue
+		}
+		seen[domain] = struct{}{}
+		domains = append(domains, domain)
+	}
+	return domains
 }
 
 func junkThreshold(cfg config.SpamConfig) float64 {
