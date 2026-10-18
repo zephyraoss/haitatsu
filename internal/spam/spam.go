@@ -86,9 +86,9 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 		defer wg.Done()
 		listed, dnsblZone = dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
 	}()
-	dkimResult, dkimDomain := verifyDKIM(raw)
+	dkimResult, dkimDomain, dkimPassing := verifyDKIM(raw)
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
-	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain, spfResult, spfDomain)
+	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimPassing, spfResult, spfDomain)
 	listKind, listAction, err := c.senderRuleMatch(ctx, metadata, smtp, recipients)
 	wg.Wait()
 	if err != nil {
@@ -185,23 +185,27 @@ func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metada
 	return "", "", nil
 }
 
-func verifyDKIM(raw []byte) (authres.ResultValue, string) {
+func verifyDKIM(raw []byte) (authres.ResultValue, string, []string) {
 	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(raw), &dkim.VerifyOptions{MaxVerifications: 10})
 	if len(verifications) == 0 {
 		if err != nil && !errors.Is(err, dkim.ErrTooManySignatures) {
-			return authres.ResultNone, ""
+			return authres.ResultNone, "", nil
 		}
-		return authres.ResultNone, ""
+		return authres.ResultNone, "", nil
 	}
+	var passing []string
 	for _, verification := range verifications {
 		if verification.Err == nil {
-			return authres.ResultPass, verification.Domain
+			passing = append(passing, verification.Domain)
 		}
 	}
-	return authres.ResultFail, verifications[0].Domain
+	if len(passing) > 0 {
+		return authres.ResultPass, passing[0], passing
+	}
+	return authres.ResultFail, verifications[0].Domain, nil
 }
 
-func checkDMARC(fromDomain string, dkimResult authres.ResultValue, dkimDomain string, spfResult authres.ResultValue, spfDomain string) (authres.ResultValue, dmarc.Policy) {
+func checkDMARC(fromDomain string, dkimDomains []string, spfResult authres.ResultValue, spfDomain string) (authres.ResultValue, dmarc.Policy) {
 	if fromDomain == "" {
 		return authres.ResultNone, dmarc.PolicyNone
 	}
@@ -212,8 +216,10 @@ func checkDMARC(fromDomain string, dkimResult authres.ResultValue, dkimDomain st
 		}
 		return authres.ResultTempError, dmarc.PolicyNone
 	}
-	if dkimResult == authres.ResultPass && aligned(record.DKIMAlignment, fromDomain, dkimDomain) {
-		return authres.ResultPass, record.Policy
+	for _, dkimDomain := range dkimDomains {
+		if aligned(record.DKIMAlignment, fromDomain, dkimDomain) {
+			return authres.ResultPass, record.Policy
+		}
 	}
 	if spfResult == authres.ResultPass && aligned(record.SPFAlignment, fromDomain, spfDomain) {
 		return authres.ResultPass, record.Policy
