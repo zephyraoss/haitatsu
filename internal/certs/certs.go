@@ -5,7 +5,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/caddyserver/certmagic"
 
@@ -39,14 +42,59 @@ func manualTLSConfig(cfg config.TLSConfig) (*tls.Config, error) {
 	if cfg.CertFile == "" || cfg.KeyFile == "" {
 		return nil, fmt.Errorf("tls mode %q requires cert_file and key_file (set tls.mode = \"off\" to disable TLS)", "manual")
 	}
-	cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.KeyFile)
+	manual := &manualCertificate{certFile: cfg.CertFile, keyFile: cfg.KeyFile}
+	modTimes, err := manual.stat()
 	if err != nil {
 		return nil, err
 	}
+	if err := manual.load(modTimes); err != nil {
+		return nil, err
+	}
 	return &tls.Config{
-		MinVersion:   tls.VersionTLS12,
-		Certificates: []tls.Certificate{cert},
+		MinVersion:     tls.VersionTLS12,
+		GetCertificate: manual.GetCertificate,
 	}, nil
+}
+
+type manualCertificate struct {
+	certFile string
+	keyFile  string
+	mu       sync.Mutex
+	cert     *tls.Certificate
+	modTimes [2]time.Time
+}
+
+func (m *manualCertificate) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if modTimes, err := m.stat(); err == nil && modTimes != m.modTimes {
+		if err := m.load(modTimes); err != nil {
+			slog.Warn("failed to reload tls certificate", "cert_file", m.certFile, "error", err)
+		}
+	}
+	return m.cert, nil
+}
+
+func (m *manualCertificate) load(modTimes [2]time.Time) error {
+	cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
+	if err != nil {
+		return err
+	}
+	m.cert = &cert
+	m.modTimes = modTimes
+	return nil
+}
+
+func (m *manualCertificate) stat() ([2]time.Time, error) {
+	certInfo, err := os.Stat(m.certFile)
+	if err != nil {
+		return [2]time.Time{}, err
+	}
+	keyInfo, err := os.Stat(m.keyFile)
+	if err != nil {
+		return [2]time.Time{}, err
+	}
+	return [2]time.Time{certInfo.ModTime(), keyInfo.ModTime()}, nil
 }
 
 func storageTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
