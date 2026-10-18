@@ -282,6 +282,47 @@ func TestIdleReceivesNewMailAndFlagChanges(t *testing.T) {
 	}
 }
 
+func TestFlagChangesSurviveCommandsWithoutWriter(t *testing.T) {
+	h := newHarness(t)
+	item := h.deliver("INBOX", "one", mailstore.Flags{})
+	flagged := make(chan uint32, 4)
+	client := h.dial(&imapclient.UnilateralDataHandler{
+		Fetch: func(msg *imapclient.FetchMessageData) {
+			for {
+				next := msg.Next()
+				if next == nil {
+					return
+				}
+				if _, ok := next.(imapclient.FetchItemDataFlags); ok {
+					flagged <- msg.SeqNum
+				}
+			}
+		},
+	})
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	flags := mailstore.FlagsOf(item)
+	flags.Seen = true
+	if _, err := h.store.SetFlags(context.Background(), item, flags); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Search(&imap.SearchCriteria{}, nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case seq := <-flagged:
+		if seq != 1 {
+			t.Fatalf("flag update seq = %d", seq)
+		}
+	default:
+		t.Fatal("flag change was never reported")
+	}
+}
+
 func TestAppendMoveCopyAndLabels(t *testing.T) {
 	h := newHarness(t)
 	client := h.dial(nil)
