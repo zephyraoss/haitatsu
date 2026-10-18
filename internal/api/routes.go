@@ -238,7 +238,12 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 		return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 	}
 
-	create := h.client.Mailbox.Create().SetPrimaryAddress(address)
+	tx, err := h.client.Tx(c.Context())
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "mailbox_create_failed", "Failed to create mailbox")
+	}
+	defer tx.Rollback()
+	create := tx.Mailbox.Create().SetPrimaryAddress(address)
 	if len(thresholds) > 0 {
 		create.SetSpamThresholds(thresholds)
 	}
@@ -259,8 +264,11 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if err != nil {
 		return entProblem(c, err, "mailbox_create_failed", "Failed to create mailbox")
 	}
-	if err := h.mail.CreateDefaultFolders(c.Context(), mbox.ID); err != nil {
+	if err := mailstore.New(tx.Client(), nil).CreateDefaultFolders(c.Context(), mbox.ID); err != nil {
 		return problem(c, fiber.StatusInternalServerError, "default_folders_failed", "Failed to create default folders")
+	}
+	if err := tx.Commit(); err != nil {
+		return entProblem(c, err, "mailbox_create_failed", "Failed to create mailbox")
 	}
 	if err := h.audit(c, "mailbox.created", "mailbox", mbox.ID, mbox.ID, nil); err != nil {
 		return err

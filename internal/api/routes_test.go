@@ -3,11 +3,14 @@ package api
 import (
 	"context"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/testutil"
 )
 
@@ -61,5 +64,37 @@ func TestRevokeAppPasswordScopedToMailbox(t *testing.T) {
 	}
 	if fresh.RevokedAt != nil {
 		t.Fatal("app password revoked through another mailbox")
+	}
+}
+
+func TestCreateMailboxNormalizesAddressAndCreatesFolders(t *testing.T) {
+	client, db := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	app := fiber.New()
+	cfg := &config.Config{}
+	cfg.API.ServiceToken = "test-token"
+	Register(app, client, db, testutil.NewFakeStore(), store, nil, config.NewHolder(cfg), nil)
+
+	req := httptest.NewRequest("POST", "/api/v1/mailboxes", strings.NewReader(`{"primary_address":" Alice@Example.TEST "}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+	res, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != fiber.StatusCreated {
+		t.Fatalf("status = %d, want 201", res.StatusCode)
+	}
+	mbox, err := client.Mailbox.Query().Where(mailbox.PrimaryAddressEQ("alice@example.test")).Only(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := client.Folder.Query().Where(folder.MailboxIDEQ(mbox.ID)).Count(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count == 0 {
+		t.Fatal("default folders were not created")
 	}
 }
