@@ -452,6 +452,9 @@ func (s *session) Expunge(w *goimapserver.ExpungeWriter, uids *imap.UIDSet) erro
 	if s.view == nil {
 		return errNotSelected
 	}
+	if s.readOnly && *w == (goimapserver.ExpungeWriter{}) {
+		return nil
+	}
 	if s.readOnly {
 		return errReadOnly
 	}

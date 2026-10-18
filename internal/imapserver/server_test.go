@@ -481,6 +481,22 @@ func TestEmptyUIDCopySucceeds(t *testing.T) {
 	}
 }
 
+func TestCloseAfterExamine(t *testing.T) {
+	h := newHarness(t)
+	h.deliver("INBOX", "one", mailstore.Flags{Deleted: true})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.UnselectAndExpunge().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	inbox, _ := client.Status("INBOX", &imap.StatusOptions{NumMessages: true}).Wait()
+	if *inbox.NumMessages != 1 {
+		t.Fatal("close after examine expunged messages")
+	}
+}
+
 func TestStatusCountsFolderAndLabel(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
