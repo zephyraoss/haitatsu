@@ -43,7 +43,14 @@ func (s *fakeStore) GetMessage(_ context.Context, key string) ([]byte, error) {
 	return data, nil
 }
 
-func (s *fakeStore) GetObjectReader(_ context.Context, key string) (io.ReadCloser, error) {
+func (s *fakeStore) GetObjectReader(ctx context.Context, key string) (io.ReadCloser, error) {
+	if err := storage.ValidateImportKey(key); err != nil {
+		return nil, err
+	}
+	return s.GetMessageReader(ctx, key)
+}
+
+func (s *fakeStore) GetMessageReader(_ context.Context, key string) (io.ReadCloser, error) {
 	data, ok := s.objects[key]
 	if !ok {
 		return nil, fmt.Errorf("object %q not found", key)

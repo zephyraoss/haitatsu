@@ -21,6 +21,7 @@ import (
 type Store interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 	GetObjectReader(ctx context.Context, key string) (io.ReadCloser, error)
+	GetMessageReader(ctx context.Context, key string) (io.ReadCloser, error)
 	PutMessage(ctx context.Context, key string, data []byte) error
 	PutExportStream(ctx context.Context, key string, data io.Reader, size int64) error
 }
@@ -265,7 +266,7 @@ func (w *ExportWorker) messageBlobKeys(ctx context.Context, items []*ent.Mailbox
 }
 
 func (w *ExportWorker) writeBlob(ctx context.Context, archive *zip.Writer, messageID string, blobKey string) error {
-	reader, err := w.store.GetObjectReader(ctx, blobKey)
+	reader, err := w.store.GetMessageReader(ctx, blobKey)
 	if err != nil {
 		return err
 	}
