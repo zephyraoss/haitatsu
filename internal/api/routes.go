@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"strconv"
+	"strings"
 	"time"
 
 	"entgo.io/ent/dialect"
@@ -216,11 +218,15 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if req.PrimaryAddress == "" {
 		return problem(c, fiber.StatusBadRequest, "primary_address_required", "Primary address is required")
 	}
-	if err := mailaddr.ValidateAddressNotReserved(req.PrimaryAddress); err != nil {
+	address, ok := normalizeAddress(req.PrimaryAddress)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_address", "Primary address is invalid")
+	}
+	if err := mailaddr.ValidateAddressNotReserved(address); err != nil {
 		return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 	}
 
-	create := h.client.Mailbox.Create().SetPrimaryAddress(req.PrimaryAddress)
+	create := h.client.Mailbox.Create().SetPrimaryAddress(address)
 	if len(thresholds) > 0 {
 		create.SetSpamThresholds(thresholds)
 	}
@@ -277,10 +283,14 @@ func (h *Handler) updateMailbox(c fiber.Ctx) error {
 		}
 	}
 	if req.PrimaryAddress != "" {
-		if err := mailaddr.ValidateAddressNotReserved(req.PrimaryAddress); err != nil {
+		address, ok := normalizeAddress(req.PrimaryAddress)
+		if !ok {
+			return problem(c, fiber.StatusBadRequest, "invalid_address", "Primary address is invalid")
+		}
+		if err := mailaddr.ValidateAddressNotReserved(address); err != nil {
 			return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 		}
-		update.SetPrimaryAddress(req.PrimaryAddress)
+		update.SetPrimaryAddress(address)
 	}
 	if req.Status != "" {
 		update.SetStatus(req.Status)
@@ -435,11 +445,15 @@ func (h *Handler) createRoute(c fiber.Ctx) error {
 	if req.SourceAddress == "" || req.Type == "" {
 		return problem(c, fiber.StatusBadRequest, "invalid_route", "Source address and type are required")
 	}
-	if err := mailaddr.ValidateAddressNotReserved(req.SourceAddress); err != nil {
+	source, ok := normalizeAddress(req.SourceAddress)
+	if !ok && req.Type != "pattern" {
+		return problem(c, fiber.StatusBadRequest, "invalid_address", "Source address is invalid")
+	}
+	if err := mailaddr.ValidateAddressNotReserved(source); err != nil {
 		return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 	}
 
-	create := h.client.Route.Create().SetSourceAddress(req.SourceAddress).SetType(req.Type).SetDestinations(req.Destinations)
+	create := h.client.Route.Create().SetSourceAddress(source).SetType(req.Type).SetDestinations(req.Destinations)
 	if req.Status != "" {
 		create.SetStatus(req.Status)
 	}
@@ -468,10 +482,24 @@ func (h *Handler) updateRoute(c fiber.Ctx) error {
 	}
 	update := h.client.Route.UpdateOneID(c.Params("id"))
 	if req.SourceAddress != "" {
-		if err := mailaddr.ValidateAddressNotReserved(req.SourceAddress); err != nil {
+		source, ok := normalizeAddress(req.SourceAddress)
+		if !ok {
+			routeType := req.Type
+			if routeType == "" {
+				existing, err := h.client.Route.Get(c.Context(), c.Params("id"))
+				if err != nil {
+					return entProblem(c, err, "route_not_found", "Route not found")
+				}
+				routeType = existing.Type
+			}
+			if routeType != "pattern" {
+				return problem(c, fiber.StatusBadRequest, "invalid_address", "Source address is invalid")
+			}
+		}
+		if err := mailaddr.ValidateAddressNotReserved(source); err != nil {
 			return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 		}
-		update.SetSourceAddress(req.SourceAddress)
+		update.SetSourceAddress(source)
 	}
 	if req.Type != "" {
 		update.SetType(req.Type)
@@ -872,6 +900,12 @@ func validateOutboundLimits(limits map[string]int64) error {
 		}
 	}
 	return nil
+}
+
+func normalizeAddress(address string) (string, bool) {
+	address = strings.ToLower(strings.TrimSpace(address))
+	parsed, err := mail.ParseAddress(address)
+	return address, err == nil && parsed.Address == address
 }
 
 func validProtocolScopes(scopes []string) bool {
