@@ -213,22 +213,32 @@ func checkDMARC(ctx context.Context, fromDomain string, dkimDomains []string, sp
 	if fromDomain == "" {
 		return authres.ResultNone, dmarc.PolicyNone
 	}
-	record, err := dmarc.LookupWithOptions(fromDomain, &dmarc.LookupOptions{LookupTXT: lookupTXT(ctx)})
+	options := &dmarc.LookupOptions{LookupTXT: lookupTXT(ctx)}
+	record, err := dmarc.LookupWithOptions(fromDomain, options)
+	orgDomain := organizationalDomain(fromDomain)
+	fromOrg := errors.Is(err, dmarc.ErrNoPolicy) && orgDomain != fromDomain
+	if fromOrg {
+		record, err = dmarc.LookupWithOptions(orgDomain, options)
+	}
 	if err != nil {
 		if errors.Is(err, dmarc.ErrNoPolicy) {
 			return authres.ResultNone, dmarc.PolicyNone
 		}
 		return authres.ResultTempError, dmarc.PolicyNone
 	}
+	policy := record.Policy
+	if fromOrg && record.SubdomainPolicy != "" {
+		policy = record.SubdomainPolicy
+	}
 	for _, dkimDomain := range dkimDomains {
 		if aligned(record.DKIMAlignment, fromDomain, dkimDomain) {
-			return authres.ResultPass, record.Policy
+			return authres.ResultPass, policy
 		}
 	}
 	if spfResult == authres.ResultPass && aligned(record.SPFAlignment, fromDomain, spfDomain) {
-		return authres.ResultPass, record.Policy
+		return authres.ResultPass, policy
 	}
-	return authres.ResultFail, record.Policy
+	return authres.ResultFail, policy
 }
 
 func score(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcResult authres.ResultValue, policy dmarc.Policy, listKind string) (float64, []string) {
