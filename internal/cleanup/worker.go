@@ -216,7 +216,7 @@ func deleteMessageInTx(ctx context.Context, client *ent.Client, messageID string
 
 func (w *Worker) recoverStaleLeases(ctx context.Context) error {
 	now := time.Now()
-	if _, err := w.client.OutboundJob.Update().Where(outboundjob.StatusEQ("processing"), outboundjob.LockedUntilLTE(now)).SetStatus("retry").ClearLockedBy().ClearLockedUntil().Save(ctx); err != nil {
+	if _, err := w.client.OutboundJob.Update().Where(outboundjob.StatusEQ("processing"), outboundjob.LockedUntilLTE(now)).SetStatus("retry").AddAttempts(1).ClearLockedBy().ClearLockedUntil().Save(ctx); err != nil {
 		return err
 	}
 	if _, err := w.client.EventLog.Update().Where(eventlog.StatusEQ("processing"), eventlog.LockedUntilLTE(now)).SetStatus("retry").ClearLockedBy().ClearLockedUntil().Save(ctx); err != nil {
