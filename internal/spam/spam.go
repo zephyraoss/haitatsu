@@ -86,9 +86,9 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 		defer wg.Done()
 		listed, dnsblZone = dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
 	}()
-	dkimResult, dkimDomain, dkimPassing := verifyDKIM(raw)
+	dkimResult, dkimDomain, dkimPassing := verifyDKIM(ctx, raw)
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
-	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimPassing, spfResult, spfDomain)
+	dmarcResult, dmarcPolicy := checkDMARC(ctx, fromDomain, dkimPassing, spfResult, spfDomain)
 	listKind, listAction, err := c.senderRuleMatch(ctx, metadata, smtp, recipients)
 	wg.Wait()
 	if err != nil {
@@ -185,8 +185,12 @@ func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metada
 	return "", "", nil
 }
 
-func verifyDKIM(raw []byte) (authres.ResultValue, string, []string) {
-	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(raw), &dkim.VerifyOptions{MaxVerifications: 10})
+func lookupTXT(ctx context.Context) func(string) ([]string, error) {
+	return func(name string) ([]string, error) { return net.DefaultResolver.LookupTXT(ctx, name) }
+}
+
+func verifyDKIM(ctx context.Context, raw []byte) (authres.ResultValue, string, []string) {
+	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(raw), &dkim.VerifyOptions{MaxVerifications: 10, LookupTXT: lookupTXT(ctx)})
 	if len(verifications) == 0 {
 		if err != nil && !errors.Is(err, dkim.ErrTooManySignatures) {
 			return authres.ResultNone, "", nil
@@ -205,11 +209,11 @@ func verifyDKIM(raw []byte) (authres.ResultValue, string, []string) {
 	return authres.ResultFail, verifications[0].Domain, nil
 }
 
-func checkDMARC(fromDomain string, dkimDomains []string, spfResult authres.ResultValue, spfDomain string) (authres.ResultValue, dmarc.Policy) {
+func checkDMARC(ctx context.Context, fromDomain string, dkimDomains []string, spfResult authres.ResultValue, spfDomain string) (authres.ResultValue, dmarc.Policy) {
 	if fromDomain == "" {
 		return authres.ResultNone, dmarc.PolicyNone
 	}
-	record, err := dmarc.Lookup(fromDomain)
+	record, err := dmarc.LookupWithOptions(fromDomain, &dmarc.LookupOptions{LookupTXT: lookupTXT(ctx)})
 	if err != nil {
 		if errors.Is(err, dmarc.ErrNoPolicy) {
 			return authres.ResultNone, dmarc.PolicyNone
