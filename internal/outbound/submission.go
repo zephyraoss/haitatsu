@@ -32,6 +32,7 @@ var ErrDKIMKeyNotFound = errors.New("dkim key not found")
 var ErrSenderNotAllowed = errors.New("sender not allowed")
 var ErrRateLimited = errors.New("outbound rate limit exceeded")
 var ErrTooManyRecipients = errors.New("too many recipients")
+var ErrInvalidHeader = errors.New("invalid header field name")
 var ErrOverQuota = mailstore.ErrOverQuota
 
 type BlobStore interface {
@@ -313,6 +314,9 @@ func parsePrivateKey(value string) (*rsa.PrivateKey, error) {
 type senderCheck func(address string) (bool, error)
 
 func normalizeSubmittedMessage(raw []byte, from string, fromAllowed senderCheck, messageID string, hostname string, traceID string, node string) ([]byte, error) {
+	if header, _ := mailparse.SplitHeaderBody(raw); !validHeaderFieldNames(header) {
+		return nil, ErrInvalidHeader
+	}
 	var fromErr error
 	normalized, err := mailparse.InjectHeaders(raw, func(h textproto.MIMEHeader) {
 		if h.Get("From") == "" {
@@ -382,6 +386,31 @@ func checkFromHeader(values []string, fromAllowed senderCheck) error {
 		}
 	}
 	return nil
+}
+
+func validHeaderFieldNames(header []byte) bool {
+	for i, line := range strings.Split(string(header), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			if i == 0 {
+				return false
+			}
+			continue
+		}
+		name, _, ok := strings.Cut(line, ":")
+		if !ok || name == "" {
+			return false
+		}
+		for j := 0; j < len(name); j++ {
+			if name[j] < 33 || name[j] > 126 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func hasHeader(header []byte, key string) bool {

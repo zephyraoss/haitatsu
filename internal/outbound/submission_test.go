@@ -121,3 +121,11 @@ func TestNormalizeSubmittedMessageAcceptsAuthorizedFromAndFillsMissing(t *testin
 		t.Fatalf("missing From should be set to envelope sender: %v %q", err, out)
 	}
 }
+
+func TestNormalizeSubmittedMessageRejectsInvalidHeaderName(t *testing.T) {
+	raw := []byte("From : ceo@example.test\r\nTo: victim@other.test\r\n\r\nbody\r\n")
+	_, err := normalizeSubmittedMessage(raw, "alice@example.test", onlyAllow("alice@example.test"), "id", "mail.example.test", "trace", "node")
+	if !errors.Is(err, ErrInvalidHeader) {
+		t.Fatalf("expected ErrInvalidHeader, got %v", err)
+	}
+}
