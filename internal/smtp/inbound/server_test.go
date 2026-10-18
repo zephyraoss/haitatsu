@@ -112,3 +112,18 @@ func TestInboundRejectsOverQuotaAndRateLimits(t *testing.T) {
 		t.Fatalf("second message within the minute should be rate limited with 450, got %v", err)
 	}
 }
+
+func TestInboundRejectsMessageThatExceedsQuotaAtData(t *testing.T) {
+	h := newHarness(t, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 5, MessagesPerMinute: 60})
+	if _, err := h.client.Mailbox.UpdateOneID(h.mbox.ID).SetQuotaBytes(10).Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	body := "From: sender@remote.test\r\nTo: bob@example.test\r\nSubject: hello\r\n\r\nhi\r\n"
+	err := send(h.addr, "sender@remote.test", "bob@example.test", body)
+	if err == nil || !strings.Contains(err.Error(), "452") {
+		t.Fatalf("message exceeding quota should return 452, got %v", err)
+	}
+	if count := h.client.Message.Query().CountX(context.Background()); count != 0 {
+		t.Fatalf("no message should be stored, got %d", count)
+	}
+}

@@ -103,18 +103,23 @@ type session struct {
 	backend    *backend
 	smtp       spam.SMTPContext
 	mailFrom   string
+	size       int64
 	recipients []routing.Result
 	bounceRcpt []bounce.Recipient
 	accepted   int
 	released   bool
 }
 
-func (s *session) Mail(from string, _ *smtp.MailOptions) error {
+func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 	if !s.backend.limiter.Allow(s.smtp.RemoteIP) {
 		return &smtp.SMTPError{Code: 450, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "rate limit exceeded, try again later"}
 	}
 	s.mailFrom = from
 	s.smtp.MailFrom = from
+	s.size = 0
+	if opts != nil {
+		s.size = opts.Size
+	}
 	s.recipients = nil
 	s.bounceRcpt = nil
 	s.accepted = 0
@@ -150,14 +155,14 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 	}
 	deliverable := result.Mailboxes[:0]
 	for _, mbox := range result.Mailboxes {
-		if mailstore.OverQuota(mbox) {
+		if mailstore.OverQuota(mbox) || mailstore.OverQuotaWith(mbox, s.size) {
 			s.backend.metrics.MailboxOverQuota()
 			continue
 		}
 		deliverable = append(deliverable, mbox)
 	}
 	if len(deliverable) == 0 {
-		return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 2, 2}, Message: "mailbox over quota"}
+		return overQuotaSMTPError()
 	}
 	if err := s.chargeRecipient(); err != nil {
 		return err
@@ -205,6 +210,9 @@ func (s *session) Data(r io.Reader) error {
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "message rejected by policy"}
 	}
 	if _, err := s.backend.messages.DeliverParsed(context.Background(), normalized, metadata, s.recipients, assessment); err != nil {
+		if errors.Is(err, messages.ErrOverQuota) {
+			return overQuotaSMTPError()
+		}
 		slog.Error("inbound delivery failed", "error", err)
 		return temporarySMTPError("temporary local problem")
 	}
@@ -213,6 +221,7 @@ func (s *session) Data(r io.Reader) error {
 
 func (s *session) Reset() {
 	s.mailFrom = ""
+	s.size = 0
 	s.recipients = nil
 	s.bounceRcpt = nil
 	s.accepted = 0
@@ -224,6 +233,10 @@ func (s *session) Logout() error {
 		s.backend.gate.Release(s.smtp.RemoteIP)
 	}
 	return nil
+}
+
+func overQuotaSMTPError() *smtp.SMTPError {
+	return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 2, 2}, Message: "mailbox over quota"}
 }
 
 func temporarySMTPError(message string) *smtp.SMTPError {

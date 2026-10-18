@@ -63,11 +63,19 @@ func (s *Service) DeliverParsed(ctx context.Context, normalized []byte, metadata
 func (s *Service) deliver(ctx context.Context, messageID string, traceID string, stored []byte, metadata mailparse.Metadata, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error) {
 	key := messageObjectKey(time.Now().UTC(), messageID)
 
+	pending, err := s.pendingDeliveries(ctx, messageID, int64(len(stored)), recipients, assessment)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.blobs.PutMessage(ctx, key, stored); err != nil {
 		return nil, err
 	}
 
-	messageCreate := s.client.Message.Create().
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	messageCreate := tx.Client().Message.Create().
 		SetID(messageID).
 		SetTraceID(traceID).
 		SetBlobKey(key).
@@ -93,11 +101,22 @@ func (s *Service) deliver(ctx context.Context, messageID string, traceID string,
 
 	message, err := messageCreate.Save(ctx)
 	if err != nil {
+		_ = tx.Rollback()
 		return nil, err
 	}
-	deliveries, err := s.createMailboxMessages(ctx, message.ID, int64(len(stored)), recipients, assessment)
+	deliveries, err := s.attachInTx(ctx, tx, pending)
 	if err != nil {
+		_ = tx.Rollback()
+		if errors.Is(err, mailstore.ErrOverQuota) {
+			s.metrics.MailboxOverQuota()
+		}
 		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	for i, delivery := range deliveries {
+		s.store.NotifyAttached(ctx, pending[i].attach, delivery.Message)
 	}
 	s.metrics.MessageReceived()
 	s.metrics.MessageDelivered(len(deliveries))
@@ -114,9 +133,14 @@ func (s *Service) deliver(ctx context.Context, messageID string, traceID string,
 	return message, nil
 }
 
-func (s *Service) createMailboxMessages(ctx context.Context, messageID string, size int64, recipients []routing.Result, assessment spam.Assessment) ([]rules.Delivery, error) {
+type pendingDelivery struct {
+	attach mailstore.Attach
+	route  routing.Result
+}
+
+func (s *Service) pendingDeliveries(ctx context.Context, messageID string, size int64, recipients []routing.Result, assessment spam.Assessment) ([]pendingDelivery, error) {
 	seen := map[string]struct{}{}
-	var deliveries []rules.Delivery
+	var pending []pendingDelivery
 	for _, recipient := range recipients {
 		for _, mbox := range recipient.Mailboxes {
 			if _, ok := seen[mbox.ID]; ok {
@@ -132,7 +156,7 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, s
 			if err != nil {
 				return nil, err
 			}
-			item, err := s.store.Attach(ctx, mailstore.Attach{
+			pending = append(pending, pendingDelivery{route: recipient, attach: mailstore.Attach{
 				MailboxID:       mbox.ID,
 				MessageID:       messageID,
 				FolderID:        deliveryFolder.ID,
@@ -142,16 +166,20 @@ func (s *Service) createMailboxMessages(ctx context.Context, messageID string, s
 				PlusTag:         recipient.PlusTag,
 				ResolvedRouteID: recipient.RouteID,
 				EnforceQuota:    true,
-			})
-			if err != nil {
-				if errors.Is(err, mailstore.ErrOverQuota) {
-					s.metrics.MailboxOverQuota()
-					continue
-				}
-				return nil, err
-			}
-			deliveries = append(deliveries, rules.Delivery{Message: item, Route: recipient})
+			}})
 		}
+	}
+	return pending, nil
+}
+
+func (s *Service) attachInTx(ctx context.Context, tx *ent.Tx, pending []pendingDelivery) ([]rules.Delivery, error) {
+	deliveries := make([]rules.Delivery, 0, len(pending))
+	for _, p := range pending {
+		item, err := s.store.AttachInTx(ctx, tx, p.attach)
+		if err != nil {
+			return nil, err
+		}
+		deliveries = append(deliveries, rules.Delivery{Message: item, Route: p.route})
 	}
 	return deliveries, nil
 }
