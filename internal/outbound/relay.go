@@ -43,6 +43,7 @@ type Worker struct {
 	workerID string
 	backend  database.Backend
 	send     Sender
+	hostname string
 }
 
 type claimedJob struct {
@@ -66,7 +67,14 @@ func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg func() conf
 	if len(backends) > 0 {
 		backend = backends[0]
 	}
-	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID, backend: backend, send: sendViaRelay}
+	w := &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID, backend: backend, hostname: "localhost"}
+	w.send = w.sendViaRelay
+	return w
+}
+
+func (w *Worker) WithHostname(hostname string) *Worker {
+	w.hostname = hostname
+	return w
 }
 
 func (w *Worker) WithSender(send Sender) *Worker {
@@ -214,7 +222,7 @@ func (w *Worker) deliver(ctx context.Context, job claimedJob) deliveryResult {
 	return classifySMTPError(err)
 }
 
-func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
+func (w *Worker) sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout())
 	defer cancel()
 
@@ -238,7 +246,7 @@ func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, reci
 		return wrapCtxErr(ctx, err)
 	}
 	defer client.Close()
-	if err := client.Hello("localhost"); err != nil {
+	if err := client.Hello(w.hostname); err != nil {
 		return wrapCtxErr(ctx, err)
 	}
 	if ok, _ := client.Extension("STARTTLS"); ok {

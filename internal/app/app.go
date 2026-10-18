@@ -113,7 +113,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	ruleEngine := rules.New(db.Ent(), mail, eventService)
 	messageService := messages.NewService(db.Ent(), blobStore, mail, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	notificationService := notifications.New(db.Ent(), messageService, func() config.NotificationConfig { return holder.Get().Notifications }, cfg.Server.PublicHostname)
-	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName, db.Backend())
+	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName, db.Backend()).WithHostname(cfg.Server.PublicHostname)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
 	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname,
 		spam.WithTypeSafe(spam.NewTypeSafeClient(), func(result spam.TypeSafeResult) {
