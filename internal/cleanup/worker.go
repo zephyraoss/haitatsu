@@ -145,7 +145,7 @@ func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 		}
 		for _, msg := range messages {
 			lastID = msg.ID
-			if err := w.deleteMessageRows(ctx, msg); err != nil {
+			if err := w.deleteMessageRows(ctx, msg, retention); err != nil {
 				return err
 			}
 		}
@@ -173,35 +173,39 @@ func unreferencedMessage(retention time.Time) predicate.Message {
 	}
 }
 
-func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message) error {
-	items, err := w.client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(msg.ID)).All(ctx)
+func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message, retention time.Time) error {
+	tx, err := w.client.Tx(ctx)
 	if err != nil {
 		return err
 	}
-	cutoff := time.Now().Add(-30 * 24 * time.Hour)
-	for _, item := range items {
-		if item.DeletedAt == nil || item.DeletedAt.After(cutoff) {
-			return nil
+	deleted, err := deleteMessageInTx(ctx, tx.Client(), msg.ID, retention)
+	if err != nil || deleted == 0 {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if msg.BlobKey == "" {
+		return nil
+	}
+	return w.store.DeleteObject(ctx, msg.BlobKey)
+}
+
+func deleteMessageInTx(ctx context.Context, client *ent.Client, messageID string, retention time.Time) (int, error) {
+	ids, err := client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(messageID), mailboxmessage.DeletedAtLT(retention)).IDs(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) > 0 {
+		if err := mailstore.DeleteLabelLinks(ctx, client, ids); err != nil {
+			return 0, err
+		}
+		if _, err := client.MailboxMessage.Delete().Where(mailboxmessage.IDIn(ids...), mailboxmessage.DeletedAtLT(retention)).Exec(ctx); err != nil {
+			return 0, err
 		}
 	}
-	if len(items) > 0 {
-		ids := make([]string, 0, len(items))
-		for _, item := range items {
-			ids = append(ids, item.ID)
-		}
-		if err := mailstore.DeleteLabelLinks(ctx, w.client, ids); err != nil {
-			return err
-		}
-		if _, err := w.client.MailboxMessage.Delete().Where(mailboxmessage.IDIn(ids...)).Exec(ctx); err != nil {
-			return err
-		}
-	}
-	if msg.BlobKey != "" {
-		if err := w.store.DeleteObject(ctx, msg.BlobKey); err != nil {
-			return err
-		}
-	}
-	return ignoreNotFound(w.client.Message.DeleteOneID(msg.ID).Exec(ctx))
+	return client.Message.Delete().Where(message.IDEQ(messageID), unreferencedMessage(retention)).Exec(ctx)
 }
 
 func (w *Worker) recoverStaleLeases(ctx context.Context) error {
