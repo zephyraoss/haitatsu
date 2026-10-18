@@ -117,7 +117,8 @@ func (s *session) moveOne(ctx context.Context, mm *ent.MailboxMessage, item entr
 		if err != nil {
 			return 0, err
 		}
-		return link.UID, s.store.SoftDelete(ctx, mm)
+		_, err = s.store.MoveToFolderName(ctx, mm, "Archive")
+		return link.UID, err
 	default:
 		moved, err := s.store.Move(ctx, mm, target.folder.ID)
 		if err != nil {

@@ -353,6 +353,30 @@ func TestAppendMoveCopyAndLabels(t *testing.T) {
 	}
 }
 
+func TestMoveIntoLabelArchivesMessage(t *testing.T) {
+	h := newHarness(t)
+	h.deliver("INBOX", "one", mailstore.Flags{})
+	client := h.dial(nil)
+	if err := client.Create("Labels/Work", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Move(imap.SeqSetNum(1), "Labels/Work").Wait(); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]uint32{"INBOX": 0, "Archive": 1, "Labels/Work": 1} {
+		status, err := client.Status(name, &imap.StatusOptions{NumMessages: true}).Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *status.NumMessages != want {
+			t.Fatalf("%s has %d messages, want %d", name, *status.NumMessages, want)
+		}
+	}
+}
+
 func TestStatusCountsFolderAndLabel(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
