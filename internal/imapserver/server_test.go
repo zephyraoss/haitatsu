@@ -402,6 +402,27 @@ func TestAppendDedupesOnlyIdenticalBytes(t *testing.T) {
 	}
 }
 
+func TestMoveResolvesSeqNumsBeforeExpunge(t *testing.T) {
+	h := newHarness(t)
+	first := h.deliver("INBOX", "one", mailstore.Flags{})
+	h.deliver("INBOX", "two", mailstore.Flags{})
+	h.deliver("INBOX", "three", mailstore.Flags{})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.store.SoftDelete(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := client.Move(imap.SeqSetNum(2), "Archive").Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.SourceUIDs.String() != "2" {
+		t.Fatalf("moved source uids = %s, want 2", moved.SourceUIDs.String())
+	}
+}
+
 func TestStatusCountsFolderAndLabel(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

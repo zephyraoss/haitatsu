@@ -24,13 +24,17 @@ func (s *session) Move(w *goimapserver.MoveWriter, numSet imap.NumSet, dest stri
 	if err != nil {
 		return err
 	}
+	var uids imap.UIDSet
+	for _, index := range s.view.selected(numSet) {
+		uids.AddNum(imap.UID(s.view.entries[index].uid))
+	}
 	if err := s.resync(ctx, expungeOnlyWriter{write: w.WriteExpunge}, syncMode{expunge: true, force: true}); err != nil {
 		return err
 	}
 	if target.key == s.view.container.key {
 		return nil
 	}
-	indexes := s.view.selected(numSet)
+	indexes := s.view.selected(uids)
 	if len(indexes) == 0 {
 		return nil
 	}
