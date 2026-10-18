@@ -31,6 +31,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 )
 
+const maxAppPasswords = 50
+
 type Handler struct {
 	client   *ent.Client
 	db       *sql.DB
@@ -384,6 +386,14 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 	}
 	if !validProtocolScopes(req.Scopes) {
 		return problem(c, fiber.StatusBadRequest, "invalid_app_password_scope", "App password scopes must be protocol scopes")
+	}
+
+	active, err := h.client.AppPassword.Query().Where(apppassword.MailboxIDEQ(c.Params("mailbox_id")), apppassword.RevokedAtIsNil(), apppassword.DeletedAtIsNil()).Count(c.Context())
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "app_password_count_failed", "Failed to count app passwords")
+	}
+	if active >= maxAppPasswords {
+		return problem(c, fiber.StatusConflict, "app_password_limit_reached", fmt.Sprintf("Mailboxes may have at most %d active app passwords", maxAppPasswords))
 	}
 
 	password, err := passwordauth.GeneratePassword()
