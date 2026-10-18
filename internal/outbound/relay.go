@@ -140,7 +140,7 @@ func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
 	defer tx.Rollback()
 
 	query := `
-UPDATE outbound_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
+UPDATE outbound_jobs SET locked_by = $1, locked_until = $2, attempts = attempts + CASE WHEN status = 'processing' THEN 1 ELSE 0 END, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM outbound_jobs
   WHERE status IN ('queued', 'retry', 'processing')
@@ -157,7 +157,7 @@ RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 	args := []any{w.workerID, lockedUntil}
 	if w.backend.SQLiteFamily() {
 		query = `
-UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
+UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, attempts = attempts + CASE WHEN status = 'processing' THEN 1 ELSE 0 END, status = 'processing', updated_at = ?
 WHERE id = (
   SELECT id FROM outbound_jobs
   WHERE status IN ('queued', 'retry', 'processing')
