@@ -1,6 +1,15 @@
 package api
 
-import "testing"
+import (
+	"context"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gofiber/fiber/v3"
+
+	"github.com/zephyraoss/haitatsu/internal/config"
+	"github.com/zephyraoss/haitatsu/internal/testutil"
+)
 
 func TestNormalizeAddress(t *testing.T) {
 	cases := map[string]struct {
@@ -19,5 +28,38 @@ func TestNormalizeAddress(t *testing.T) {
 		if ok != want.ok || (ok && got != want.want) {
 			t.Errorf("normalizeAddress(%q) = %q, %v; want %q, %v", input, got, ok, want.want, want.ok)
 		}
+	}
+}
+
+func TestRevokeAppPasswordScopedToMailbox(t *testing.T) {
+	client, db := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	owner := testutil.SeedMailbox(t, store, "owner@example.test")
+	other := testutil.SeedMailbox(t, store, "other@example.test")
+	item, err := client.AppPassword.Create().SetMailboxID(owner.ID).SetName("mail").SetHash("x").SetScopes([]string{"imap"}).Save(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := fiber.New()
+	cfg := &config.Config{}
+	cfg.API.ServiceToken = "test-token"
+	Register(app, client, db, testutil.NewFakeStore(), store, nil, config.NewHolder(cfg), nil)
+
+	req := httptest.NewRequest("DELETE", "/api/v1/mailboxes/"+other.ID+"/passwords/"+item.ID, nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	res, err := app.Test(req, fiber.TestConfig{Timeout: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != fiber.StatusNotFound {
+		t.Fatalf("status = %d, want 404", res.StatusCode)
+	}
+	fresh, err := client.AppPassword.Get(context.Background(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.RevokedAt != nil {
+		t.Fatal("app password revoked through another mailbox")
 	}
 }

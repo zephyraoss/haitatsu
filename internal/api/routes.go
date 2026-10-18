@@ -419,7 +419,7 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 
 func (h *Handler) revokeAppPassword(c fiber.Ctx) error {
 	now := time.Now()
-	item, err := h.client.AppPassword.UpdateOneID(c.Params("id")).SetRevokedAt(now).SetDeletedAt(now).Save(c.Context())
+	item, err := h.client.AppPassword.UpdateOneID(c.Params("id")).Where(apppassword.MailboxIDEQ(c.Params("mailbox_id"))).SetRevokedAt(now).SetDeletedAt(now).Save(c.Context())
 	if err != nil {
 		return entProblem(c, err, "app_password_revoke_failed", "Failed to revoke app password")
 	}
