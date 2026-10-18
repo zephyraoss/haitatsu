@@ -127,3 +127,36 @@ func TestInboundRejectsMessageThatExceedsQuotaAtData(t *testing.T) {
 		t.Fatalf("no message should be stored, got %d", count)
 	}
 }
+
+func TestInboundLimitsConnectionsBeforeGreeting(t *testing.T) {
+	h := newHarness(t, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 1, MessagesPerMinute: 60})
+	first, err := net.Dial("tcp", h.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if _, err := first.Read(make([]byte, 512)); err != nil {
+		t.Fatal(err)
+	}
+	second, err := net.Dial("tcp", h.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	reply := make([]byte, 512)
+	n, _ := second.Read(reply)
+	if !strings.HasPrefix(string(reply[:n]), "421") {
+		t.Fatalf("second connection should be refused with 421, got %q", reply[:n])
+	}
+}
+
+func TestConnectionKeyGroupsIPv6By64(t *testing.T) {
+	a := connectionKey(&net.TCPAddr{IP: net.ParseIP("2001:db8:1:2::1")})
+	b := connectionKey(&net.TCPAddr{IP: net.ParseIP("2001:db8:1:2:ffff::9")})
+	if a != b || a != "2001:db8:1:2::/64" {
+		t.Fatalf("keys = %q, %q", a, b)
+	}
+	if got := connectionKey(&net.TCPAddr{IP: net.ParseIP("192.0.2.1")}); got != "192.0.2.1" {
+		t.Fatalf("ipv4 key = %q", got)
+	}
+}

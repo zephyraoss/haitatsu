@@ -383,6 +383,7 @@ type LimitsConfig struct {
 	MaxInboundRecipients          int   `pkl:"max_inbound_recipients" json:"max_inbound_recipients"`
 	MaxSubmissionRecipients       int   `pkl:"max_submission_recipients" json:"max_submission_recipients"`
 	MaxConnectionsPerIP           int   `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
+	MaxInboundConnections         int   `pkl:"max_inbound_connections" json:"max_inbound_connections"`
 	InboundMessagesPerMinutePerIP int   `pkl:"inbound_messages_per_minute_per_ip" json:"inbound_messages_per_minute_per_ip"`
 	DefaultOutboundPerHour        int64 `pkl:"default_outbound_per_hour" json:"default_outbound_per_hour"`
 	DefaultOutboundPerDay         int64 `pkl:"default_outbound_per_day" json:"default_outbound_per_day"`
@@ -442,6 +443,13 @@ func (c Config) ConnectionsPerIP() int {
 		return c.Limits.MaxConnectionsPerIP
 	}
 	return 20
+}
+
+func (c Config) InboundConnections() int {
+	if c.Limits.MaxInboundConnections > 0 {
+		return c.Limits.MaxInboundConnections
+	}
+	return 1000
 }
 
 func (c Config) IMAPConnectionsPerIP() int {
@@ -587,7 +595,7 @@ func (c Config) Validate() error {
 	if c.Limits.MaxInboundRecipients < 0 {
 		problems = append(problems, "limits.max_inbound_recipients must be >= 0")
 	}
-	if c.Limits.MaxSubmissionRecipients < 0 || c.Limits.MaxConnectionsPerIP < 0 || c.Limits.InboundMessagesPerMinutePerIP < 0 {
+	if c.Limits.MaxSubmissionRecipients < 0 || c.Limits.MaxConnectionsPerIP < 0 || c.Limits.MaxInboundConnections < 0 || c.Limits.InboundMessagesPerMinutePerIP < 0 {
 		problems = append(problems, "limits values must be >= 0")
 	}
 	if c.Limits.DefaultOutboundPerHour < 0 || c.Limits.DefaultOutboundPerDay < 0 || c.Limits.DefaultOutboundRecipients < 0 {

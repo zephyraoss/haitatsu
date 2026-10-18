@@ -28,12 +28,15 @@ const spamCheckTimeout = 30 * time.Second
 
 type Server struct {
 	server *smtp.Server
+	perIP  *ratelimit.ConcurrencyGate
+	global *ratelimit.ConcurrencyGate
 }
 
 type Options struct {
 	MaxMessageBytes     int64
 	MaxRecipients       int
 	MaxConnectionsPerIP int
+	MaxConnections      int
 	MessagesPerMinute   int
 }
 
@@ -44,7 +47,6 @@ func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *
 		bounces:  bounces,
 		spam:     spamChecker,
 		metrics:  m,
-		gate:     ratelimit.NewConcurrencyGate(opts.MaxConnectionsPerIP),
 		limiter:  ratelimit.New(float64(opts.MessagesPerMinute)/60, opts.MessagesPerMinute),
 	}
 	server := smtp.NewServer(backend)
@@ -57,19 +59,19 @@ func New(cfg config.SMTPConfig, domain string, tlsConfig *tls.Config, resolver *
 	server.MaxRecipients = opts.MaxRecipients
 	server.MaxLineLength = 4000
 	server.AllowInsecureAuth = false
-	return &Server{server: server}
+	return &Server{server: server, perIP: ratelimit.NewConcurrencyGate(opts.MaxConnectionsPerIP), global: ratelimit.NewConcurrencyGate(opts.MaxConnections)}
 }
 
 func (s *Server) Listen() error {
-	err := s.server.ListenAndServe()
-	if errors.Is(err, smtp.ErrServerClosed) {
-		return nil
+	listener, err := net.Listen("tcp", s.server.Addr)
+	if err != nil {
+		return err
 	}
-	return err
+	return s.Serve(listener)
 }
 
 func (s *Server) Serve(listener net.Listener) error {
-	err := s.server.Serve(listener)
+	err := s.server.Serve(&limitedListener{Listener: listener, perIP: s.perIP, global: s.global})
 	if errors.Is(err, smtp.ErrServerClosed) {
 		return nil
 	}
@@ -86,32 +88,27 @@ type backend struct {
 	bounces  *bounce.Handler
 	spam     *spam.Checker
 	metrics  *metrics.Metrics
-	gate     *ratelimit.ConcurrencyGate
 	limiter  *ratelimit.Limiter
 }
 
 func (b *backend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
-	ctx := smtpContext(conn)
-	if !b.gate.Acquire(ctx.RemoteIP) {
-		return nil, &smtp.SMTPError{Code: 421, EnhancedCode: smtp.EnhancedCode{4, 7, 0}, Message: "too many connections from your address"}
-	}
 	b.metrics.SMTPConnection()
-	return &session{backend: b, smtp: ctx}, nil
+	return &session{backend: b, smtp: smtpContext(conn), limitKey: connectionKey(conn.Conn().RemoteAddr())}, nil
 }
 
 type session struct {
 	backend    *backend
 	smtp       spam.SMTPContext
+	limitKey   string
 	mailFrom   string
 	size       int64
 	recipients []routing.Result
 	bounceRcpt []bounce.Recipient
 	accepted   int
-	released   bool
 }
 
 func (s *session) Mail(from string, opts *smtp.MailOptions) error {
-	if !s.backend.limiter.Allow(s.smtp.RemoteIP) {
+	if !s.backend.limiter.Allow(s.limitKey) {
 		return &smtp.SMTPError{Code: 450, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "rate limit exceeded, try again later"}
 	}
 	s.mailFrom = from
@@ -175,7 +172,7 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 // chargeRecipient spends a rate-limit token for every accepted recipient after
 // the first, which is already covered by the token spent on MAIL FROM.
 func (s *session) chargeRecipient() error {
-	if s.accepted > 0 && !s.backend.limiter.Allow(s.smtp.RemoteIP) {
+	if s.accepted > 0 && !s.backend.limiter.Allow(s.limitKey) {
 		return &smtp.SMTPError{Code: 450, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "rate limit exceeded, try again later"}
 	}
 	s.accepted++
@@ -228,10 +225,6 @@ func (s *session) Reset() {
 }
 
 func (s *session) Logout() error {
-	if !s.released {
-		s.released = true
-		s.backend.gate.Release(s.smtp.RemoteIP)
-	}
 	return nil
 }
 

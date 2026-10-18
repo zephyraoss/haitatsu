@@ -157,6 +157,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 		MaxMessageBytes:     cfg.InboundMessageSize(),
 		MaxRecipients:       cfg.InboundRecipients(),
 		MaxConnectionsPerIP: cfg.ConnectionsPerIP(),
+		MaxConnections:      cfg.InboundConnections(),
 		MessagesPerMinute:   cfg.InboundMessagesPerMinute(),
 	})
 	imapServer := imapserver.New(cfg.IMAP, tlsConfig, db.Ent(), blobStore, mail, m, imapserver.Options{
