@@ -519,6 +519,20 @@ func TestStoreAddKeepsConcurrentFlags(t *testing.T) {
 	}
 }
 
+func TestRevokedPasswordEndsSession(t *testing.T) {
+	h := newHarness(t)
+	client := h.dial(nil)
+	if err := client.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.client.AppPassword.Update().SetRevokedAt(time.Now()).Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Noop().Wait(); err == nil {
+		t.Fatal("noop after revocation should fail")
+	}
+}
+
 func TestStatusCountsFolderAndLabel(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

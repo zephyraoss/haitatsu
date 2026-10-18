@@ -45,6 +45,7 @@ func New(cfg config.IMAPConfig, tlsConfig *tls.Config, client *ent.Client, blobs
 			}
 			m.IMAPSessionStart()
 			return &session{
+				conn:        conn,
 				client:      client,
 				blobs:       blobs,
 				store:       store,
