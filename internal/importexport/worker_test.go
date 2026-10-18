@@ -23,6 +23,7 @@ import (
 	entfolder "github.com/zephyraoss/haitatsu/internal/database/ent/folder"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/ids"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/storage"
 	"github.com/zephyraoss/haitatsu/internal/testutil"
 )
@@ -430,6 +431,25 @@ func TestImportJobPersistsProgress(t *testing.T) {
 	}
 	if reloaded.ImportedCount != 3 {
 		t.Errorf("imported_count = %d, want 3", reloaded.ImportedCount)
+	}
+}
+
+func TestImportJobEnforcesQuota(t *testing.T) {
+	ctx := context.Background()
+	client := newTestClient(t)
+	root := t.TempDir()
+	worker := &ImportWorker{client: client, store: newFakeStore(), maildirRoot: func() string { return root }}
+	mbox := seedMailbox(t, client)
+	if _, err := client.Mailbox.UpdateOneID(mbox.ID).SetQuotaBytes(1).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	writeMaildirMessage(t, root, "cur/1.host", rawMessage("too big"))
+	count, err := worker.importJob(ctx, importJob{MailboxID: mbox.ID, SourceType: "maildir", Source: map[string]any{"path": root}})
+	if !errors.Is(err, mailstore.ErrOverQuota) {
+		t.Fatalf("expected over quota error, got %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("imported %d, want 0", count)
 	}
 }
 

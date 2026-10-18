@@ -652,6 +652,7 @@ func (w *ImportWorker) attachMessage(ctx context.Context, mailboxID string, fold
 		OriginalRcpt: primaryAddress,
 		BaseRcpt:     primaryAddress,
 		Flags:        mailstore.Flags{Seen: flags.read, Flagged: flags.flagged, Deleted: flags.deleted, Answered: flags.answered, Draft: flags.draft},
+		EnforceQuota: true,
 	})
 	if ent.IsConstraintError(err) {
 		return false, nil
