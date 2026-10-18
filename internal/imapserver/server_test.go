@@ -377,6 +377,31 @@ func TestMoveIntoLabelArchivesMessage(t *testing.T) {
 	}
 }
 
+func TestAppendDedupesOnlyIdenticalBytes(t *testing.T) {
+	h := newHarness(t)
+	client := h.dial(nil)
+	raw := testutil.RawMessage("draft")
+	edited := []byte(strings.Replace(string(raw), "body of", "edited body of", 1))
+	var uids []imap.UID
+	for _, body := range [][]byte{raw, edited, edited} {
+		cmd := client.Append("Drafts", int64(len(body)), nil)
+		if _, err := cmd.Write(body); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Close(); err != nil {
+			t.Fatal(err)
+		}
+		data, err := cmd.Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		uids = append(uids, data.UID)
+	}
+	if uids[0] == uids[1] || uids[1] != uids[2] {
+		t.Fatalf("append uids = %v", uids)
+	}
+}
+
 func TestStatusCountsFolderAndLabel(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
