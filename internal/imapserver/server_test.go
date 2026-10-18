@@ -464,6 +464,23 @@ func TestMoveResolvesSeqNumsBeforeExpunge(t *testing.T) {
 	}
 }
 
+func TestEmptyUIDCopySucceeds(t *testing.T) {
+	h := newHarness(t)
+	h.deliver("INBOX", "one", mailstore.Flags{})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	var uids imap.UIDSet
+	uids.AddNum(99)
+	if _, err := client.Copy(uids, "Archive").Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStatusCountsFolderAndLabel(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

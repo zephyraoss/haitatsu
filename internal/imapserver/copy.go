@@ -166,6 +166,9 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 		sourceUIDs.AddNum(imap.UID(item.uid))
 		destUIDs.AddNum(imap.UID(destUID))
 	}
+	if len(sourceUIDs) == 0 {
+		return nil, nil
+	}
 	return &imap.CopyData{UIDValidity: target.uidValidity, SourceUIDs: sourceUIDs, DestUIDs: destUIDs}, nil
 }
 
