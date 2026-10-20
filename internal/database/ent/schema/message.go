@@ -40,6 +40,7 @@ func (Message) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("trace_id"),
 		index.Fields("rfc_message_id"),
+		index.Fields("sha256"),
 		index.Fields("created_at"),
 		index.Fields("deleted_at"),
 	}

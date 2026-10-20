@@ -112,3 +112,51 @@ func TestInboundRejectsOverQuotaAndRateLimits(t *testing.T) {
 		t.Fatalf("second message within the minute should be rate limited with 450, got %v", err)
 	}
 }
+
+func TestInboundRejectsMessageThatExceedsQuotaAtData(t *testing.T) {
+	h := newHarness(t, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 5, MessagesPerMinute: 60})
+	if _, err := h.client.Mailbox.UpdateOneID(h.mbox.ID).SetQuotaBytes(10).Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	body := "From: sender@remote.test\r\nTo: bob@example.test\r\nSubject: hello\r\n\r\nhi\r\n"
+	err := send(h.addr, "sender@remote.test", "bob@example.test", body)
+	if err == nil || !strings.Contains(err.Error(), "452") {
+		t.Fatalf("message exceeding quota should return 452, got %v", err)
+	}
+	if count := h.client.Message.Query().CountX(context.Background()); count != 0 {
+		t.Fatalf("no message should be stored, got %d", count)
+	}
+}
+
+func TestInboundLimitsConnectionsBeforeGreeting(t *testing.T) {
+	h := newHarness(t, Options{MaxMessageBytes: 1 << 20, MaxRecipients: 10, MaxConnectionsPerIP: 1, MessagesPerMinute: 60})
+	first, err := net.Dial("tcp", h.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if _, err := first.Read(make([]byte, 512)); err != nil {
+		t.Fatal(err)
+	}
+	second, err := net.Dial("tcp", h.addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	reply := make([]byte, 512)
+	n, _ := second.Read(reply)
+	if !strings.HasPrefix(string(reply[:n]), "421") {
+		t.Fatalf("second connection should be refused with 421, got %q", reply[:n])
+	}
+}
+
+func TestConnectionKeyGroupsIPv6By64(t *testing.T) {
+	a := connectionKey(&net.TCPAddr{IP: net.ParseIP("2001:db8:1:2::1")})
+	b := connectionKey(&net.TCPAddr{IP: net.ParseIP("2001:db8:1:2:ffff::9")})
+	if a != b || a != "2001:db8:1:2::/64" {
+		t.Fatalf("keys = %q, %q", a, b)
+	}
+	if got := connectionKey(&net.TCPAddr{IP: net.ParseIP("192.0.2.1")}); got != "192.0.2.1" {
+		t.Fatalf("ipv4 key = %q", got)
+	}
+}

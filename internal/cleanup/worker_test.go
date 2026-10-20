@@ -76,3 +76,30 @@ func TestPurgeDeletedMailboxRemovesChildren(t *testing.T) {
 		t.Fatal("mailbox should be purged")
 	}
 }
+
+func TestDeleteMessageRowsSkipsRestoredMessage(t *testing.T) {
+	ctx := context.Background()
+	client, _ := testutil.NewClient(t)
+	store := testutil.NewMailStore(t, client)
+	blobs := testutil.NewFakeStore()
+	worker := New(client, blobs, store, metrics.New())
+	mbox := testutil.SeedMailbox(t, store, "restored@example.test")
+	inbox, _ := store.FolderByName(ctx, mbox.ID, "INBOX")
+	msg, err := client.Message.Create().SetID(ids.New().String()).SetTraceID("t").SetBlobKey("blob").SetSha256("s").SetSizeBytes(100).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = blobs.PutMessage(ctx, "blob", []byte("x"))
+	if _, err := store.Attach(ctx, mailstore.Attach{MailboxID: mbox.ID, MessageID: msg.ID, FolderID: inbox.ID, SizeBytes: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.deleteMessageRows(ctx, msg, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := blobs.Objects["blob"]; !ok {
+		t.Fatal("live message blob should be kept")
+	}
+	if count, _ := client.Message.Query().Count(ctx); count != 1 {
+		t.Fatalf("message rows remaining = %d", count)
+	}
+}

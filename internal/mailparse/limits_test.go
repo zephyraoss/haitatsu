@@ -57,3 +57,14 @@ func TestParseCapsNestingDepth(t *testing.T) {
 		t.Fatalf("expected no text extract past depth cap, got %q", got)
 	}
 }
+
+func TestFromAddressesBeyondHeaderCap(t *testing.T) {
+	raw := []byte("X-Pad: " + strings.Repeat("a", MaxHeaderBytes) + "\r\nFrom: Boss <boss@bank.test>\r\n\r\nbody\r\n")
+	if got := Parse(raw).From; len(got) != 0 {
+		t.Fatalf("Parse From = %v, want capped", got)
+	}
+	got, err := FromAddresses(raw)
+	if err != nil || len(got) != 1 || got[0] != "boss@bank.test" {
+		t.Fatalf("FromAddresses = %v, %v", got, err)
+	}
+}

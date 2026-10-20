@@ -41,6 +41,8 @@ func TestRulesMoveLabelAndWebhook(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := client.RoutingRule.Create().SetScope("mailbox").SetScopeRef(mbox.ID).SetName("receipts").SetConditions(map[string]any{"subject_contains": "receipt", "plus_tag": "shop"}).SetActions([]map[string]any{
+		{"type": "move", "folder": "Deleted Folder"},
+		{"type": "add_label", "label": "Missing"},
 		{"type": "move", "folder": "Archive"},
 		{"type": "add_label", "label": "Receipts"},
 		{"type": "mark_read"},

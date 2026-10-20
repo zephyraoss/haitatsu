@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"regexp"
 	"strings"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -15,6 +16,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 )
+
+var dkimSelectorPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`)
 
 type dkimKeyRequest struct {
 	Domain   string `json:"domain"`
@@ -68,6 +71,12 @@ func (h *Handler) createDKIMKey(c fiber.Ctx) error {
 	}
 	if domain == "" {
 		return problem(c, fiber.StatusBadRequest, "domain_required", "Domain is required")
+	}
+	if len(domain) > 253 || !domainNamePattern.MatchString(domain) {
+		return problem(c, fiber.StatusBadRequest, "domain_invalid", "Domain is not a valid hostname")
+	}
+	if len(selector) > 253 || !dkimSelectorPattern.MatchString(strings.ToLower(selector)) {
+		return problem(c, fiber.StatusBadRequest, "selector_invalid", "Selector is not a valid DNS label")
 	}
 
 	privatePEM, publicPEM, err := generateDKIMKeyPair()

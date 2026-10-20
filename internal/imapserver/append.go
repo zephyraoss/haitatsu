@@ -56,7 +56,7 @@ func (s *session) Append(mailboxName string, r imap.LiteralReader, options *imap
 		return nil, errOverQuota
 	}
 	metadata := mailparse.Parse(raw)
-	if existing, ok, err := s.existingAppend(ctx, c.folder.ID, metadata.RFCMessageID, sha256Hex(raw)); err != nil {
+	if existing, ok, err := s.existingAppend(ctx, c.folder.ID, sha256Hex(raw)); err != nil {
 		return nil, err
 	} else if ok {
 		return &imap.AppendData{UID: imap.UID(existing.UID), UIDValidity: c.uidValidity}, nil
@@ -84,9 +84,8 @@ func (s *session) Append(mailboxName string, r imap.LiteralReader, options *imap
 }
 
 func (s *session) appendToLabel(ctx context.Context, c container, raw []byte, flags mailstore.Flags, createdAt time.Time) (*imap.AppendData, error) {
-	sha := sha256Hex(raw)
 	metadata := mailparse.Parse(raw)
-	existing, err := s.findMailboxMessage(ctx, metadata.RFCMessageID, sha)
+	existing, err := s.findMailboxMessage(ctx, sha256Hex(raw))
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +113,8 @@ func (s *session) appendToLabel(ctx context.Context, c container, raw []byte, fl
 	return &imap.AppendData{UID: imap.UID(link.UID), UIDValidity: c.uidValidity}, nil
 }
 
-func (s *session) findMailboxMessage(ctx context.Context, rfcMessageID string, sha string) (*ent.MailboxMessage, error) {
-	query := s.client.Message.Query().Where(message.Sha256EQ(sha))
-	if rfcMessageID != "" {
-		query = s.client.Message.Query().Where(message.Or(message.Sha256EQ(sha), message.RfcMessageIDEQ(rfcMessageID)))
-	}
-	messageIDs, err := query.IDs(ctx)
+func (s *session) findMailboxMessage(ctx context.Context, sha string) (*ent.MailboxMessage, error) {
+	messageIDs, err := s.client.Message.Query().Where(message.Sha256EQ(sha)).IDs(ctx)
 	if err != nil || len(messageIDs) == 0 {
 		return nil, err
 	}
@@ -130,12 +125,8 @@ func (s *session) findMailboxMessage(ctx context.Context, rfcMessageID string, s
 	return item, err
 }
 
-func (s *session) existingAppend(ctx context.Context, folderID string, rfcMessageID string, sha string) (*ent.MailboxMessage, bool, error) {
-	query := s.client.Message.Query().Where(message.Sha256EQ(sha))
-	if rfcMessageID != "" {
-		query = s.client.Message.Query().Where(message.Or(message.Sha256EQ(sha), message.RfcMessageIDEQ(rfcMessageID)))
-	}
-	messageIDs, err := query.IDs(ctx)
+func (s *session) existingAppend(ctx context.Context, folderID string, sha string) (*ent.MailboxMessage, bool, error) {
+	messageIDs, err := s.client.Message.Query().Where(message.Sha256EQ(sha)).IDs(ctx)
 	if err != nil || len(messageIDs) == 0 {
 		return nil, false, err
 	}

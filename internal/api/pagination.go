@@ -3,12 +3,13 @@ package api
 import (
 	"encoding/base64"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
 
 type cursor struct {
-	CreatedAt string
+	CreatedAt time.Time
 	ID        string
 }
 
@@ -21,10 +22,14 @@ func decodeCursor(value string) (cursor, bool) {
 		return cursor{}, false
 	}
 	createdAt, id, ok := strings.Cut(string(raw), "|")
-	if !ok || createdAt == "" || id == "" {
+	if !ok || id == "" {
 		return cursor{}, false
 	}
-	return cursor{CreatedAt: createdAt, ID: id}, true
+	parsed, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return cursor{}, false
+	}
+	return cursor{CreatedAt: parsed, ID: id}, true
 }
 
 func encodeCursor(createdAt string, id string) string {

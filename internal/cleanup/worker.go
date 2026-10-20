@@ -2,11 +2,17 @@ package cleanup
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
+
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/auditevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/authlockout"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/bounceevent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/eventlog"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/exportjob"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/folder"
@@ -14,10 +20,14 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundattempt"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
+
+const historyRetention = 90 * 24 * time.Hour
 
 type Store interface {
 	DeleteObject(ctx context.Context, key string) error
@@ -35,8 +45,9 @@ func New(client *ent.Client, store Store, mail *mailstore.Store, metrics *metric
 }
 
 func (w *Worker) Run(ctx context.Context) {
-	go w.sampleQueueDepth(ctx)
-	go func() {
+	var wg sync.WaitGroup
+	wg.Go(func() { w.sampleQueueDepth(ctx) })
+	wg.Go(func() {
 		ticker := time.NewTicker(time.Hour)
 		defer ticker.Stop()
 		w.runOnce(ctx)
@@ -48,7 +59,8 @@ func (w *Worker) Run(ctx context.Context) {
 				w.runOnce(ctx)
 			}
 		}
-	}()
+	})
+	wg.Wait()
 }
 
 func (w *Worker) runOnce(ctx context.Context) {
@@ -58,25 +70,23 @@ func (w *Worker) runOnce(ctx context.Context) {
 }
 
 func (w *Worker) Cleanup(ctx context.Context) error {
-	if err := w.cleanupTrash(ctx); err != nil {
-		return err
+	return errors.Join(
+		w.cleanupTrash(ctx),
+		w.cleanupDeletedMailboxes(ctx),
+		w.cleanupExpiredExports(ctx),
+		w.cleanupOrphanedMessages(ctx),
+		w.recoverStaleLeases(ctx),
+		w.cleanupAuthLockouts(ctx),
+		w.pruneHistory(ctx),
+		w.updateQueueDepth(ctx),
+	)
+}
+
+func ignoreNotFound(err error) error {
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	if err := w.cleanupDeletedMailboxes(ctx); err != nil {
-		return err
-	}
-	if err := w.cleanupExpiredExports(ctx); err != nil {
-		return err
-	}
-	if err := w.cleanupOrphanedMessages(ctx); err != nil {
-		return err
-	}
-	if err := w.recoverStaleLeases(ctx); err != nil {
-		return err
-	}
-	if err := w.cleanupAuthLockouts(ctx); err != nil {
-		return err
-	}
-	return w.updateQueueDepth(ctx)
+	return err
 }
 
 func (w *Worker) cleanupTrash(ctx context.Context) error {
@@ -122,7 +132,7 @@ func (w *Worker) cleanupExpiredExports(ctx context.Context) error {
 		if err := w.store.DeleteObject(ctx, job.ObjectKey); err != nil {
 			return err
 		}
-		if err := w.client.ExportJob.DeleteOneID(job.ID).Exec(ctx); err != nil {
+		if err := ignoreNotFound(w.client.ExportJob.DeleteOneID(job.ID).Exec(ctx)); err != nil {
 			return err
 		}
 	}
@@ -131,9 +141,10 @@ func (w *Worker) cleanupExpiredExports(ctx context.Context) error {
 
 func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 	cutoff := time.Now().Add(-24 * time.Hour)
+	retention := time.Now().Add(-30 * 24 * time.Hour)
 	var lastID string
 	for {
-		query := w.client.Message.Query().Where(message.CreatedAtLT(cutoff)).Order(message.ByID()).Limit(200)
+		query := w.client.Message.Query().Where(message.CreatedAtLT(cutoff), unreferencedMessage(retention)).Order(message.ByID()).Limit(200)
 		if lastID != "" {
 			query.Where(message.IDGT(lastID))
 		}
@@ -141,12 +152,9 @@ func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if len(messages) == 0 {
-			return nil
-		}
 		for _, msg := range messages {
 			lastID = msg.ID
-			if err := w.maybeDeleteMessage(ctx, msg); err != nil {
+			if err := w.deleteMessageRows(ctx, msg, retention); err != nil {
 				return err
 			}
 		}
@@ -156,58 +164,62 @@ func (w *Worker) cleanupOrphanedMessages(ctx context.Context) error {
 	}
 }
 
-func (w *Worker) maybeDeleteMessage(ctx context.Context, msg *ent.Message) error {
-	active, err := w.client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(msg.ID), mailboxmessage.DeletedAtIsNil()).Count(ctx)
-	if err != nil {
-		return err
+func unreferencedMessage(retention time.Time) predicate.Message {
+	return func(s *sql.Selector) {
+		builder := sql.Dialect(s.Dialect())
+		items := builder.Table(mailboxmessage.Table)
+		jobs := builder.Table(outboundjob.Table)
+		s.Where(sql.And(
+			sql.NotExists(builder.Select(items.C(mailboxmessage.FieldID)).From(items).Where(sql.And(
+				sql.ColumnsEQ(items.C(mailboxmessage.FieldMessageID), s.C(message.FieldID)),
+				sql.Or(sql.IsNull(items.C(mailboxmessage.FieldDeletedAt)), sql.GTE(items.C(mailboxmessage.FieldDeletedAt), retention)),
+			))),
+			sql.NotExists(builder.Select(jobs.C(outboundjob.FieldID)).From(jobs).Where(sql.And(
+				sql.ColumnsEQ(jobs.C(outboundjob.FieldMessageID), s.C(message.FieldID)),
+				sql.In(jobs.C(outboundjob.FieldStatus), "queued", "retry", "processing"),
+			))),
+		))
 	}
-	if active > 0 {
-		return nil
-	}
-	pending, err := w.client.OutboundJob.Query().Where(outboundjob.MessageIDEQ(msg.ID), outboundjob.StatusIn("queued", "retry", "processing")).Count(ctx)
-	if err != nil {
-		return err
-	}
-	if pending > 0 {
-		return nil
-	}
-	return w.deleteMessageRows(ctx, msg)
 }
 
-func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message) error {
-	items, err := w.client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(msg.ID)).All(ctx)
+func (w *Worker) deleteMessageRows(ctx context.Context, msg *ent.Message, retention time.Time) error {
+	tx, err := w.client.Tx(ctx)
 	if err != nil {
 		return err
 	}
-	cutoff := time.Now().Add(-30 * 24 * time.Hour)
-	for _, item := range items {
-		if item.DeletedAt == nil || item.DeletedAt.After(cutoff) {
-			return nil
+	deleted, err := deleteMessageInTx(ctx, tx.Client(), msg.ID, retention)
+	if err != nil || deleted == 0 {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if msg.BlobKey == "" {
+		return nil
+	}
+	return w.store.DeleteObject(ctx, msg.BlobKey)
+}
+
+func deleteMessageInTx(ctx context.Context, client *ent.Client, messageID string, retention time.Time) (int, error) {
+	ids, err := client.MailboxMessage.Query().Where(mailboxmessage.MessageIDEQ(messageID), mailboxmessage.DeletedAtLT(retention)).IDs(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) > 0 {
+		if err := mailstore.DeleteLabelLinks(ctx, client, ids); err != nil {
+			return 0, err
+		}
+		if _, err := client.MailboxMessage.Delete().Where(mailboxmessage.IDIn(ids...), mailboxmessage.DeletedAtLT(retention)).Exec(ctx); err != nil {
+			return 0, err
 		}
 	}
-	if len(items) > 0 {
-		ids := make([]string, 0, len(items))
-		for _, item := range items {
-			ids = append(ids, item.ID)
-		}
-		if err := mailstore.DeleteLabelLinks(ctx, w.client, ids); err != nil {
-			return err
-		}
-		if _, err := w.client.MailboxMessage.Delete().Where(mailboxmessage.IDIn(ids...)).Exec(ctx); err != nil {
-			return err
-		}
-	}
-	if msg.BlobKey != "" {
-		if err := w.store.DeleteObject(ctx, msg.BlobKey); err != nil {
-			return err
-		}
-	}
-	return w.client.Message.DeleteOneID(msg.ID).Exec(ctx)
+	return client.Message.Delete().Where(message.IDEQ(messageID), unreferencedMessage(retention)).Exec(ctx)
 }
 
 func (w *Worker) recoverStaleLeases(ctx context.Context) error {
 	now := time.Now()
-	if _, err := w.client.OutboundJob.Update().Where(outboundjob.StatusEQ("processing"), outboundjob.LockedUntilLTE(now)).SetStatus("retry").ClearLockedBy().ClearLockedUntil().Save(ctx); err != nil {
+	if _, err := w.client.OutboundJob.Update().Where(outboundjob.StatusEQ("processing"), outboundjob.LockedUntilLTE(now)).SetStatus("retry").AddAttempts(1).ClearLockedBy().ClearLockedUntil().Save(ctx); err != nil {
 		return err
 	}
 	if _, err := w.client.EventLog.Update().Where(eventlog.StatusEQ("processing"), eventlog.LockedUntilLTE(now)).SetStatus("retry").ClearLockedBy().ClearLockedUntil().Save(ctx); err != nil {
@@ -223,6 +235,16 @@ func (w *Worker) recoverStaleLeases(ctx context.Context) error {
 func (w *Worker) cleanupAuthLockouts(ctx context.Context) error {
 	_, err := w.client.AuthLockout.Delete().Where(authlockout.WindowStartLT(time.Now().Add(-24 * time.Hour))).Exec(ctx)
 	return err
+}
+
+func (w *Worker) pruneHistory(ctx context.Context) error {
+	cutoff := time.Now().Add(-historyRetention)
+	_, eventErr := w.client.EventLog.Delete().Where(eventlog.StatusNotIn("queued", "retry", "processing"), eventlog.CreatedAtLT(cutoff)).Exec(ctx)
+	_, auditErr := w.client.AuditEvent.Delete().Where(auditevent.CreatedAtLT(cutoff)).Exec(ctx)
+	_, bounceErr := w.client.BounceEvent.Delete().Where(bounceevent.CreatedAtLT(cutoff)).Exec(ctx)
+	_, attemptErr := w.client.OutboundAttempt.Delete().Where(outboundattempt.CreatedAtLT(cutoff)).Exec(ctx)
+	_, jobErr := w.client.OutboundJob.Delete().Where(outboundjob.StatusIn("sent", "failed"), outboundjob.UpdatedAtLT(cutoff)).Exec(ctx)
+	return errors.Join(eventErr, auditErr, bounceErr, attemptErr, jobErr)
 }
 
 func (w *Worker) sampleQueueDepth(ctx context.Context) {

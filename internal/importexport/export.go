@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/database"
@@ -21,6 +22,7 @@ import (
 type Store interface {
 	GetMessage(ctx context.Context, key string) ([]byte, error)
 	GetObjectReader(ctx context.Context, key string) (io.ReadCloser, error)
+	GetMessageReader(ctx context.Context, key string) (io.ReadCloser, error)
 	PutMessage(ctx context.Context, key string, data []byte) error
 	PutExportStream(ctx context.Context, key string, data io.Reader, size int64) error
 }
@@ -51,9 +53,11 @@ func (w *ExportWorker) Run(ctx context.Context, concurrency int) {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
+	var wg sync.WaitGroup
 	for range concurrency {
-		go w.loop(ctx)
+		wg.Go(func() { w.loop(ctx) })
 	}
+	wg.Wait()
 }
 
 func (w *ExportWorker) loop(ctx context.Context) {
@@ -265,7 +269,7 @@ func (w *ExportWorker) messageBlobKeys(ctx context.Context, items []*ent.Mailbox
 }
 
 func (w *ExportWorker) writeBlob(ctx context.Context, archive *zip.Writer, messageID string, blobKey string) error {
-	reader, err := w.store.GetObjectReader(ctx, blobKey)
+	reader, err := w.store.GetMessageReader(ctx, blobKey)
 	if err != nil {
 		return err
 	}

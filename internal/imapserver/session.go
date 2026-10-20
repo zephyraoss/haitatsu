@@ -2,6 +2,7 @@ package imapserver
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 var permanentFlags = []imap.Flag{imap.FlagSeen, imap.FlagAnswered, imap.FlagFlagged, imap.FlagDeleted, imap.FlagDraft, imap.FlagWildcard}
 
 type session struct {
+	conn        *goimapserver.Conn
 	client      *ent.Client
 	blobs       MessageStore
 	store       *mailstore.Store
@@ -36,6 +38,7 @@ type session struct {
 	remoteIP    string
 	appendLimit int64
 	mailboxID   string
+	passwordID  string
 	view        *view
 	readOnly    bool
 }
@@ -76,6 +79,7 @@ func (s *session) login(username, password string) error {
 		}
 		if valid && passwordauth.HasScope(item.Scopes, "imap") {
 			s.mailboxID = mbox.ID
+			s.passwordID = item.ID
 			_, _ = s.client.AppPassword.UpdateOneID(item.ID).SetLastUsedAt(time.Now()).Save(ctx)
 			return nil
 		}
@@ -418,7 +422,33 @@ func (s *session) sumSize(ctx context.Context, scope predicate.MailboxMessage) (
 	return *rows[0].Sum, nil
 }
 
+var errSessionRevoked = errors.New("imap session revoked")
+
+func (s *session) checkAuth(ctx context.Context) error {
+	if s.mailboxID == "" {
+		return nil
+	}
+	active, err := s.client.Mailbox.Query().Where(mailbox.IDEQ(s.mailboxID), mailbox.StatusEQ("active"), mailbox.DeletedAtIsNil()).Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if active {
+		active, err = s.client.AppPassword.Query().Where(apppassword.IDEQ(s.passwordID), apppassword.RevokedAtIsNil(), apppassword.DeletedAtIsNil()).Exist(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	if !active {
+		_ = s.conn.Bye("Credentials revoked")
+		return errSessionRevoked
+	}
+	return nil
+}
+
 func (s *session) Poll(w *goimapserver.UpdateWriter, allowExpunge bool) error {
+	if err := s.checkAuth(context.Background()); err != nil {
+		return err
+	}
 	if s.view == nil {
 		return nil
 	}
@@ -441,6 +471,9 @@ func (s *session) Idle(w *goimapserver.UpdateWriter, stop <-chan struct{}) error
 				return err
 			}
 		case <-ticker.C:
+			if err := s.checkAuth(context.Background()); err != nil {
+				return err
+			}
 			if err := s.resync(context.Background(), w, syncMode{expunge: true, exists: true, force: true}); err != nil {
 				return err
 			}
@@ -451,6 +484,9 @@ func (s *session) Idle(w *goimapserver.UpdateWriter, stop <-chan struct{}) error
 func (s *session) Expunge(w *goimapserver.ExpungeWriter, uids *imap.UIDSet) error {
 	if s.view == nil {
 		return errNotSelected
+	}
+	if s.readOnly && *w == (goimapserver.ExpungeWriter{}) {
+		return nil
 	}
 	if s.readOnly {
 		return errReadOnly
@@ -528,7 +564,7 @@ func (s *session) Store(w *goimapserver.FetchWriter, numSet imap.NumSet, flags *
 		if !ok {
 			continue
 		}
-		next := item.flags
+		next := mailstore.FlagsOf(mm)
 		switch flags.Op {
 		case imap.StoreFlagsSet:
 			next = mailstore.ParseFlags(storeFlagStrings(flags.Flags))

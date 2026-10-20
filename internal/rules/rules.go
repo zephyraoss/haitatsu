@@ -56,7 +56,7 @@ func (e *Engine) applyDelivery(ctx context.Context, msg *ent.Message, delivery D
 			continue
 		}
 		for _, action := range rule.Actions {
-			if err := e.applyAction(ctx, msg, rule, delivery, action); err != nil {
+			if err := e.applyAction(ctx, msg, rule, delivery, action); err != nil && !ent.IsNotFound(err) {
 				return err
 			}
 		}

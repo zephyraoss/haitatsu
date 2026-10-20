@@ -129,6 +129,14 @@ func (c *Client) GetObjectReader(ctx context.Context, key string) (io.ReadCloser
 	if err := ValidateImportKey(key); err != nil {
 		return nil, err
 	}
+	return c.objectReader(ctx, key)
+}
+
+func (c *Client) GetMessageReader(ctx context.Context, key string) (io.ReadCloser, error) {
+	return c.objectReader(ctx, key)
+}
+
+func (c *Client) objectReader(ctx context.Context, key string) (io.ReadCloser, error) {
 	var reader io.ReadCloser
 	err := retryTransient(ctx, func() error {
 		object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})

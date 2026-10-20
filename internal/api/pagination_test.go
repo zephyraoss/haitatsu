@@ -5,11 +5,14 @@ import "testing"
 func TestCursorRoundTrip(t *testing.T) {
 	encoded := encodeCursor("2025-09-01T10:00:00Z", "01ABC")
 	decoded, ok := decodeCursor(encoded)
-	if !ok || decoded.CreatedAt != "2025-09-01T10:00:00Z" || decoded.ID != "01ABC" {
+	if !ok || cursorTime(decoded.CreatedAt) != "2025-09-01T10:00:00Z" || decoded.ID != "01ABC" {
 		t.Fatalf("round trip failed: %+v %v", decoded, ok)
 	}
 	if _, ok := decodeCursor("not-base64!"); ok {
 		t.Fatal("garbage cursor must be rejected")
+	}
+	if _, ok := decodeCursor(encodeCursor("yesterday", "01ABC")); ok {
+		t.Fatal("cursor with invalid timestamp must be rejected")
 	}
 }
 

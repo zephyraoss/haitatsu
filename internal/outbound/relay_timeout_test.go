@@ -41,7 +41,7 @@ func TestSendViaRelayTimesOutOnStalledGreeting(t *testing.T) {
 	addr := stallingSMTPServer(t)
 	cfg := config.RelayConfig{Addr: addr, TimeoutSeconds: 1}
 	start := time.Now()
-	err := sendViaRelay(context.Background(), cfg, "a@example.com", []string{"b@example.com"}, []byte("Subject: hi\r\n\r\nbody\r\n"))
+	err := (&Worker{hostname: "localhost"}).sendViaRelay(context.Background(), cfg, "a@example.com", []string{"b@example.com"}, []byte("Subject: hi\r\n\r\nbody\r\n"))
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
@@ -62,7 +62,7 @@ func TestSendViaRelayHonorsCancelledContext(t *testing.T) {
 		cancel()
 	}()
 	start := time.Now()
-	err := sendViaRelay(ctx, cfg, "a@example.com", []string{"b@example.com"}, []byte("body"))
+	err := (&Worker{hostname: "localhost"}).sendViaRelay(ctx, cfg, "a@example.com", []string{"b@example.com"}, []byte("body"))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context canceled, got %v", err)
 	}

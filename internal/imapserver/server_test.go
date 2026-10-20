@@ -282,6 +282,47 @@ func TestIdleReceivesNewMailAndFlagChanges(t *testing.T) {
 	}
 }
 
+func TestFlagChangesSurviveCommandsWithoutWriter(t *testing.T) {
+	h := newHarness(t)
+	item := h.deliver("INBOX", "one", mailstore.Flags{})
+	flagged := make(chan uint32, 4)
+	client := h.dial(&imapclient.UnilateralDataHandler{
+		Fetch: func(msg *imapclient.FetchMessageData) {
+			for {
+				next := msg.Next()
+				if next == nil {
+					return
+				}
+				if _, ok := next.(imapclient.FetchItemDataFlags); ok {
+					flagged <- msg.SeqNum
+				}
+			}
+		},
+	})
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	flags := mailstore.FlagsOf(item)
+	flags.Seen = true
+	if _, err := h.store.SetFlags(context.Background(), item, flags); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Search(&imap.SearchCriteria{}, nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case seq := <-flagged:
+		if seq != 1 {
+			t.Fatalf("flag update seq = %d", seq)
+		}
+	default:
+		t.Fatal("flag change was never reported")
+	}
+}
+
 func TestAppendMoveCopyAndLabels(t *testing.T) {
 	h := newHarness(t)
 	client := h.dial(nil)
@@ -350,6 +391,145 @@ func TestAppendMoveCopyAndLabels(t *testing.T) {
 	}
 	if _, ok := names["Labels/Important"]; !ok || !containsAttr(names["Trash"], imap.MailboxAttrTrash) || !containsAttr(names["Labels"], imap.MailboxAttrNoSelect) {
 		t.Fatalf("list = %v", names)
+	}
+}
+
+func TestMoveIntoLabelArchivesMessage(t *testing.T) {
+	h := newHarness(t)
+	h.deliver("INBOX", "one", mailstore.Flags{})
+	client := h.dial(nil)
+	if err := client.Create("Labels/Work", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Move(imap.SeqSetNum(1), "Labels/Work").Wait(); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]uint32{"INBOX": 0, "Archive": 1, "Labels/Work": 1} {
+		status, err := client.Status(name, &imap.StatusOptions{NumMessages: true}).Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *status.NumMessages != want {
+			t.Fatalf("%s has %d messages, want %d", name, *status.NumMessages, want)
+		}
+	}
+}
+
+func TestAppendDedupesOnlyIdenticalBytes(t *testing.T) {
+	h := newHarness(t)
+	client := h.dial(nil)
+	raw := testutil.RawMessage("draft")
+	edited := []byte(strings.Replace(string(raw), "body of", "edited body of", 1))
+	var uids []imap.UID
+	for _, body := range [][]byte{raw, edited, edited} {
+		cmd := client.Append("Drafts", int64(len(body)), nil)
+		if _, err := cmd.Write(body); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Close(); err != nil {
+			t.Fatal(err)
+		}
+		data, err := cmd.Wait()
+		if err != nil {
+			t.Fatal(err)
+		}
+		uids = append(uids, data.UID)
+	}
+	if uids[0] == uids[1] || uids[1] != uids[2] {
+		t.Fatalf("append uids = %v", uids)
+	}
+}
+
+func TestMoveResolvesSeqNumsBeforeExpunge(t *testing.T) {
+	h := newHarness(t)
+	first := h.deliver("INBOX", "one", mailstore.Flags{})
+	h.deliver("INBOX", "two", mailstore.Flags{})
+	h.deliver("INBOX", "three", mailstore.Flags{})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.store.SoftDelete(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := client.Move(imap.SeqSetNum(2), "Archive").Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.SourceUIDs.String() != "2" {
+		t.Fatalf("moved source uids = %s, want 2", moved.SourceUIDs.String())
+	}
+}
+
+func TestEmptyUIDCopySucceeds(t *testing.T) {
+	h := newHarness(t)
+	h.deliver("INBOX", "one", mailstore.Flags{})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	var uids imap.UIDSet
+	uids.AddNum(99)
+	if _, err := client.Copy(uids, "Archive").Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCloseAfterExamine(t *testing.T) {
+	h := newHarness(t)
+	h.deliver("INBOX", "one", mailstore.Flags{Deleted: true})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.UnselectAndExpunge().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	inbox, _ := client.Status("INBOX", &imap.StatusOptions{NumMessages: true}).Wait()
+	if *inbox.NumMessages != 1 {
+		t.Fatal("close after examine expunged messages")
+	}
+}
+
+func TestStoreAddKeepsConcurrentFlags(t *testing.T) {
+	h := newHarness(t)
+	item := h.deliver("INBOX", "one", mailstore.Flags{})
+	client := h.dial(nil)
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.store.SetFlags(context.Background(), item, mailstore.Flags{Flagged: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Store(imap.SeqSetNum(1), &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagSeen}}, nil).Collect(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := h.client.MailboxMessage.Get(context.Background(), item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.Read || !reloaded.Flagged {
+		t.Fatalf("flags after +FLAGS = %+v", mailstore.FlagsOf(reloaded))
+	}
+}
+
+func TestRevokedPasswordEndsSession(t *testing.T) {
+	h := newHarness(t)
+	client := h.dial(nil)
+	if err := client.Noop().Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.client.AppPassword.Update().SetRevokedAt(time.Now()).Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Noop().Wait(); err == nil {
+		t.Fatal("noop after revocation should fail")
 	}
 }
 

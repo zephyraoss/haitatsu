@@ -43,6 +43,7 @@ type view struct {
 	cancel        func()
 	pendingGone   bool
 	pendingExists bool
+	pendingFlags  bool
 }
 
 func (v *view) seqOf(uid uint32) uint32 {
@@ -171,7 +172,8 @@ func (s *session) resync(ctx context.Context, w updateWriter, mode syncMode) err
 	changed := v.drainChanges()
 	flushGone := mode.expunge && v.pendingGone
 	flushExists := mode.exists && v.pendingExists
-	if !changed && !mode.force && !flushGone && !flushExists && time.Since(v.lastSync) < staleViewInterval {
+	flushFlags := w != nil && v.pendingFlags
+	if !changed && !mode.force && !flushGone && !flushExists && !flushFlags && time.Since(v.lastSync) < staleViewInterval {
 		return nil
 	}
 	fresh, err := s.loadEntries(ctx, v.container)
@@ -185,13 +187,17 @@ func (s *session) resync(ctx context.Context, w updateWriter, mode syncMode) err
 	}
 	known := make(map[uint32]struct{}, len(v.entries))
 	next := make([]entry, 0, len(fresh))
+	pendingFlags := false
 	for _, old := range v.entries {
 		known[old.uid] = struct{}{}
 		current, ok := freshByUID[old.uid]
 		switch {
 		case ok:
-			if w != nil && !flagsEqual(old.flags, current.flags) {
-				if err := w.WriteMessageFlags(uint32(len(next)+1), imap.UID(current.uid), imapFlags(current.flags)); err != nil {
+			if !flagsEqual(old.flags, current.flags) {
+				if w == nil {
+					current.flags = old.flags
+					pendingFlags = true
+				} else if err := w.WriteMessageFlags(uint32(len(next)+1), imap.UID(current.uid), imapFlags(current.flags)); err != nil {
 					return err
 				}
 			}
@@ -207,6 +213,7 @@ func (s *session) resync(ctx context.Context, w updateWriter, mode syncMode) err
 			next = append(next, old)
 		}
 	}
+	v.pendingFlags = pendingFlags
 	v.pendingGone = false
 	for _, item := range next {
 		if item.gone {

@@ -13,6 +13,7 @@ smtp {
 
 imap {
   addr = "0.0.0.0:143"
+  tls_addr = "0.0.0.0:993"
   max_connections_per_ip = 30
   allow_insecure_auth = false
 }

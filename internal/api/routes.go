@@ -4,8 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/mail"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"entgo.io/ent/dialect"
@@ -27,6 +31,13 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/mailaddr"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
+)
+
+const maxAppPasswords = 50
+
+var (
+	mailboxStatuses = []string{"active", "disabled"}
+	routeTypes      = []string{"alias", "pattern", "catch_all"}
 )
 
 type Handler struct {
@@ -209,6 +220,9 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	if err := req.validate(); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_mailbox", err.Error())
+	}
 	thresholds, err := parseSpamThresholds(req.SpamThresholds)
 	if err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_spam_thresholds", err.Error())
@@ -216,11 +230,20 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if req.PrimaryAddress == "" {
 		return problem(c, fiber.StatusBadRequest, "primary_address_required", "Primary address is required")
 	}
-	if err := mailaddr.ValidateAddressNotReserved(req.PrimaryAddress); err != nil {
+	address, ok := normalizeAddress(req.PrimaryAddress)
+	if !ok {
+		return problem(c, fiber.StatusBadRequest, "invalid_address", "Primary address is invalid")
+	}
+	if err := mailaddr.ValidateAddressNotReserved(address); err != nil {
 		return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 	}
 
-	create := h.client.Mailbox.Create().SetPrimaryAddress(req.PrimaryAddress)
+	tx, err := h.client.Tx(c.Context())
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "mailbox_create_failed", "Failed to create mailbox")
+	}
+	defer tx.Rollback()
+	create := tx.Mailbox.Create().SetPrimaryAddress(address)
 	if len(thresholds) > 0 {
 		create.SetSpamThresholds(thresholds)
 	}
@@ -241,8 +264,11 @@ func (h *Handler) createMailbox(c fiber.Ctx) error {
 	if err != nil {
 		return entProblem(c, err, "mailbox_create_failed", "Failed to create mailbox")
 	}
-	if err := h.mail.CreateDefaultFolders(c.Context(), mbox.ID); err != nil {
+	if err := mailstore.New(tx.Client(), nil).CreateDefaultFolders(c.Context(), mbox.ID); err != nil {
 		return problem(c, fiber.StatusInternalServerError, "default_folders_failed", "Failed to create default folders")
+	}
+	if err := tx.Commit(); err != nil {
+		return entProblem(c, err, "mailbox_create_failed", "Failed to create mailbox")
 	}
 	if err := h.audit(c, "mailbox.created", "mailbox", mbox.ID, mbox.ID, nil); err != nil {
 		return err
@@ -263,6 +289,9 @@ func (h *Handler) updateMailbox(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	if err := req.validate(); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_mailbox", err.Error())
+	}
 	thresholds, err := parseSpamThresholds(req.SpamThresholds)
 	if err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_spam_thresholds", err.Error())
@@ -277,10 +306,14 @@ func (h *Handler) updateMailbox(c fiber.Ctx) error {
 		}
 	}
 	if req.PrimaryAddress != "" {
-		if err := mailaddr.ValidateAddressNotReserved(req.PrimaryAddress); err != nil {
+		address, ok := normalizeAddress(req.PrimaryAddress)
+		if !ok {
+			return problem(c, fiber.StatusBadRequest, "invalid_address", "Primary address is invalid")
+		}
+		if err := mailaddr.ValidateAddressNotReserved(address); err != nil {
 			return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 		}
-		update.SetPrimaryAddress(req.PrimaryAddress)
+		update.SetPrimaryAddress(address)
 	}
 	if req.Status != "" {
 		update.SetStatus(req.Status)
@@ -376,6 +409,14 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 		return problem(c, fiber.StatusBadRequest, "invalid_app_password_scope", "App password scopes must be protocol scopes")
 	}
 
+	active, err := h.client.AppPassword.Query().Where(apppassword.MailboxIDEQ(c.Params("mailbox_id")), apppassword.RevokedAtIsNil(), apppassword.DeletedAtIsNil()).Count(c.Context())
+	if err != nil {
+		return problem(c, fiber.StatusInternalServerError, "app_password_count_failed", "Failed to count app passwords")
+	}
+	if active >= maxAppPasswords {
+		return problem(c, fiber.StatusConflict, "app_password_limit_reached", fmt.Sprintf("Mailboxes may have at most %d active app passwords", maxAppPasswords))
+	}
+
 	password, err := passwordauth.GeneratePassword()
 	if err != nil {
 		return problem(c, fiber.StatusInternalServerError, "app_password_generate_failed", "Failed to generate app password")
@@ -399,7 +440,7 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 
 func (h *Handler) revokeAppPassword(c fiber.Ctx) error {
 	now := time.Now()
-	item, err := h.client.AppPassword.UpdateOneID(c.Params("id")).SetRevokedAt(now).SetDeletedAt(now).Save(c.Context())
+	item, err := h.client.AppPassword.UpdateOneID(c.Params("id")).Where(apppassword.MailboxIDEQ(c.Params("mailbox_id"))).SetRevokedAt(now).SetDeletedAt(now).Save(c.Context())
 	if err != nil {
 		return entProblem(c, err, "app_password_revoke_failed", "Failed to revoke app password")
 	}
@@ -432,14 +473,21 @@ func (h *Handler) createRoute(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	if err := h.validateRoute(c.Context(), req); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_route", err.Error())
+	}
 	if req.SourceAddress == "" || req.Type == "" {
 		return problem(c, fiber.StatusBadRequest, "invalid_route", "Source address and type are required")
 	}
-	if err := mailaddr.ValidateAddressNotReserved(req.SourceAddress); err != nil {
+	source, ok := normalizeAddress(req.SourceAddress)
+	if !ok && req.Type != "pattern" {
+		return problem(c, fiber.StatusBadRequest, "invalid_address", "Source address is invalid")
+	}
+	if err := mailaddr.ValidateAddressNotReserved(source); err != nil {
 		return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 	}
 
-	create := h.client.Route.Create().SetSourceAddress(req.SourceAddress).SetType(req.Type).SetDestinations(req.Destinations)
+	create := h.client.Route.Create().SetSourceAddress(source).SetType(req.Type).SetDestinations(req.Destinations)
 	if req.Status != "" {
 		create.SetStatus(req.Status)
 	}
@@ -466,12 +514,29 @@ func (h *Handler) updateRoute(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
 	}
+	if err := h.validateRoute(c.Context(), req); err != nil {
+		return problem(c, fiber.StatusBadRequest, "invalid_route", err.Error())
+	}
 	update := h.client.Route.UpdateOneID(c.Params("id"))
 	if req.SourceAddress != "" {
-		if err := mailaddr.ValidateAddressNotReserved(req.SourceAddress); err != nil {
+		source, ok := normalizeAddress(req.SourceAddress)
+		if !ok {
+			routeType := req.Type
+			if routeType == "" {
+				existing, err := h.client.Route.Get(c.Context(), c.Params("id"))
+				if err != nil {
+					return entProblem(c, err, "route_not_found", "Route not found")
+				}
+				routeType = existing.Type
+			}
+			if routeType != "pattern" {
+				return problem(c, fiber.StatusBadRequest, "invalid_address", "Source address is invalid")
+			}
+		}
+		if err := mailaddr.ValidateAddressNotReserved(source); err != nil {
 			return problem(c, fiber.StatusBadRequest, "reserved_local_part", "The bounces local part is reserved for system VERP")
 		}
-		update.SetSourceAddress(req.SourceAddress)
+		update.SetSourceAddress(source)
 	}
 	if req.Type != "" {
 		update.SetType(req.Type)
@@ -809,14 +874,10 @@ func cursorTime(t time.Time) string {
 }
 
 func cursorPredicate[P ~func(*entsql.Selector)](createdAtField string, idField string, cur cursor) P {
-	createdAt, err := time.Parse(time.RFC3339Nano, cur.CreatedAt)
-	if err != nil {
-		createdAt = time.Time{}
-	}
 	return P(func(s *entsql.Selector) {
 		s.Where(entsql.Or(
-			entsql.LT(s.C(createdAtField), createdAt),
-			entsql.And(entsql.EQ(s.C(createdAtField), createdAt), entsql.LT(s.C(idField), cur.ID)),
+			entsql.LT(s.C(createdAtField), cur.CreatedAt),
+			entsql.And(entsql.EQ(s.C(createdAtField), cur.CreatedAt), entsql.LT(s.C(idField), cur.ID)),
 		))
 	})
 }
@@ -872,6 +933,41 @@ func validateOutboundLimits(limits map[string]int64) error {
 		}
 	}
 	return nil
+}
+
+func (r mailboxRequest) validate() error {
+	if r.Status != "" && !slices.Contains(mailboxStatuses, r.Status) {
+		return fmt.Errorf("status must be one of %s", strings.Join(mailboxStatuses, ", "))
+	}
+	if r.QuotaBytes != nil && *r.QuotaBytes < 0 {
+		return errors.New("quota_bytes must not be negative")
+	}
+	return nil
+}
+
+func (h *Handler) validateRoute(ctx context.Context, r routeRequest) error {
+	if r.Type != "" && !slices.Contains(routeTypes, r.Type) {
+		return fmt.Errorf("type must be one of %s", strings.Join(routeTypes, ", "))
+	}
+	if len(r.Destinations) == 0 {
+		return nil
+	}
+	found, err := h.client.Mailbox.Query().Where(mailbox.IDIn(r.Destinations...)).IDs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range r.Destinations {
+		if !slices.Contains(found, id) {
+			return fmt.Errorf("destination %s is not a mailbox", id)
+		}
+	}
+	return nil
+}
+
+func normalizeAddress(address string) (string, bool) {
+	address = strings.ToLower(strings.TrimSpace(address))
+	parsed, err := mail.ParseAddress(address)
+	return address, err == nil && parsed.Address == address
 }
 
 func validProtocolScopes(scopes []string) bool {

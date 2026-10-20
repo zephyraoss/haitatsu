@@ -246,6 +246,8 @@ func submissionError(err error) error {
 	switch {
 	case errors.Is(err, outbound.ErrSenderNotAllowed):
 		return &smtp.SMTPError{Code: 553, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "sender not allowed"}
+	case errors.Is(err, outbound.ErrInvalidHeader):
+		return &smtp.SMTPError{Code: 554, EnhancedCode: smtp.EnhancedCode{5, 6, 0}, Message: "invalid header field name"}
 	case errors.Is(err, outbound.ErrDKIMKeyNotFound):
 		return &smtp.SMTPError{Code: 550, EnhancedCode: smtp.EnhancedCode{5, 7, 0}, Message: "dkim key not configured for sender domain"}
 	case errors.Is(err, outbound.ErrRateLimited):

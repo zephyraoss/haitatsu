@@ -106,6 +106,7 @@ type SMTPConfig struct {
 
 type IMAPConfig struct {
 	Addr                string `pkl:"addr" json:"addr"`
+	TLSAddr             string `pkl:"tls_addr" json:"tls_addr"`
 	MaxConnectionsPerIP int    `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
 	AllowInsecureAuth   bool   `pkl:"allow_insecure_auth" json:"allow_insecure_auth"`
 }
@@ -383,6 +384,7 @@ type LimitsConfig struct {
 	MaxInboundRecipients          int   `pkl:"max_inbound_recipients" json:"max_inbound_recipients"`
 	MaxSubmissionRecipients       int   `pkl:"max_submission_recipients" json:"max_submission_recipients"`
 	MaxConnectionsPerIP           int   `pkl:"max_connections_per_ip" json:"max_connections_per_ip"`
+	MaxInboundConnections         int   `pkl:"max_inbound_connections" json:"max_inbound_connections"`
 	InboundMessagesPerMinutePerIP int   `pkl:"inbound_messages_per_minute_per_ip" json:"inbound_messages_per_minute_per_ip"`
 	DefaultOutboundPerHour        int64 `pkl:"default_outbound_per_hour" json:"default_outbound_per_hour"`
 	DefaultOutboundPerDay         int64 `pkl:"default_outbound_per_day" json:"default_outbound_per_day"`
@@ -444,6 +446,13 @@ func (c Config) ConnectionsPerIP() int {
 	return 20
 }
 
+func (c Config) InboundConnections() int {
+	if c.Limits.MaxInboundConnections > 0 {
+		return c.Limits.MaxInboundConnections
+	}
+	return 1000
+}
+
 func (c Config) IMAPConnectionsPerIP() int {
 	if c.IMAP.MaxConnectionsPerIP > 0 {
 		return c.IMAP.MaxConnectionsPerIP
@@ -456,6 +465,19 @@ func (c Config) InboundMessagesPerMinute() int {
 		return c.Limits.InboundMessagesPerMinutePerIP
 	}
 	return 120
+}
+
+func (c LimitsConfig) withOutboundDefaults() LimitsConfig {
+	if c.DefaultOutboundPerHour == 0 {
+		c.DefaultOutboundPerHour = 200
+	}
+	if c.DefaultOutboundPerDay == 0 {
+		c.DefaultOutboundPerDay = 2000
+	}
+	if c.DefaultOutboundRecipients == 0 {
+		c.DefaultOutboundRecipients = 50
+	}
+	return c
 }
 
 type ReloadImpact struct {
@@ -479,6 +501,7 @@ func Load(ctx context.Context, path string) (*Config, error) {
 	if err := json.Unmarshal([]byte(output), &cfg); err != nil {
 		return nil, fmt.Errorf("decode pkl json: %w", err)
 	}
+	cfg.Limits = cfg.Limits.withOutboundDefaults()
 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -587,7 +610,7 @@ func (c Config) Validate() error {
 	if c.Limits.MaxInboundRecipients < 0 {
 		problems = append(problems, "limits.max_inbound_recipients must be >= 0")
 	}
-	if c.Limits.MaxSubmissionRecipients < 0 || c.Limits.MaxConnectionsPerIP < 0 || c.Limits.InboundMessagesPerMinutePerIP < 0 {
+	if c.Limits.MaxSubmissionRecipients < 0 || c.Limits.MaxConnectionsPerIP < 0 || c.Limits.MaxInboundConnections < 0 || c.Limits.InboundMessagesPerMinutePerIP < 0 {
 		problems = append(problems, "limits values must be >= 0")
 	}
 	if c.Limits.DefaultOutboundPerHour < 0 || c.Limits.DefaultOutboundPerDay < 0 || c.Limits.DefaultOutboundRecipients < 0 {
@@ -693,7 +716,7 @@ func (c Config) ReloadImpact(next *Config) ReloadImpact {
 	if c.SMTP.InboundAddr != next.SMTP.InboundAddr {
 		changes = append(changes, "smtp listener")
 	}
-	if c.IMAP.Addr != next.IMAP.Addr {
+	if c.IMAP.Addr != next.IMAP.Addr || c.IMAP.TLSAddr != next.IMAP.TLSAddr {
 		changes = append(changes, "imap listener")
 	}
 	if c.Submission != next.Submission {

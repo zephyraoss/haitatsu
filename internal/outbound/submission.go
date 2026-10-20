@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/emersion/go-msgauth/dkim"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
@@ -32,6 +33,7 @@ var ErrDKIMKeyNotFound = errors.New("dkim key not found")
 var ErrSenderNotAllowed = errors.New("sender not allowed")
 var ErrRateLimited = errors.New("outbound rate limit exceeded")
 var ErrTooManyRecipients = errors.New("too many recipients")
+var ErrInvalidHeader = errors.New("invalid header field name")
 var ErrOverQuota = mailstore.ErrOverQuota
 
 type BlobStore interface {
@@ -96,7 +98,7 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 		return nil, ErrSenderNotAllowed
 	}
 	domain := addressDomain(sender.Address)
-	key, err := s.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).First(ctx)
+	key, err := s.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).Order(dkimkey.ByCreatedAt(entsql.OrderDesc()), dkimkey.ByID(entsql.OrderDesc())).First(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, ErrDKIMKeyNotFound
@@ -183,24 +185,36 @@ func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, mbox
 		return ErrTooManyRecipients
 	}
 	if limits.PerHour > 0 {
-		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mbox.ID), outboundjob.CreatedAtGTE(time.Now().Add(-time.Hour))).Count(ctx)
+		count, err := recipientsSince(ctx, client, mbox.ID, time.Now().Add(-time.Hour))
 		if err != nil {
 			return err
 		}
-		if int64(count) >= limits.PerHour {
+		if count+int64(recipientCount) > limits.PerHour {
 			return ErrRateLimited
 		}
 	}
 	if limits.PerDay > 0 {
-		count, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mbox.ID), outboundjob.CreatedAtGTE(time.Now().Add(-24*time.Hour))).Count(ctx)
+		count, err := recipientsSince(ctx, client, mbox.ID, time.Now().Add(-24*time.Hour))
 		if err != nil {
 			return err
 		}
-		if int64(count) >= limits.PerDay {
+		if count+int64(recipientCount) > limits.PerDay {
 			return ErrRateLimited
 		}
 	}
 	return nil
+}
+
+func recipientsSince(ctx context.Context, client *ent.Client, mailboxID string, since time.Time) (int64, error) {
+	jobs, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mailboxID), outboundjob.CreatedAtGTE(since)).Select(outboundjob.FieldRecipients).All(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var count int64
+	for _, job := range jobs {
+		count += int64(len(job.Recipients))
+	}
+	return count, nil
 }
 
 func (s *Submission) limitsFor(mbox *ent.Mailbox) Limits {
@@ -313,6 +327,9 @@ func parsePrivateKey(value string) (*rsa.PrivateKey, error) {
 type senderCheck func(address string) (bool, error)
 
 func normalizeSubmittedMessage(raw []byte, from string, fromAllowed senderCheck, messageID string, hostname string, traceID string, node string) ([]byte, error) {
+	if header, _ := mailparse.SplitHeaderBody(raw); !validHeaderFieldNames(header) {
+		return nil, ErrInvalidHeader
+	}
 	var fromErr error
 	normalized, err := mailparse.InjectHeaders(raw, func(h textproto.MIMEHeader) {
 		if h.Get("From") == "" {
@@ -341,8 +358,7 @@ func normalizeSubmittedMessage(raw []byte, from string, fromAllowed senderCheck,
 
 func normalizeSubmittedMessageFallback(raw []byte, from string, fromAllowed senderCheck, messageID string, hostname string, traceID string, node string) ([]byte, error) {
 	header, body := mailparse.SplitHeaderBody(raw)
-	body = mailparse.StripHaitatsuHeadersFromBody(body)
-	header = mailparse.RemoveHeaderField(header, "Bcc")
+	header = mailparse.RemoveHeaderField(mailparse.StripHaitatsuHeaders(header), "Bcc")
 	var extra [][]byte
 	if values := headerValues(header, "From"); len(values) == 0 {
 		extra = append(extra, []byte("From: "+from))
@@ -382,6 +398,31 @@ func checkFromHeader(values []string, fromAllowed senderCheck) error {
 		}
 	}
 	return nil
+}
+
+func validHeaderFieldNames(header []byte) bool {
+	for i, line := range strings.Split(string(header), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			if i == 0 {
+				return false
+			}
+			continue
+		}
+		name, _, ok := strings.Cut(line, ":")
+		if !ok || name == "" {
+			return false
+		}
+		for j := 0; j < len(name); j++ {
+			if name[j] < 33 || name[j] > 126 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func hasHeader(header []byte, key string) bool {

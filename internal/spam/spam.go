@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -74,7 +75,8 @@ func (c *Checker) Check(ctx context.Context, raw []byte, smtp SMTPContext, recip
 // CheckParsed is Check for callers that already hold the parsed metadata of raw.
 func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result) (Assessment, error) {
 	cfg := c.cfg()
-	fromDomain := firstAddressDomain(metadata.From)
+	fromAddresses, fromErr := mailparse.FromAddresses(raw)
+	fromDomain := dmarcFromDomain(fromAddresses)
 
 	var (
 		listed    bool
@@ -86,10 +88,14 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 		defer wg.Done()
 		listed, dnsblZone = dnsblListed(ctx, smtp.RemoteIP, cfg.DNSBLZones)
 	}()
-	dkimResult, dkimDomain := verifyDKIM(raw)
+	dkimResult, dkimDomain, dkimPassing := verifyDKIM(ctx, raw)
 	spfResult, spfDomain, spfReason := checkSPF(ctx, smtp)
-	dmarcResult, dmarcPolicy := checkDMARC(fromDomain, dkimResult, dkimDomain, spfResult, spfDomain)
-	listKind, listAction, err := c.senderRuleMatch(ctx, metadata, smtp, recipients)
+	dmarcResult, dmarcPolicy := checkDMARC(ctx, fromDomain, dkimPassing, spfResult, spfDomain)
+	if fromErr != nil || (len(fromAddresses) > 0 && fromDomain == "") {
+		dmarcResult, dmarcPolicy = authres.ResultFail, dmarc.PolicyQuarantine
+	}
+	authenticated := dmarcResult == authres.ResultPass || (dmarcResult == authres.ResultNone && fromAligned(fromDomain, dkimPassing, spfResult, spfDomain))
+	listKind, listAction, err := c.senderRuleMatch(ctx, metadata, smtp, recipients, authenticated)
 	wg.Wait()
 	if err != nil {
 		return Assessment{}, fmt.Errorf("sender rules: %w", err)
@@ -139,7 +145,7 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 			"dnsbl":        dnsblZone,
 		},
 	}
-	assessment.Header = c.authResultsHeader(spfResult, dkimResult, dmarcResult, smtp, metadata)
+	assessment.Header = c.authResultsHeader(spfResult, dkimResult, dmarcResult, smtp, fromDomain)
 	dmarcFailed := dmarcResult == authres.ResultFail
 	assessment.Junk = score >= junkThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyQuarantine) || listKind == "block"
 	assessment.Reject = score >= rejectThreshold(cfg) || (dmarcFailed && dmarcPolicy == dmarc.PolicyReject) || listAction == "reject"
@@ -148,7 +154,7 @@ func (c *Checker) CheckParsed(ctx context.Context, raw []byte, metadata mailpars
 	return assessment, nil
 }
 
-func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcResult authres.ResultValue, smtp SMTPContext, metadata mailparse.Metadata) string {
+func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcResult authres.ResultValue, smtp SMTPContext, fromDomain string) string {
 	mailFromDomain := addressDomain(smtp.MailFrom)
 	if mailFromDomain == "" {
 		mailFromDomain = smtp.MailFrom
@@ -156,14 +162,21 @@ func (c *Checker) authResultsHeader(spfResult authres.ResultValue, dkimResult au
 	return authres.Format(c.authID, []authres.Result{
 		&authres.SPFResult{Value: spfResult, From: mailFromDomain, Helo: smtp.HELO},
 		&authres.DKIMResult{Value: dkimResult},
-		&authres.DMARCResult{Value: dmarcResult, From: firstAddressDomain(metadata.From)},
+		&authres.DMARCResult{Value: dmarcResult, From: fromDomain},
 	})
 }
 
-func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result) (string, string, error) {
+func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metadata, smtp SMTPContext, recipients []routing.Result, authenticated bool) (string, string, error) {
 	entries, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("global")).All(ctx)
 	if err != nil {
 		return "", "", err
+	}
+	if domains := recipientDomains(recipients); len(domains) > 0 {
+		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("domain"), senderrule.ScopeRefIn(domains...)).All(ctx)
+		if err != nil {
+			return "", "", err
+		}
+		entries = append(entries, items...)
 	}
 	if mailboxIDs := recipientMailboxIDs(recipients); len(mailboxIDs) > 0 {
 		items, err := c.client.SenderRule.Query().Where(senderrule.ScopeEQ("mailbox"), senderrule.ScopeRefIn(mailboxIDs...)).All(ctx)
@@ -178,47 +191,74 @@ func (c *Checker) senderRuleMatch(ctx context.Context, metadata mailparse.Metada
 		entries = append(entries, items...)
 	}
 	for _, entry := range entries {
-		if matches(entry, metadata, smtp) {
+		if matches(entry, metadata, smtp, authenticated) {
 			return entry.Kind, entry.Action, nil
 		}
 	}
 	return "", "", nil
 }
 
-func verifyDKIM(raw []byte) (authres.ResultValue, string) {
-	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(raw), &dkim.VerifyOptions{MaxVerifications: 10})
-	if len(verifications) == 0 {
-		if err != nil && !errors.Is(err, dkim.ErrTooManySignatures) {
-			return authres.ResultNone, ""
-		}
-		return authres.ResultNone, ""
-	}
-	for _, verification := range verifications {
-		if verification.Err == nil {
-			return authres.ResultPass, verification.Domain
-		}
-	}
-	return authres.ResultFail, verifications[0].Domain
+func lookupTXT(ctx context.Context) func(string) ([]string, error) {
+	return func(name string) ([]string, error) { return net.DefaultResolver.LookupTXT(ctx, name) }
 }
 
-func checkDMARC(fromDomain string, dkimResult authres.ResultValue, dkimDomain string, spfResult authres.ResultValue, spfDomain string) (authres.ResultValue, dmarc.Policy) {
+func verifyDKIM(ctx context.Context, raw []byte) (authres.ResultValue, string, []string) {
+	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(raw), &dkim.VerifyOptions{MaxVerifications: 10, LookupTXT: lookupTXT(ctx)})
+	if len(verifications) == 0 {
+		if err != nil && !errors.Is(err, dkim.ErrTooManySignatures) {
+			return authres.ResultNone, "", nil
+		}
+		return authres.ResultNone, "", nil
+	}
+	var passing []string
+	for _, verification := range verifications {
+		if verification.Err == nil {
+			passing = append(passing, verification.Domain)
+		}
+	}
+	if len(passing) > 0 {
+		return authres.ResultPass, passing[0], passing
+	}
+	return authres.ResultFail, verifications[0].Domain, nil
+}
+
+func checkDMARC(ctx context.Context, fromDomain string, dkimDomains []string, spfResult authres.ResultValue, spfDomain string) (authres.ResultValue, dmarc.Policy) {
 	if fromDomain == "" {
 		return authres.ResultNone, dmarc.PolicyNone
 	}
-	record, err := dmarc.Lookup(fromDomain)
+	options := &dmarc.LookupOptions{LookupTXT: lookupTXT(ctx)}
+	record, err := dmarc.LookupWithOptions(fromDomain, options)
+	orgDomain := organizationalDomain(fromDomain)
+	fromOrg := errors.Is(err, dmarc.ErrNoPolicy) && orgDomain != fromDomain
+	if fromOrg {
+		record, err = dmarc.LookupWithOptions(orgDomain, options)
+	}
 	if err != nil {
 		if errors.Is(err, dmarc.ErrNoPolicy) {
 			return authres.ResultNone, dmarc.PolicyNone
 		}
 		return authres.ResultTempError, dmarc.PolicyNone
 	}
-	if dkimResult == authres.ResultPass && aligned(record.DKIMAlignment, fromDomain, dkimDomain) {
-		return authres.ResultPass, record.Policy
+	policy := record.Policy
+	if fromOrg && record.SubdomainPolicy != "" {
+		policy = record.SubdomainPolicy
+	}
+	for _, dkimDomain := range dkimDomains {
+		if aligned(record.DKIMAlignment, fromDomain, dkimDomain) {
+			return authres.ResultPass, policy
+		}
 	}
 	if spfResult == authres.ResultPass && aligned(record.SPFAlignment, fromDomain, spfDomain) {
-		return authres.ResultPass, record.Policy
+		return authres.ResultPass, policy
 	}
-	return authres.ResultFail, record.Policy
+	return authres.ResultFail, policy
+}
+
+func fromAligned(fromDomain string, dkimDomains []string, spfResult authres.ResultValue, spfDomain string) bool {
+	if spfResult == authres.ResultPass && aligned(dmarc.AlignmentRelaxed, fromDomain, spfDomain) {
+		return true
+	}
+	return slices.ContainsFunc(dkimDomains, func(domain string) bool { return aligned(dmarc.AlignmentRelaxed, fromDomain, domain) })
 }
 
 func score(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcResult authres.ResultValue, policy dmarc.Policy, listKind string) (float64, []string) {
@@ -252,8 +292,11 @@ func score(spfResult authres.ResultValue, dkimResult authres.ResultValue, dmarcR
 	return value, reasons
 }
 
-func matches(entry *ent.SenderRule, metadata mailparse.Metadata, smtp SMTPContext) bool {
+func matches(entry *ent.SenderRule, metadata mailparse.Metadata, smtp SMTPContext, authenticated bool) bool {
 	value := strings.ToLower(entry.Value)
+	if entry.Kind == "allow" && !authenticated && (entry.MatchType == "email" || entry.MatchType == "domain") {
+		return false
+	}
 	switch entry.MatchType {
 	case "email":
 		for _, address := range metadata.From {
@@ -288,6 +331,18 @@ func firstAddressDomain(addresses []string) string {
 	return addressDomain(addresses[0])
 }
 
+func dmarcFromDomain(addresses []string) string {
+	var domain string
+	for _, address := range addresses {
+		current := addressDomain(address)
+		if current == "" || (domain != "" && current != domain) {
+			return ""
+		}
+		domain = current
+	}
+	return domain
+}
+
 func addressDomain(address string) string {
 	parsed, err := mail.ParseAddress(address)
 	if err == nil {
@@ -310,6 +365,20 @@ func recipientMailboxIDs(recipients []routing.Result) []string {
 		}
 	}
 	return ids
+}
+
+func recipientDomains(recipients []routing.Result) []string {
+	seen := map[string]struct{}{}
+	var domains []string
+	for _, recipient := range recipients {
+		domain := addressDomain(recipient.OriginalRecipient)
+		if _, ok := seen[domain]; ok || domain == "" {
+			continue
+		}
+		seen[domain] = struct{}{}
+		domains = append(domains, domain)
+	}
+	return domains
 }
 
 func junkThreshold(cfg config.SpamConfig) float64 {

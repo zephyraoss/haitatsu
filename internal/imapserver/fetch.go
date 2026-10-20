@@ -15,6 +15,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailboxmessage"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/mailstore"
 )
 
 const fetchBatchSize = 500
@@ -171,7 +172,7 @@ func (s *session) markSeen(ctx context.Context, index int, item entry) error {
 	if err != nil {
 		return err
 	}
-	flags := item.flags
+	flags := mailstore.FlagsOf(mm)
 	flags.Seen = true
 	if _, err := s.store.SetFlags(ctx, mm, flags); err != nil {
 		return err

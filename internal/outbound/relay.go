@@ -10,15 +10,17 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"regexp"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
 	"github.com/zephyraoss/haitatsu/internal/database"
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
@@ -42,6 +44,7 @@ type Worker struct {
 	workerID string
 	backend  database.Backend
 	send     Sender
+	hostname string
 }
 
 type claimedJob struct {
@@ -65,7 +68,14 @@ func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg func() conf
 	if len(backends) > 0 {
 		backend = backends[0]
 	}
-	return &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID, backend: backend, send: sendViaRelay}
+	w := &Worker{db: db, client: client, store: store, cfg: cfg, metrics: metrics, notifier: notifier, workerID: workerID, backend: backend, hostname: "localhost"}
+	w.send = w.sendViaRelay
+	return w
+}
+
+func (w *Worker) WithHostname(hostname string) *Worker {
+	w.hostname = hostname
+	return w
 }
 
 func (w *Worker) WithSender(send Sender) *Worker {
@@ -77,9 +87,11 @@ func (w *Worker) Run(ctx context.Context, concurrency int) {
 	if concurrency <= 0 {
 		concurrency = 1
 	}
+	var wg sync.WaitGroup
 	for range concurrency {
-		go w.loop(ctx)
+		wg.Go(func() { w.loop(ctx) })
 	}
+	wg.Wait()
 }
 
 func (w *Worker) loop(ctx context.Context) {
@@ -106,21 +118,21 @@ func (w *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	result := w.deliver(ctx, job)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	w.metrics.WorkerJob("outbound", result.Classification)
 	if result.Classification == "success" {
 		w.metrics.MessageSent()
 	}
-	if _, err := w.client.OutboundAttempt.Create().
+	_, attemptErr := w.client.OutboundAttempt.Create().
 		SetOutboundJobID(job.ID).
 		SetMessageID(job.MessageID).
 		SetClassification(result.Classification).
 		SetResponse(result.Response).
 		SetNillableSMTPCode(codePtr(result.Code)).
 		SetEnhancedStatusCode(result.EnhancedStatusCode).
-		Save(ctx); err != nil {
-		return true, err
-	}
-	return true, w.finish(ctx, job, result)
+		Save(ctx)
+	return true, errors.Join(attemptErr, w.finish(ctx, job, result))
 }
 
 func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
@@ -131,7 +143,7 @@ func (w *Worker) claim(ctx context.Context) (claimedJob, bool, error) {
 	defer tx.Rollback()
 
 	query := `
-UPDATE outbound_jobs SET locked_by = $1, locked_until = $2, status = 'processing', updated_at = NOW()
+UPDATE outbound_jobs SET locked_by = $1, locked_until = $2, attempts = attempts + CASE WHEN status = 'processing' THEN 1 ELSE 0 END, status = 'processing', updated_at = NOW()
 WHERE id = (
   SELECT id FROM outbound_jobs
   WHERE status IN ('queued', 'retry', 'processing')
@@ -144,10 +156,11 @@ WHERE id = (
 RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 `
 	now := time.Now().UTC()
-	args := []any{w.workerID, now.Add(5 * time.Minute)}
+	lockedUntil := now.Add(w.cfg().Timeout() + 4*time.Minute)
+	args := []any{w.workerID, lockedUntil}
 	if w.backend.SQLiteFamily() {
 		query = `
-UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, status = 'processing', updated_at = ?
+UPDATE outbound_jobs SET locked_by = ?, locked_until = ?, attempts = attempts + CASE WHEN status = 'processing' THEN 1 ELSE 0 END, status = 'processing', updated_at = ?
 WHERE id = (
   SELECT id FROM outbound_jobs
   WHERE status IN ('queued', 'retry', 'processing')
@@ -161,7 +174,7 @@ AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
 AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
 RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 `
-		args = []any{w.workerID, now.Add(5 * time.Minute), now, now, now, now, now}
+		args = []any{w.workerID, lockedUntil, now, now, now, now, now}
 	}
 	row := tx.QueryRowContext(ctx, query, args...)
 
@@ -212,7 +225,7 @@ func (w *Worker) deliver(ctx context.Context, job claimedJob) deliveryResult {
 	return classifySMTPError(err)
 }
 
-func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
+func (w *Worker) sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout())
 	defer cancel()
 
@@ -236,7 +249,7 @@ func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, reci
 		return wrapCtxErr(ctx, err)
 	}
 	defer client.Close()
-	if err := client.Hello("localhost"); err != nil {
+	if err := client.Hello(w.hostname); err != nil {
 		return wrapCtxErr(ctx, err)
 	}
 	if ok, _ := client.Extension("STARTTLS"); ok {
@@ -270,7 +283,8 @@ func sendViaRelay(ctx context.Context, cfg config.RelayConfig, from string, reci
 	if err := wc.Close(); err != nil {
 		return wrapCtxErr(ctx, err)
 	}
-	return wrapCtxErr(ctx, client.Quit())
+	_ = client.Quit()
+	return nil
 }
 
 func wrapCtxErr(ctx context.Context, err error) error {
@@ -289,7 +303,7 @@ func wrapCtxErr(ctx context.Context, err error) error {
 
 func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResult) error {
 	policy := w.cfg().RetryPolicy()
-	update := w.client.OutboundJob.UpdateOneID(job.ID).ClearLockedBy().ClearLockedUntil()
+	update := w.client.OutboundJob.UpdateOneID(job.ID).Where(outboundjob.LockedByEQ(w.workerID)).ClearLockedBy().ClearLockedUntil()
 	failed := false
 	switch result.Classification {
 	case "success":
@@ -326,12 +340,15 @@ func relayAuth(cfg config.RelayConfig) smtp.Auth {
 
 func classifySMTPError(err error) deliveryResult {
 	message := err.Error()
-	code := smtpCode(message)
-	enhanced := enhancedStatusCode(message)
-	if code >= 500 {
-		return permanentFailure(code, enhanced, message)
+	var smtpErr *textproto.Error
+	if !errors.As(err, &smtpErr) {
+		return deliveryResult{Classification: "temporary", Response: message}
 	}
-	return deliveryResult{Code: code, EnhancedStatusCode: enhanced, Classification: "temporary", Response: message}
+	enhanced := enhancedStatusCode(smtpErr.Msg)
+	if smtpErr.Code >= 500 {
+		return permanentFailure(smtpErr.Code, enhanced, message)
+	}
+	return deliveryResult{Code: smtpErr.Code, EnhancedStatusCode: enhanced, Classification: "temporary", Response: message}
 }
 
 func localFailure(err error) deliveryResult {
@@ -342,17 +359,7 @@ func permanentFailure(code int, enhanced string, response string) deliveryResult
 	return deliveryResult{Code: code, EnhancedStatusCode: enhanced, Classification: "permanent", Response: response}
 }
 
-var smtpCodePattern = regexp.MustCompile(`\b([245][0-9]{2})\b`)
-var enhancedCodePattern = regexp.MustCompile(`\b[245]\.\d+\.\d+\b`)
-
-func smtpCode(message string) int {
-	match := smtpCodePattern.FindStringSubmatch(message)
-	if len(match) != 2 {
-		return 0
-	}
-	code, _ := strconv.Atoi(match[1])
-	return code
-}
+var enhancedCodePattern = regexp.MustCompile(`^[245]\.\d{1,3}\.\d{1,3}\b`)
 
 func enhancedStatusCode(message string) string {
 	return enhancedCodePattern.FindString(message)

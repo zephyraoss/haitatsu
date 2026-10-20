@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,14 @@ const (
 	saltLen      = 16
 	passwordLen  = 24
 )
+
+var hashSlots = make(chan struct{}, runtime.NumCPU())
+
+func idKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	hashSlots <- struct{}{}
+	defer func() { <-hashSlots }()
+	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
+}
 
 func GeneratePassword() (string, error) {
 	data := make([]byte, passwordLen)
@@ -39,7 +48,7 @@ func HashPassword(password string) (string, error) {
 		return "", err
 	}
 
-	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+	key := idKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	encodedSalt := base64.RawStdEncoding.EncodeToString(salt)
 	encodedKey := base64.RawStdEncoding.EncodeToString(key)
 
@@ -52,7 +61,7 @@ func VerifyPassword(password, encoded string) (bool, error) {
 		return false, err
 	}
 
-	actual := argon2.IDKey([]byte(password), salt, params.time, params.memory, params.threads, uint32(len(key)))
+	actual := idKey([]byte(password), salt, params.time, params.memory, params.threads, uint32(len(key)))
 	return subtle.ConstantTimeCompare(actual, key) == 1, nil
 }
 
