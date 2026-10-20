@@ -21,8 +21,9 @@ ARG PKL_VERSION=0.31.1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && case "${TARGETARCH}" in amd64) PKL_ARCH=amd64 ;; arm64) PKL_ARCH=aarch64 ;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; esac \
+    && case "${TARGETARCH}" in amd64) PKL_ARCH=amd64 PKL_SHA=618f13955d755cafbfe8c9cba1d27635848cd49dbc6abffd398d2751db1231bf ;; arm64) PKL_ARCH=aarch64 PKL_SHA=7ef10e743daa921fb94ae7bdb9ec6986f362bf250c55814b9ea2aeb13f2d083e ;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;; esac \
     && curl -fsSL -o /usr/local/bin/pkl "https://github.com/apple/pkl/releases/download/${PKL_VERSION}/pkl-linux-${PKL_ARCH}" \
+    && echo "${PKL_SHA}  /usr/local/bin/pkl" | sha256sum -c - \
     && chmod +x /usr/local/bin/pkl \
     && useradd --system --uid 10001 --home-dir /var/lib/haitatsu --shell /usr/sbin/nologin haitatsu \
     && mkdir -p /var/lib/haitatsu/certmagic /var/lib/haitatsu/tmp /etc/haitatsu \
