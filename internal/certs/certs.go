@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/certmagic"
+	"github.com/libdns/cloudflare"
 
 	"github.com/zephyraoss/haitatsu/internal/config"
 )
@@ -120,7 +121,7 @@ func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 	}
 	magic := certmagic.NewDefault()
 	magic.Storage = &certmagic.FileStorage{Path: acmeCachePath(opts.TLS)}
-	magic.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(magic, certmagic.ACMEIssuer{
+	issuer := certmagic.ACMEIssuer{
 		CA:                        acmeCA(opts.TLS.ACMECA),
 		Email:                     opts.TLS.ACMEEmail,
 		Agreed:                    true,
@@ -130,13 +131,25 @@ func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 		DisableHTTPChallenge:      opts.TLS.ACMEDisableHTTPChallenge,
 		DisableTLSALPNChallenge:   opts.TLS.ACMEDisableTLSALPNChallenge,
 		DisableDistributedSolvers: opts.TLS.ACMEDisableDistributedSolvers,
-	})}
+	}
+	if solver := dns01Solver(opts.TLS); solver != nil {
+		issuer.DNS01Solver = solver
+	}
+	magic.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(magic, issuer)}
 	if err := magic.ManageAsync(ctx, []string{opts.PublicHostname}); err != nil {
 		return nil, err
 	}
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.ServerName = opts.PublicHostname
 	return tlsConfig, nil
+}
+
+func dns01Solver(cfg config.TLSConfig) *certmagic.DNS01Solver {
+	token := strings.TrimSpace(cfg.ACMECloudflareAPIToken)
+	if token == "" {
+		return nil
+	}
+	return &certmagic.DNS01Solver{DNSManager: certmagic.DNSManager{DNSProvider: &cloudflare.Provider{APIToken: token}}}
 }
 
 func acmeCachePath(cfg config.TLSConfig) string {

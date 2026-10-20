@@ -84,6 +84,7 @@ tls {
   acme_disable_http_challenge = true
   acme_disable_tls_alpn_challenge = true
   acme_disable_distributed_solvers = false
+  acme_cloudflare_api_token = ""
   storage {
     endpoint = ""
     region = ""

@@ -13,6 +13,7 @@ require (
 	github.com/emersion/go-smtp v0.24.0
 	github.com/gofiber/fiber/v3 v3.2.0
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/libdns/cloudflare v0.2.2
 	github.com/minio/minio-go/v7 v7.1.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/prometheus/client_golang v1.23.2

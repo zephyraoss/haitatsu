@@ -96,6 +96,7 @@ tls {
   acme_disable_http_challenge = true
   acme_disable_tls_alpn_challenge = true
   acme_disable_distributed_solvers = false
+  acme_cloudflare_api_token = read?("env:HAITATSU_CLOUDFLARE_API_TOKEN") ?? ""
   storage {
     endpoint = "100.80.1.1:3900"
     region = "chi-us"

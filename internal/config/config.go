@@ -246,6 +246,7 @@ type TLSConfig struct {
 	ACMEDisableHTTPChallenge      bool             `pkl:"acme_disable_http_challenge" json:"acme_disable_http_challenge"`
 	ACMEDisableTLSALPNChallenge   bool             `pkl:"acme_disable_tls_alpn_challenge" json:"acme_disable_tls_alpn_challenge"`
 	ACMEDisableDistributedSolvers bool             `pkl:"acme_disable_distributed_solvers" json:"acme_disable_distributed_solvers"`
+	ACMECloudflareAPIToken        string           `pkl:"acme_cloudflare_api_token" json:"acme_cloudflare_api_token"`
 	Storage                       TLSStorageConfig `pkl:"storage" json:"storage"`
 }
 
@@ -288,7 +289,8 @@ func (c TLSConfig) equal(other TLSConfig) bool {
 		c.ACMEEmail == other.ACMEEmail && c.ACMECA == other.ACMECA && c.ACMECachePath == other.ACMECachePath &&
 		c.ACMEListenHost == other.ACMEListenHost && c.ACMEHTTPPort == other.ACMEHTTPPort && c.ACMETLSALPNPort == other.ACMETLSALPNPort &&
 		c.ACMEDisableHTTPChallenge == other.ACMEDisableHTTPChallenge && c.ACMEDisableTLSALPNChallenge == other.ACMEDisableTLSALPNChallenge &&
-		c.ACMEDisableDistributedSolvers == other.ACMEDisableDistributedSolvers && c.Storage.equal(other.Storage)
+		c.ACMEDisableDistributedSolvers == other.ACMEDisableDistributedSolvers && c.ACMECloudflareAPIToken == other.ACMECloudflareAPIToken &&
+		c.Storage.equal(other.Storage)
 }
 
 type WebhookConfig struct {

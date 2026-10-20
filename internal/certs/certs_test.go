@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libdns/cloudflare"
+
 	"github.com/zephyraoss/haitatsu/internal/config"
 )
 
@@ -55,5 +57,19 @@ func TestManualModeReloadsChangedCertificate(t *testing.T) {
 	cert, err = cfg.GetCertificate(nil)
 	if err != nil || leaf(t, cert).Subject.CommonName != "new.example" {
 		t.Fatalf("reloaded certificate = %v, %v", cert, err)
+	}
+}
+
+func TestDNS01SolverUsesCloudflareOnlyWhenTokenSet(t *testing.T) {
+	if solver := dns01Solver(config.TLSConfig{ACMECloudflareAPIToken: "  "}); solver != nil {
+		t.Fatalf("expected no dns-01 solver without a token, got %#v", solver)
+	}
+	solver := dns01Solver(config.TLSConfig{ACMECloudflareAPIToken: " token "})
+	if solver == nil {
+		t.Fatal("expected a dns-01 solver when a cloudflare token is set")
+	}
+	provider, ok := solver.DNSProvider.(*cloudflare.Provider)
+	if !ok || provider.APIToken != "token" {
+		t.Fatalf("expected cloudflare provider with trimmed token, got %#v", solver.DNSProvider)
 	}
 }
