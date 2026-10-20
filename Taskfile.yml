@@ -20,6 +20,16 @@ tasks:
     cmds:
       - go test -race ./...
 
+  ci:
+    desc: Run every pre-merge check locally (codegen drift, gofmt, vet, race tests, static build)
+    cmds:
+      - task: generate
+      - git diff --exit-code -- internal/database/ent
+      - test -z "$(gofmt -l cmd internal)"
+      - go vet ./...
+      - go test -race -count=1 ./...
+      - CGO_ENABLED=0 go build -o /dev/null ./cmd/haitatsu
+
   generate:
     desc: Regenerate ent code from schema
     dir: internal/database/ent

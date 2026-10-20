@@ -207,4 +207,5 @@ Cluster deployment lives in the `infra` repo; the image is built here and shippe
 | Start compose stack | `task compose:up` |
 | Wipe database schema | `task db:wipe` |
 | Run tests | `task test` |
+| Run all pre-merge checks | `task ci` |
 | Regenerate ent code | `task generate` |
