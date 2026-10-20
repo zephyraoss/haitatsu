@@ -136,12 +136,19 @@ func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 		issuer.DNS01Solver = solver
 	}
 	magic.Issuers = []certmagic.Issuer{certmagic.NewACMEIssuer(magic, issuer)}
-	if err := magic.ManageAsync(ctx, []string{opts.PublicHostname}); err != nil {
+	if err := magic.ManageAsync(ctx, acmeHostnames(opts)); err != nil {
 		return nil, err
 	}
 	tlsConfig := magic.TLSConfig()
 	tlsConfig.ServerName = opts.PublicHostname
 	return tlsConfig, nil
+}
+
+func acmeHostnames(opts Options) []string {
+	if len(opts.Hostnames) == 0 {
+		return []string{opts.PublicHostname}
+	}
+	return opts.Hostnames
 }
 
 func dns01Solver(cfg config.TLSConfig) *certmagic.DNS01Solver {
