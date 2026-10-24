@@ -671,6 +671,31 @@ var (
 			},
 		},
 	}
+	// SMTPCredentialsColumns holds the columns for the "smtp_credentials" table.
+	SMTPCredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "username", Type: field.TypeString, Unique: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "hash", Type: field.TypeString},
+		{Name: "domains", Type: field.TypeJSON},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SMTPCredentialsTable holds the schema information for the "smtp_credentials" table.
+	SMTPCredentialsTable = &schema.Table{
+		Name:       "smtp_credentials",
+		Columns:    SMTPCredentialsColumns,
+		PrimaryKey: []*schema.Column{SMTPCredentialsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "smtpcredential_revoked_at",
+				Unique:  false,
+				Columns: []*schema.Column{SMTPCredentialsColumns[6]},
+			},
+		},
+	}
 	// SchemaMigrationsColumns holds the columns for the "schema_migrations" table.
 	SchemaMigrationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -732,6 +757,7 @@ var (
 		OutboundJobsTable,
 		RoutesTable,
 		RoutingRulesTable,
+		SMTPCredentialsTable,
 		SchemaMigrationsTable,
 		SenderRulesTable,
 	}

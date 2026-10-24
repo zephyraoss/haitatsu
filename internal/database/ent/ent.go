@@ -32,6 +32,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/schemamigration"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/smtpcredential"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -110,6 +111,7 @@ func checkColumn(t, c string) error {
 			outboundjob.Table:         outboundjob.ValidColumn,
 			route.Table:               route.ValidColumn,
 			routingrule.Table:         routingrule.ValidColumn,
+			smtpcredential.Table:      smtpcredential.ValidColumn,
 			schemamigration.Table:     schemamigration.ValidColumn,
 			senderrule.Table:          senderrule.ValidColumn,
 		})

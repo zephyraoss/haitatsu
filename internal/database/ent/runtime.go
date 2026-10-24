@@ -25,6 +25,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/schema"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/smtpcredential"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -407,6 +408,22 @@ func init() {
 	routingruleDescID := routingruleFields[0].Descriptor()
 	// routingrule.DefaultID holds the default value on creation for the id field.
 	routingrule.DefaultID = routingruleDescID.Default.(func() string)
+	smtpcredentialFields := schema.SMTPCredential{}.Fields()
+	_ = smtpcredentialFields
+	// smtpcredentialDescCreatedAt is the schema descriptor for created_at field.
+	smtpcredentialDescCreatedAt := smtpcredentialFields[7].Descriptor()
+	// smtpcredential.DefaultCreatedAt holds the default value on creation for the created_at field.
+	smtpcredential.DefaultCreatedAt = smtpcredentialDescCreatedAt.Default.(func() time.Time)
+	// smtpcredentialDescUpdatedAt is the schema descriptor for updated_at field.
+	smtpcredentialDescUpdatedAt := smtpcredentialFields[8].Descriptor()
+	// smtpcredential.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	smtpcredential.DefaultUpdatedAt = smtpcredentialDescUpdatedAt.Default.(func() time.Time)
+	// smtpcredential.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	smtpcredential.UpdateDefaultUpdatedAt = smtpcredentialDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// smtpcredentialDescID is the schema descriptor for id field.
+	smtpcredentialDescID := smtpcredentialFields[0].Descriptor()
+	// smtpcredential.DefaultID holds the default value on creation for the id field.
+	smtpcredential.DefaultID = smtpcredentialDescID.Default.(func() string)
 	senderruleFields := schema.SenderRule{}.Fields()
 	_ = senderruleFields
 	// senderruleDescAction is the schema descriptor for action field.

@@ -32,6 +32,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/schemamigration"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/smtpcredential"
 )
 
 const (
@@ -61,6 +62,7 @@ const (
 	TypeOutboundJob         = "OutboundJob"
 	TypeRoute               = "Route"
 	TypeRoutingRule         = "RoutingRule"
+	TypeSMTPCredential      = "SMTPCredential"
 	TypeSchemaMigration     = "SchemaMigration"
 	TypeSenderRule          = "SenderRule"
 )
@@ -15937,6 +15939,773 @@ func (m *RoutingRuleMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *RoutingRuleMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown RoutingRule edge %s", name)
+}
+
+// SMTPCredentialMutation represents an operation that mutates the SMTPCredential nodes in the graph.
+type SMTPCredentialMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	username      *string
+	name          *string
+	hash          *string
+	domains       *[]string
+	appenddomains []string
+	last_used_at  *time.Time
+	revoked_at    *time.Time
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*SMTPCredential, error)
+	predicates    []predicate.SMTPCredential
+}
+
+var _ ent.Mutation = (*SMTPCredentialMutation)(nil)
+
+// smtpcredentialOption allows management of the mutation configuration using functional options.
+type smtpcredentialOption func(*SMTPCredentialMutation)
+
+// newSMTPCredentialMutation creates new mutation for the SMTPCredential entity.
+func newSMTPCredentialMutation(c config, op Op, opts ...smtpcredentialOption) *SMTPCredentialMutation {
+	m := &SMTPCredentialMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSMTPCredential,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSMTPCredentialID sets the ID field of the mutation.
+func withSMTPCredentialID(id string) smtpcredentialOption {
+	return func(m *SMTPCredentialMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SMTPCredential
+		)
+		m.oldValue = func(ctx context.Context) (*SMTPCredential, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SMTPCredential.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSMTPCredential sets the old SMTPCredential of the mutation.
+func withSMTPCredential(node *SMTPCredential) smtpcredentialOption {
+	return func(m *SMTPCredentialMutation) {
+		m.oldValue = func(context.Context) (*SMTPCredential, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SMTPCredentialMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SMTPCredentialMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SMTPCredential entities.
+func (m *SMTPCredentialMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SMTPCredentialMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SMTPCredentialMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SMTPCredential.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUsername sets the "username" field.
+func (m *SMTPCredentialMutation) SetUsername(s string) {
+	m.username = &s
+}
+
+// Username returns the value of the "username" field in the mutation.
+func (m *SMTPCredentialMutation) Username() (r string, exists bool) {
+	v := m.username
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsername returns the old "username" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldUsername(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsername is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsername requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsername: %w", err)
+	}
+	return oldValue.Username, nil
+}
+
+// ResetUsername resets all changes to the "username" field.
+func (m *SMTPCredentialMutation) ResetUsername() {
+	m.username = nil
+}
+
+// SetName sets the "name" field.
+func (m *SMTPCredentialMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *SMTPCredentialMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *SMTPCredentialMutation) ResetName() {
+	m.name = nil
+}
+
+// SetHash sets the "hash" field.
+func (m *SMTPCredentialMutation) SetHash(s string) {
+	m.hash = &s
+}
+
+// Hash returns the value of the "hash" field in the mutation.
+func (m *SMTPCredentialMutation) Hash() (r string, exists bool) {
+	v := m.hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHash returns the old "hash" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHash: %w", err)
+	}
+	return oldValue.Hash, nil
+}
+
+// ResetHash resets all changes to the "hash" field.
+func (m *SMTPCredentialMutation) ResetHash() {
+	m.hash = nil
+}
+
+// SetDomains sets the "domains" field.
+func (m *SMTPCredentialMutation) SetDomains(s []string) {
+	m.domains = &s
+	m.appenddomains = nil
+}
+
+// Domains returns the value of the "domains" field in the mutation.
+func (m *SMTPCredentialMutation) Domains() (r []string, exists bool) {
+	v := m.domains
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomains returns the old "domains" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldDomains(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomains is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomains requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomains: %w", err)
+	}
+	return oldValue.Domains, nil
+}
+
+// AppendDomains adds s to the "domains" field.
+func (m *SMTPCredentialMutation) AppendDomains(s []string) {
+	m.appenddomains = append(m.appenddomains, s...)
+}
+
+// AppendedDomains returns the list of values that were appended to the "domains" field in this mutation.
+func (m *SMTPCredentialMutation) AppendedDomains() ([]string, bool) {
+	if len(m.appenddomains) == 0 {
+		return nil, false
+	}
+	return m.appenddomains, true
+}
+
+// ResetDomains resets all changes to the "domains" field.
+func (m *SMTPCredentialMutation) ResetDomains() {
+	m.domains = nil
+	m.appenddomains = nil
+}
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (m *SMTPCredentialMutation) SetLastUsedAt(t time.Time) {
+	m.last_used_at = &t
+}
+
+// LastUsedAt returns the value of the "last_used_at" field in the mutation.
+func (m *SMTPCredentialMutation) LastUsedAt() (r time.Time, exists bool) {
+	v := m.last_used_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastUsedAt returns the old "last_used_at" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldLastUsedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastUsedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastUsedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastUsedAt: %w", err)
+	}
+	return oldValue.LastUsedAt, nil
+}
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (m *SMTPCredentialMutation) ClearLastUsedAt() {
+	m.last_used_at = nil
+	m.clearedFields[smtpcredential.FieldLastUsedAt] = struct{}{}
+}
+
+// LastUsedAtCleared returns if the "last_used_at" field was cleared in this mutation.
+func (m *SMTPCredentialMutation) LastUsedAtCleared() bool {
+	_, ok := m.clearedFields[smtpcredential.FieldLastUsedAt]
+	return ok
+}
+
+// ResetLastUsedAt resets all changes to the "last_used_at" field.
+func (m *SMTPCredentialMutation) ResetLastUsedAt() {
+	m.last_used_at = nil
+	delete(m.clearedFields, smtpcredential.FieldLastUsedAt)
+}
+
+// SetRevokedAt sets the "revoked_at" field.
+func (m *SMTPCredentialMutation) SetRevokedAt(t time.Time) {
+	m.revoked_at = &t
+}
+
+// RevokedAt returns the value of the "revoked_at" field in the mutation.
+func (m *SMTPCredentialMutation) RevokedAt() (r time.Time, exists bool) {
+	v := m.revoked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRevokedAt returns the old "revoked_at" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldRevokedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRevokedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRevokedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRevokedAt: %w", err)
+	}
+	return oldValue.RevokedAt, nil
+}
+
+// ClearRevokedAt clears the value of the "revoked_at" field.
+func (m *SMTPCredentialMutation) ClearRevokedAt() {
+	m.revoked_at = nil
+	m.clearedFields[smtpcredential.FieldRevokedAt] = struct{}{}
+}
+
+// RevokedAtCleared returns if the "revoked_at" field was cleared in this mutation.
+func (m *SMTPCredentialMutation) RevokedAtCleared() bool {
+	_, ok := m.clearedFields[smtpcredential.FieldRevokedAt]
+	return ok
+}
+
+// ResetRevokedAt resets all changes to the "revoked_at" field.
+func (m *SMTPCredentialMutation) ResetRevokedAt() {
+	m.revoked_at = nil
+	delete(m.clearedFields, smtpcredential.FieldRevokedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *SMTPCredentialMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *SMTPCredentialMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *SMTPCredentialMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SMTPCredentialMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SMTPCredentialMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SMTPCredential entity.
+// If the SMTPCredential object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SMTPCredentialMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SMTPCredentialMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SMTPCredentialMutation builder.
+func (m *SMTPCredentialMutation) Where(ps ...predicate.SMTPCredential) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SMTPCredentialMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SMTPCredentialMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SMTPCredential, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SMTPCredentialMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SMTPCredentialMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SMTPCredential).
+func (m *SMTPCredentialMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SMTPCredentialMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.username != nil {
+		fields = append(fields, smtpcredential.FieldUsername)
+	}
+	if m.name != nil {
+		fields = append(fields, smtpcredential.FieldName)
+	}
+	if m.hash != nil {
+		fields = append(fields, smtpcredential.FieldHash)
+	}
+	if m.domains != nil {
+		fields = append(fields, smtpcredential.FieldDomains)
+	}
+	if m.last_used_at != nil {
+		fields = append(fields, smtpcredential.FieldLastUsedAt)
+	}
+	if m.revoked_at != nil {
+		fields = append(fields, smtpcredential.FieldRevokedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, smtpcredential.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, smtpcredential.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SMTPCredentialMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case smtpcredential.FieldUsername:
+		return m.Username()
+	case smtpcredential.FieldName:
+		return m.Name()
+	case smtpcredential.FieldHash:
+		return m.Hash()
+	case smtpcredential.FieldDomains:
+		return m.Domains()
+	case smtpcredential.FieldLastUsedAt:
+		return m.LastUsedAt()
+	case smtpcredential.FieldRevokedAt:
+		return m.RevokedAt()
+	case smtpcredential.FieldCreatedAt:
+		return m.CreatedAt()
+	case smtpcredential.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SMTPCredentialMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case smtpcredential.FieldUsername:
+		return m.OldUsername(ctx)
+	case smtpcredential.FieldName:
+		return m.OldName(ctx)
+	case smtpcredential.FieldHash:
+		return m.OldHash(ctx)
+	case smtpcredential.FieldDomains:
+		return m.OldDomains(ctx)
+	case smtpcredential.FieldLastUsedAt:
+		return m.OldLastUsedAt(ctx)
+	case smtpcredential.FieldRevokedAt:
+		return m.OldRevokedAt(ctx)
+	case smtpcredential.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case smtpcredential.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SMTPCredential field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SMTPCredentialMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case smtpcredential.FieldUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsername(v)
+		return nil
+	case smtpcredential.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case smtpcredential.FieldHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHash(v)
+		return nil
+	case smtpcredential.FieldDomains:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomains(v)
+		return nil
+	case smtpcredential.FieldLastUsedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastUsedAt(v)
+		return nil
+	case smtpcredential.FieldRevokedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRevokedAt(v)
+		return nil
+	case smtpcredential.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case smtpcredential.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SMTPCredential field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SMTPCredentialMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SMTPCredentialMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SMTPCredentialMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown SMTPCredential numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SMTPCredentialMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(smtpcredential.FieldLastUsedAt) {
+		fields = append(fields, smtpcredential.FieldLastUsedAt)
+	}
+	if m.FieldCleared(smtpcredential.FieldRevokedAt) {
+		fields = append(fields, smtpcredential.FieldRevokedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SMTPCredentialMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SMTPCredentialMutation) ClearField(name string) error {
+	switch name {
+	case smtpcredential.FieldLastUsedAt:
+		m.ClearLastUsedAt()
+		return nil
+	case smtpcredential.FieldRevokedAt:
+		m.ClearRevokedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SMTPCredential nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SMTPCredentialMutation) ResetField(name string) error {
+	switch name {
+	case smtpcredential.FieldUsername:
+		m.ResetUsername()
+		return nil
+	case smtpcredential.FieldName:
+		m.ResetName()
+		return nil
+	case smtpcredential.FieldHash:
+		m.ResetHash()
+		return nil
+	case smtpcredential.FieldDomains:
+		m.ResetDomains()
+		return nil
+	case smtpcredential.FieldLastUsedAt:
+		m.ResetLastUsedAt()
+		return nil
+	case smtpcredential.FieldRevokedAt:
+		m.ResetRevokedAt()
+		return nil
+	case smtpcredential.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case smtpcredential.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SMTPCredential field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SMTPCredentialMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SMTPCredentialMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SMTPCredentialMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SMTPCredentialMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SMTPCredentialMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SMTPCredentialMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SMTPCredentialMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SMTPCredential unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SMTPCredentialMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SMTPCredential edge %s", name)
 }
 
 // SchemaMigrationMutation represents an operation that mutates the SchemaMigration nodes in the graph.

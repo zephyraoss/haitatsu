@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 	"strings"
 	"testing"
+	"time"
 
 	passwordauth "github.com/zephyraoss/haitatsu/internal/auth"
 	"github.com/zephyraoss/haitatsu/internal/config"
@@ -145,5 +146,70 @@ func TestSubmissionRejectsPlaintextAuthByDefault(t *testing.T) {
 	jobs, _ := h.client.OutboundJob.Query().All(context.Background())
 	if len(jobs) != 0 {
 		t.Fatalf("jobs = %+v", jobs)
+	}
+}
+
+func seedSMTPCredential(t *testing.T, client *ent.Client, username string, domains ...string) {
+	t.Helper()
+	hash, _ := passwordauth.HashPassword(password)
+	if _, err := client.SMTPCredential.Create().SetUsername(username).SetName("relay").SetHash(hash).SetDomains(domains).Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSMTPCredentialSendsForAnyAddressInItsDomains(t *testing.T) {
+	h := newHarness(t, outbound.Limits{})
+	seedSMTPCredential(t, h.client, "smtp_relay", "example.test", "other.test")
+	body := "From: noreply@example.test\r\nTo: dave@remote.test\r\nSubject: hi\r\n\r\nhello\r\n"
+	if err := submit(h.addr, "SMTP_Relay", password, "noreply@example.test", []string{"dave@remote.test"}, body); err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ := h.client.OutboundJob.Query().All(context.Background())
+	if len(jobs) != 1 || jobs[0].MailboxID != "" || jobs[0].SenderDomain != "example.test" {
+		t.Fatalf("jobs = %+v", jobs)
+	}
+	sent, _ := h.store.FolderByName(context.Background(), h.mbox.ID, "Sent")
+	if items, _ := h.store.ActiveMessagesInFolder(context.Background(), sent.ID); len(items) != 0 {
+		t.Fatal("credential send must not copy into a mailbox")
+	}
+	credential, _ := h.client.SMTPCredential.Query().Only(context.Background())
+	if credential.LastUsedAt == nil {
+		t.Fatal("last_used_at not recorded")
+	}
+}
+
+func TestSMTPCredentialRejectsSendersOutsideItsDomains(t *testing.T) {
+	h := newHarness(t, outbound.Limits{})
+	seedSMTPCredential(t, h.client, "smtp_relay", "example.test")
+	body := "Subject: hi\r\n\r\nhello\r\n"
+	err := submit(h.addr, "smtp_relay", password, "noreply@unlisted.test", []string{"dave@remote.test"}, body)
+	if err == nil || !strings.Contains(err.Error(), "553") {
+		t.Fatalf("sender outside credential domains should be rejected with 553, got %v", err)
+	}
+	spoofed := "From: ceo@unlisted.test\r\nTo: dave@remote.test\r\nSubject: hi\r\n\r\nhello\r\n"
+	err = submit(h.addr, "smtp_relay", password, "noreply@example.test", []string{"dave@remote.test"}, spoofed)
+	if err == nil || !strings.Contains(err.Error(), "553") {
+		t.Fatalf("header From outside the envelope domain should be rejected with 553, got %v", err)
+	}
+	if jobs, _ := h.client.OutboundJob.Query().Count(context.Background()); jobs != 0 {
+		t.Fatalf("queued %d jobs", jobs)
+	}
+}
+
+func TestSMTPCredentialAuthFailures(t *testing.T) {
+	h := newHarness(t, outbound.Limits{})
+	seedSMTPCredential(t, h.client, "smtp_relay", "example.test")
+	body := "From: noreply@example.test\r\nTo: dave@remote.test\r\nSubject: hi\r\n\r\nhello\r\n"
+	if err := submit(h.addr, "smtp_relay", "nope", "noreply@example.test", []string{"dave@remote.test"}, body); err == nil {
+		t.Fatal("wrong password should fail auth")
+	}
+	if err := submit(h.addr, "carol@example.test", password, "noreply@example.test", []string{"dave@remote.test"}, body); err == nil {
+		t.Fatal("mailbox login must not grant domain-wide sending")
+	}
+	if _, err := h.client.SMTPCredential.Update().SetRevokedAt(time.Now()).Save(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := submit(h.addr, "smtp_relay", password, "noreply@example.test", []string{"dave@remote.test"}, body); err == nil {
+		t.Fatal("revoked credential should fail auth")
 	}
 }

@@ -80,6 +80,11 @@ func Register(router fiber.Router, client *ent.Client, db *sql.DB, store Message
 	v1.Post("/mailboxes/:mailbox_id/passwords", h.createAppPassword)
 	v1.Delete("/mailboxes/:mailbox_id/passwords/:id", h.revokeAppPassword)
 
+	v1.Get("/smtp-credentials", h.listSMTPCredentials)
+	v1.Post("/smtp-credentials", h.createSMTPCredential)
+	v1.Get("/smtp-credentials/:id", h.getSMTPCredential)
+	v1.Delete("/smtp-credentials/:id", h.revokeSMTPCredential)
+
 	v1.Get("/routes", h.listRoutes)
 	v1.Post("/routes", h.createRoute)
 	v1.Get("/routes/:id", h.getRoute)

@@ -12,6 +12,7 @@ Haitatsu is a simple email server written in Go. It receives and stores mail, ex
 - REST API with cursor pagination, constant-time service token auth
 - TLS from automatic ACME certificates (HTTP-01, TLS-ALPN-01, or DNS-01 through Cloudflare), or read straight out of a certmagic-layout S3 bucket that something else (such as Caddy) already keeps current, for any number of hostnames
 - App passwords for protocol access, with database-backed login throttling shared across nodes
+- SMTP credentials that can send as any address in one or more domains, for applications relaying through submission
 - Quota accounting that tracks deletes and expunges, with a recompute endpoint
 - PostgreSQL, SQLite, or remote libSQL for metadata, S3-compatible storage for message blobs, versioned migrations
 - Pkl configuration with hot reload of spam, relay, webhook, notification, API token, and limits settings
@@ -142,6 +143,8 @@ TLS has four modes. `manual` loads `cert_file` and `key_file`. `acme` obtains ce
 Per-mailbox outbound limits override the defaults through the `outbound_limits` field on the mailbox API using the keys `per_hour`, `per_day`, and `recipients_per_message`.
 
 `POST /api/v1/domains/{domain}/outbound` sends transactional mail as any address in a domain that has a DKIM key, without a mailbox behind it. It takes the same body as the mailbox outbound endpoint, and both the envelope `from` and every header `From` address must be in that domain. Nothing is copied to a Sent folder or charged against a quota, so the stored message is removed by cleanup once delivery finishes. Each domain shares one budget set by the `domain_outbound_*` limits, which fall back to the matching `default_outbound_*` values when unset. Bounces arrive as `message.bounced` webhook events instead of notification mail, with `source` set to `relay` when the relay rejects the message permanently or exhausts its retries, and `dsn` when a delivery status notification comes back to the VERP return path. Both carry `message_id`, `sender_domain`, and `recipients`, and `dsn` events add the parsed `details` and `bounce_event_id`. Route them by adding a `message.bounced` entry to `webhooks.endpoints`.
+
+Applications that need to relay over SMTP instead of calling the API can use an SMTP credential. `POST /api/v1/smtp-credentials` with a `name` and a list of `domains` returns a generated `username` (`smtp_...`) and `password`, and the password is only shown in that response. Every domain must already have a DKIM key. Logging in to submission with that username lets a client send as any address in the listed domains, and each message goes through the same path as the domain outbound endpoint, so it gets the domain's limits and `message.bounced` events and no Sent copy. A message's envelope sender picks its domain, and its header `From` addresses must be in that same domain. `GET /api/v1/smtp-credentials` lists credentials and `DELETE /api/v1/smtp-credentials/{id}` revokes one. The domain list can't be changed after creation, so create a new credential and revoke the old one instead. Mailbox app passwords are unaffected, since submission treats any username containing `@` as a mailbox login.
 
 ### Per-inbox spam thresholds
 

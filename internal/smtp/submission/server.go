@@ -7,6 +7,8 @@ import (
 	"io"
 	"net"
 	"net/mail"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -17,6 +19,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/apppassword"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/smtpcredential"
 	"github.com/zephyraoss/haitatsu/internal/outbound"
 	"github.com/zephyraoss/haitatsu/internal/ratelimit"
 )
@@ -112,6 +115,7 @@ type session struct {
 	backend    *backend
 	remoteIP   string
 	mailbox    *ent.Mailbox
+	credential *ent.SMTPCredential
 	mailFrom   string
 	recipients []string
 	released   bool
@@ -158,6 +162,13 @@ func (s *session) verifyCredentials(identity, username, password string) error {
 	if identity != "" && identity != username {
 		return smtp.ErrAuthFailed
 	}
+	if strings.Contains(username, "@") {
+		return s.verifyMailboxPassword(username, password)
+	}
+	return s.verifySMTPCredential(username, password)
+}
+
+func (s *session) verifyMailboxPassword(username, password string) error {
 	ctx := context.Background()
 	mbox, err := s.backend.client.Mailbox.Query().Where(mailbox.PrimaryAddressEqualFold(username), mailbox.StatusEQ("active"), mailbox.DeletedAtIsNil()).Only(ctx)
 	if err != nil {
@@ -181,15 +192,40 @@ func (s *session) verifyCredentials(identity, username, password string) error {
 	return smtp.ErrAuthFailed
 }
 
+func (s *session) verifySMTPCredential(username, password string) error {
+	ctx := context.Background()
+	item, err := s.backend.client.SMTPCredential.Query().Where(smtpcredential.UsernameEqualFold(username), smtpcredential.RevokedAtIsNil()).Only(ctx)
+	if ent.IsNotFound(err) {
+		return smtp.ErrAuthFailed
+	}
+	if err != nil {
+		return err
+	}
+	valid, err := passwordauth.VerifyPassword(password, item.Hash)
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return smtp.ErrAuthFailed
+	}
+	s.credential = item
+	_, _ = s.backend.client.SMTPCredential.UpdateOneID(item.ID).SetLastUsedAt(time.Now()).Save(ctx)
+	return nil
+}
+
+func (s *session) authenticated() bool {
+	return s.mailbox != nil || s.credential != nil
+}
+
 func (s *session) Mail(from string, _ *smtp.MailOptions) error {
-	if s.mailbox == nil {
+	if !s.authenticated() {
 		return smtp.ErrAuthRequired
 	}
 	addr, err := mail.ParseAddress(from)
 	if err != nil {
 		return &smtp.SMTPError{Code: 553, EnhancedCode: smtp.EnhancedCode{5, 1, 7}, Message: "invalid sender"}
 	}
-	allowed, err := s.backend.submission.SenderAllowed(context.Background(), s.mailbox, addr.Address)
+	allowed, err := s.senderAllowed(addr.Address)
 	if err != nil {
 		return temporaryError()
 	}
@@ -201,8 +237,20 @@ func (s *session) Mail(from string, _ *smtp.MailOptions) error {
 	return nil
 }
 
+func (s *session) senderAllowed(address string) (bool, error) {
+	if s.credential != nil {
+		return slices.Contains(s.credential.Domains, senderDomain(address)), nil
+	}
+	return s.backend.submission.SenderAllowed(context.Background(), s.mailbox, address)
+}
+
+func senderDomain(address string) string {
+	_, domain, _ := strings.Cut(strings.ToLower(address), "@")
+	return domain
+}
+
 func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
-	if s.mailbox == nil {
+	if !s.authenticated() {
 		return smtp.ErrAuthRequired
 	}
 	if _, err := mail.ParseAddress(to); err != nil {
@@ -213,7 +261,7 @@ func (s *session) Rcpt(to string, _ *smtp.RcptOptions) error {
 }
 
 func (s *session) Data(r io.Reader) error {
-	if s.mailbox == nil {
+	if !s.authenticated() {
 		return smtp.ErrAuthRequired
 	}
 	if s.mailFrom == "" || len(s.recipients) == 0 {
@@ -223,10 +271,20 @@ func (s *session) Data(r io.Reader) error {
 	if err != nil {
 		return temporaryError()
 	}
-	if _, err := s.backend.submission.Submit(context.Background(), s.mailbox.ID, s.mailFrom, raw, s.recipients); err != nil {
+	if err := s.submit(raw); err != nil {
 		return submissionError(err)
 	}
 	return nil
+}
+
+func (s *session) submit(raw []byte) error {
+	ctx := context.Background()
+	if s.credential != nil {
+		_, err := s.backend.submission.SubmitForDomain(ctx, senderDomain(s.mailFrom), s.mailFrom, raw, s.recipients)
+		return err
+	}
+	_, err := s.backend.submission.Submit(ctx, s.mailbox.ID, s.mailFrom, raw, s.recipients)
+	return err
 }
 
 func (s *session) Reset() {

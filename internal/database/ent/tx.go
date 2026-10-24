@@ -50,6 +50,8 @@ type Tx struct {
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
+	// SMTPCredential is the client for interacting with the SMTPCredential builders.
+	SMTPCredential *SMTPCredentialClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SenderRule is the client for interacting with the SenderRule builders.
@@ -203,6 +205,7 @@ func (tx *Tx) init() {
 	tx.OutboundJob = NewOutboundJobClient(tx.config)
 	tx.Route = NewRouteClient(tx.config)
 	tx.RoutingRule = NewRoutingRuleClient(tx.config)
+	tx.SMTPCredential = NewSMTPCredentialClient(tx.config)
 	tx.SchemaMigration = NewSchemaMigrationClient(tx.config)
 	tx.SenderRule = NewSenderRuleClient(tx.config)
 }
