@@ -43,6 +43,20 @@ func (_u *OutboundJobUpdate) SetNillableMailboxID(v *string) *OutboundJobUpdate 
 	return _u
 }
 
+// SetSenderDomain sets the "sender_domain" field.
+func (_u *OutboundJobUpdate) SetSenderDomain(v string) *OutboundJobUpdate {
+	_u.mutation.SetSenderDomain(v)
+	return _u
+}
+
+// SetNillableSenderDomain sets the "sender_domain" field if the given value is not nil.
+func (_u *OutboundJobUpdate) SetNillableSenderDomain(v *string) *OutboundJobUpdate {
+	if v != nil {
+		_u.SetSenderDomain(*v)
+	}
+	return _u
+}
+
 // SetMessageID sets the "message_id" field.
 func (_u *OutboundJobUpdate) SetMessageID(v string) *OutboundJobUpdate {
 	_u.mutation.SetMessageID(v)
@@ -249,6 +263,9 @@ func (_u *OutboundJobUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.MailboxID(); ok {
 		_spec.SetField(outboundjob.FieldMailboxID, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.SenderDomain(); ok {
+		_spec.SetField(outboundjob.FieldSenderDomain, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.MessageID(); ok {
 		_spec.SetField(outboundjob.FieldMessageID, field.TypeString, value)
 	}
@@ -329,6 +346,20 @@ func (_u *OutboundJobUpdateOne) SetMailboxID(v string) *OutboundJobUpdateOne {
 func (_u *OutboundJobUpdateOne) SetNillableMailboxID(v *string) *OutboundJobUpdateOne {
 	if v != nil {
 		_u.SetMailboxID(*v)
+	}
+	return _u
+}
+
+// SetSenderDomain sets the "sender_domain" field.
+func (_u *OutboundJobUpdateOne) SetSenderDomain(v string) *OutboundJobUpdateOne {
+	_u.mutation.SetSenderDomain(v)
+	return _u
+}
+
+// SetNillableSenderDomain sets the "sender_domain" field if the given value is not nil.
+func (_u *OutboundJobUpdateOne) SetNillableSenderDomain(v *string) *OutboundJobUpdateOne {
+	if v != nil {
+		_u.SetSenderDomain(*v)
 	}
 	return _u
 }
@@ -568,6 +599,9 @@ func (_u *OutboundJobUpdateOne) sqlSave(ctx context.Context) (_node *OutboundJob
 	}
 	if value, ok := _u.mutation.MailboxID(); ok {
 		_spec.SetField(outboundjob.FieldMailboxID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SenderDomain(); ok {
+		_spec.SetField(outboundjob.FieldSenderDomain, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.MessageID(); ok {
 		_spec.SetField(outboundjob.FieldMessageID, field.TypeString, value)

@@ -337,20 +337,24 @@ func init() {
 	outboundattempt.DefaultID = outboundattemptDescID.Default.(func() string)
 	outboundjobFields := schema.OutboundJob{}.Fields()
 	_ = outboundjobFields
+	// outboundjobDescSenderDomain is the schema descriptor for sender_domain field.
+	outboundjobDescSenderDomain := outboundjobFields[2].Descriptor()
+	// outboundjob.DefaultSenderDomain holds the default value on creation for the sender_domain field.
+	outboundjob.DefaultSenderDomain = outboundjobDescSenderDomain.Default.(string)
 	// outboundjobDescStatus is the schema descriptor for status field.
-	outboundjobDescStatus := outboundjobFields[5].Descriptor()
+	outboundjobDescStatus := outboundjobFields[6].Descriptor()
 	// outboundjob.DefaultStatus holds the default value on creation for the status field.
 	outboundjob.DefaultStatus = outboundjobDescStatus.Default.(string)
 	// outboundjobDescAttempts is the schema descriptor for attempts field.
-	outboundjobDescAttempts := outboundjobFields[6].Descriptor()
+	outboundjobDescAttempts := outboundjobFields[7].Descriptor()
 	// outboundjob.DefaultAttempts holds the default value on creation for the attempts field.
 	outboundjob.DefaultAttempts = outboundjobDescAttempts.Default.(int)
 	// outboundjobDescCreatedAt is the schema descriptor for created_at field.
-	outboundjobDescCreatedAt := outboundjobFields[11].Descriptor()
+	outboundjobDescCreatedAt := outboundjobFields[12].Descriptor()
 	// outboundjob.DefaultCreatedAt holds the default value on creation for the created_at field.
 	outboundjob.DefaultCreatedAt = outboundjobDescCreatedAt.Default.(func() time.Time)
 	// outboundjobDescUpdatedAt is the schema descriptor for updated_at field.
-	outboundjobDescUpdatedAt := outboundjobFields[12].Descriptor()
+	outboundjobDescUpdatedAt := outboundjobFields[13].Descriptor()
 	// outboundjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	outboundjob.DefaultUpdatedAt = outboundjobDescUpdatedAt.Default.(func() time.Time)
 	// outboundjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

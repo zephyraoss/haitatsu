@@ -23,6 +23,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/mailbox"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/predicate"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/route"
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
@@ -53,13 +54,19 @@ type Submission struct {
 	publicHostname string
 	instanceName   string
 	defaults       func() Limits
+	domainDefaults func() Limits
 }
 
 func NewSubmission(client *ent.Client, blobs BlobStore, store *mailstore.Store, publicHostname string, instanceName string, defaults func() Limits) *Submission {
 	if defaults == nil {
 		defaults = func() Limits { return Limits{} }
 	}
-	return &Submission{client: client, blobs: blobs, store: store, publicHostname: publicHostname, instanceName: instanceName, defaults: defaults}
+	return &Submission{client: client, blobs: blobs, store: store, publicHostname: publicHostname, instanceName: instanceName, defaults: defaults, domainDefaults: defaults}
+}
+
+func (s *Submission) WithDomainLimits(limits func() Limits) *Submission {
+	s.domainDefaults = limits
+	return s
 }
 
 func (s *Submission) SenderAllowed(ctx context.Context, mbox *ent.Mailbox, address string) (bool, error) {
@@ -97,40 +104,18 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	if !allowed {
 		return nil, ErrSenderNotAllowed
 	}
-	domain := addressDomain(sender.Address)
-	key, err := s.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).Order(dkimkey.ByCreatedAt(entsql.OrderDesc()), dkimkey.ByID(entsql.OrderDesc())).First(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, ErrDKIMKeyNotFound
-		}
-		return nil, err
-	}
-
-	messageID := ids.New().String()
-	traceID := ids.New().String()
-	if len(recipients) > 0 {
-		recipients = dedupeAddresses(recipients)
-	} else {
-		recipients = outboundRecipients(nil, mailparse.Parse(mailparse.NormalizeMessage(raw)))
-	}
+	scope := s.mailboxScope(mbox)
 	fromAllowed := func(address string) (bool, error) { return s.SenderAllowed(ctx, mbox, address) }
-	normalized, err := normalizeSubmittedMessage(raw, sender.Address, fromAllowed, messageID, s.publicHostname, traceID, s.instanceName)
+	prepared, err := s.prepare(ctx, sender.Address, fromAllowed, raw, recipients, func(count int, size int64) error {
+		if err := s.enforceLimits(ctx, s.client, scope, count); err != nil {
+			return err
+		}
+		if mailstore.OverQuotaWith(mbox, size) {
+			return ErrOverQuota
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	if err := s.enforceLimits(ctx, s.client, mbox, len(recipients)); err != nil {
-		return nil, err
-	}
-	if mailstore.OverQuotaWith(mbox, int64(len(normalized))) {
-		return nil, ErrOverQuota
-	}
-	signed, err := signMessage(normalized, key)
-	if err != nil {
-		return nil, err
-	}
-
-	objectKey := messageObjectKey(time.Now().UTC(), messageID)
-	if err := s.blobs.PutMessage(ctx, objectKey, signed); err != nil {
 		return nil, err
 	}
 	sent, err := s.store.FolderByName(ctx, mailboxID, "Sent")
@@ -141,7 +126,7 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	if err != nil {
 		return nil, err
 	}
-	msg, attach, item, err := s.enqueueInTx(ctx, tx, mbox, sent.ID, domain, messageID, traceID, objectKey, signed, recipients)
+	msg, attach, item, err := s.enqueueInTx(ctx, tx, mbox, sent.ID, prepared)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -153,39 +138,159 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	return msg, nil
 }
 
+func (s *Submission) SubmitForDomain(ctx context.Context, domain string, from string, raw []byte, recipients []string) (*ent.Message, error) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	sender, err := mail.ParseAddress(from)
+	if err != nil {
+		return nil, err
+	}
+	if !inDomain(sender.Address, domain) {
+		return nil, ErrSenderNotAllowed
+	}
+	fromAllowed := func(address string) (bool, error) { return inDomain(address, domain), nil }
+	scope := s.domainScope(domain)
+	prepared, err := s.prepare(ctx, sender.Address, fromAllowed, raw, recipients, func(count int, _ int64) error {
+		return s.enforceLimits(ctx, s.client, scope, count)
+	})
+	if err != nil {
+		return nil, err
+	}
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	msg, err := s.enqueueDomainInTx(ctx, tx, scope, prepared)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+func inDomain(address string, domain string) bool {
+	return domain != "" && addressDomain(address) == domain
+}
+
+type preparedMessage struct {
+	id         string
+	traceID    string
+	domain     string
+	objectKey  string
+	signed     []byte
+	recipients []string
+}
+
+func (s *Submission) prepare(ctx context.Context, sender string, fromAllowed senderCheck, raw []byte, recipients []string, admit func(recipientCount int, size int64) error) (preparedMessage, error) {
+	domain := addressDomain(sender)
+	key, err := s.client.DKIMKey.Query().Where(dkimkey.DomainEQ(domain)).Order(dkimkey.ByCreatedAt(entsql.OrderDesc()), dkimkey.ByID(entsql.OrderDesc())).First(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return preparedMessage{}, ErrDKIMKeyNotFound
+		}
+		return preparedMessage{}, err
+	}
+	prepared := preparedMessage{id: ids.New().String(), traceID: ids.New().String(), domain: domain}
+	if len(recipients) > 0 {
+		prepared.recipients = dedupeAddresses(recipients)
+	} else {
+		prepared.recipients = outboundRecipients(nil, mailparse.Parse(mailparse.NormalizeMessage(raw)))
+	}
+	normalized, err := normalizeSubmittedMessage(raw, sender, fromAllowed, prepared.id, s.publicHostname, prepared.traceID, s.instanceName)
+	if err != nil {
+		return preparedMessage{}, err
+	}
+	if err := admit(len(prepared.recipients), int64(len(normalized))); err != nil {
+		return preparedMessage{}, err
+	}
+	prepared.signed, err = signMessage(normalized, key)
+	if err != nil {
+		return preparedMessage{}, err
+	}
+	prepared.objectKey = messageObjectKey(time.Now().UTC(), prepared.id)
+	if err := s.blobs.PutMessage(ctx, prepared.objectKey, prepared.signed); err != nil {
+		return preparedMessage{}, err
+	}
+	return prepared, nil
+}
+
 // enqueueInTx re-checks the send limits and quota under a mailbox row lock so
 // that concurrent submissions for the same mailbox cannot all pass the checks
 // before any of them records its job.
-func (s *Submission) enqueueInTx(ctx context.Context, tx *ent.Tx, mbox *ent.Mailbox, sentFolderID string, domain string, messageID string, traceID string, objectKey string, signed []byte, recipients []string) (*ent.Message, mailstore.Attach, *ent.MailboxMessage, error) {
+func (s *Submission) enqueueInTx(ctx context.Context, tx *ent.Tx, mbox *ent.Mailbox, sentFolderID string, prepared preparedMessage) (*ent.Message, mailstore.Attach, *ent.MailboxMessage, error) {
 	client := tx.Client()
 	if err := mailstore.LockMailbox(ctx, tx, mbox.ID); err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
-	if err := s.enforceLimits(ctx, client, mbox, len(recipients)); err != nil {
+	if err := s.enforceLimits(ctx, client, s.mailboxScope(mbox), len(prepared.recipients)); err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
-	msg, err := createMessage(ctx, client, messageID, traceID, objectKey, signed, mailparse.Parse(signed))
+	msg, err := createMessage(ctx, client, prepared.id, prepared.traceID, prepared.objectKey, prepared.signed, mailparse.Parse(prepared.signed))
 	if err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
-	attach := mailstore.Attach{MailboxID: mbox.ID, MessageID: msg.ID, FolderID: sentFolderID, SizeBytes: int64(len(signed)), Flags: mailstore.Flags{Seen: true}, EnforceQuota: true}
+	attach := mailstore.Attach{MailboxID: mbox.ID, MessageID: msg.ID, FolderID: sentFolderID, SizeBytes: int64(len(prepared.signed)), Flags: mailstore.Flags{Seen: true}, EnforceQuota: true}
 	item, err := s.store.AttachInTx(ctx, tx, attach)
 	if err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
-	if _, err := client.OutboundJob.Create().SetMailboxID(mbox.ID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, domain)).SetRecipients(recipients).Save(ctx); err != nil {
+	if _, err := client.OutboundJob.Create().SetMailboxID(mbox.ID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, prepared.domain)).SetRecipients(prepared.recipients).Save(ctx); err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
 	return msg, attach, item, nil
 }
 
-func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, mbox *ent.Mailbox, recipientCount int) error {
-	limits := s.limitsFor(mbox)
+func (s *Submission) enqueueDomainInTx(ctx context.Context, tx *ent.Tx, scope sendScope, prepared preparedMessage) (*ent.Message, error) {
+	client := tx.Client()
+	if err := lockSenderDomain(ctx, client, prepared.domain); err != nil {
+		return nil, err
+	}
+	if err := s.enforceLimits(ctx, client, scope, len(prepared.recipients)); err != nil {
+		return nil, err
+	}
+	msg, err := createMessage(ctx, client, prepared.id, prepared.traceID, prepared.objectKey, prepared.signed, mailparse.Parse(prepared.signed))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := client.OutboundJob.Create().SetMailboxID("").SetSenderDomain(prepared.domain).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, prepared.domain)).SetRecipients(prepared.recipients).Save(ctx); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+func lockSenderDomain(ctx context.Context, client *ent.Client, domain string) error {
+	locked, err := client.DKIMKey.Update().Where(dkimkey.DomainEQ(domain)).SetDomain(domain).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if locked == 0 {
+		return ErrDKIMKeyNotFound
+	}
+	return nil
+}
+
+type sendScope struct {
+	limits Limits
+	jobs   predicate.OutboundJob
+}
+
+func (s *Submission) mailboxScope(mbox *ent.Mailbox) sendScope {
+	return sendScope{limits: s.limitsFor(mbox), jobs: outboundjob.MailboxIDEQ(mbox.ID)}
+}
+
+func (s *Submission) domainScope(domain string) sendScope {
+	return sendScope{limits: s.domainDefaults(), jobs: outboundjob.SenderDomainEQ(domain)}
+}
+
+func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, scope sendScope, recipientCount int) error {
+	limits := scope.limits
 	if limits.RecipientsPerMessage > 0 && int64(recipientCount) > limits.RecipientsPerMessage {
 		return ErrTooManyRecipients
 	}
 	if limits.PerHour > 0 {
-		count, err := recipientsSince(ctx, client, mbox.ID, time.Now().Add(-time.Hour))
+		count, err := recipientsSince(ctx, client, scope.jobs, time.Now().Add(-time.Hour))
 		if err != nil {
 			return err
 		}
@@ -194,7 +299,7 @@ func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, mbox
 		}
 	}
 	if limits.PerDay > 0 {
-		count, err := recipientsSince(ctx, client, mbox.ID, time.Now().Add(-24*time.Hour))
+		count, err := recipientsSince(ctx, client, scope.jobs, time.Now().Add(-24*time.Hour))
 		if err != nil {
 			return err
 		}
@@ -205,13 +310,13 @@ func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, mbox
 	return nil
 }
 
-func recipientsSince(ctx context.Context, client *ent.Client, mailboxID string, since time.Time) (int64, error) {
-	jobs, err := client.OutboundJob.Query().Where(outboundjob.MailboxIDEQ(mailboxID), outboundjob.CreatedAtGTE(since)).Select(outboundjob.FieldRecipients).All(ctx)
+func recipientsSince(ctx context.Context, client *ent.Client, jobs predicate.OutboundJob, since time.Time) (int64, error) {
+	found, err := client.OutboundJob.Query().Where(jobs, outboundjob.CreatedAtGTE(since)).Select(outboundjob.FieldRecipients).All(ctx)
 	if err != nil {
 		return 0, err
 	}
 	var count int64
-	for _, job := range jobs {
+	for _, job := range found {
 		count += int64(len(job.Recipients))
 	}
 	return count, nil

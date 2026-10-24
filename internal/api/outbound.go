@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -24,7 +25,23 @@ type outboundMessageRequest struct {
 	Raw     string   `json:"raw"`
 }
 
+type submitFunc func(ctx context.Context, from string, raw []byte, recipients []string) (*ent.Message, error)
+
 func (h *Handler) createOutboundMessage(c fiber.Ctx) error {
+	mailboxID := c.Params("mailbox_id")
+	return submitOutbound(c, "Sender is not allowed for mailbox", func(ctx context.Context, from string, raw []byte, recipients []string) (*ent.Message, error) {
+		return h.outbound.Submit(ctx, mailboxID, from, raw, recipients)
+	})
+}
+
+func (h *Handler) createDomainOutboundMessage(c fiber.Ctx) error {
+	domain := c.Params("domain")
+	return submitOutbound(c, "Sender is not an address in domain", func(ctx context.Context, from string, raw []byte, recipients []string) (*ent.Message, error) {
+		return h.outbound.SubmitForDomain(ctx, domain, from, raw, recipients)
+	})
+}
+
+func submitOutbound(c fiber.Ctx, senderNotAllowed string, submit submitFunc) error {
 	var req outboundMessageRequest
 	if err := c.Bind().JSON(&req); err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_request", "Invalid JSON body")
@@ -33,7 +50,10 @@ func (h *Handler) createOutboundMessage(c fiber.Ctx) error {
 	if err != nil {
 		return problem(c, fiber.StatusBadRequest, "invalid_outbound_message", err.Error())
 	}
-	msg, err := h.outbound.Submit(c.Context(), c.Params("mailbox_id"), req.From, raw, req.recipients())
+	msg, err := submit(c.Context(), req.From, raw, req.recipients())
+	if errors.Is(err, outbound.ErrSenderNotAllowed) {
+		return problem(c, fiber.StatusForbidden, "sender_not_allowed", senderNotAllowed)
+	}
 	if err != nil {
 		return outboundProblem(c, err)
 	}
@@ -140,9 +160,6 @@ func validateAddresses(addresses []string) error {
 }
 
 func outboundProblem(c fiber.Ctx, err error) error {
-	if errors.Is(err, outbound.ErrSenderNotAllowed) {
-		return problem(c, fiber.StatusForbidden, "sender_not_allowed", "Sender is not allowed for mailbox")
-	}
 	if errors.Is(err, outbound.ErrDKIMKeyNotFound) {
 		return problem(c, fiber.StatusConflict, "dkim_key_not_found", "DKIM key is not configured for sender domain")
 	}

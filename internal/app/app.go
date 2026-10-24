@@ -102,6 +102,9 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	submissionService := outbound.NewSubmission(db.Ent(), blobStore, mail, cfg.Server.PublicHostname, cfg.Server.InstanceName, func() outbound.Limits {
 		limits := holder.Get().Limits
 		return outbound.Limits{PerHour: limits.DefaultOutboundPerHour, PerDay: limits.DefaultOutboundPerDay, RecipientsPerMessage: limits.DefaultOutboundRecipients}
+	}).WithDomainLimits(func() outbound.Limits {
+		limits := holder.Get().Limits
+		return outbound.Limits{PerHour: limits.DomainOutboundPerHour, PerDay: limits.DomainOutboundPerDay, RecipientsPerMessage: limits.DomainOutboundRecipients}
 	})
 	server := httpapi.New(holder, db.Ent(), db.SQL(), blobStore, mail, submissionService, checker, m, runtime)
 	cleanupWorker := cleanup.New(db.Ent(), blobStore, mail, m)
@@ -116,8 +119,8 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	ruleEngine := rules.New(db.Ent(), mail, eventService)
 	messageService := messages.NewService(db.Ent(), blobStore, mail, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
 	notificationService := notifications.New(db.Ent(), messageService, func() config.NotificationConfig { return holder.Get().Notifications }, cfg.Server.PublicHostname)
-	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName, db.Backend()).WithHostname(cfg.Server.PublicHostname)
-	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)
+	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName, db.Backend()).WithHostname(cfg.Server.PublicHostname).WithEvents(eventService)
+	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m).WithEvents(eventService)
 	spamChecker := spam.NewChecker(db.Ent(), func() config.SpamConfig { return holder.Get().Spam }, cfg.Server.PublicHostname,
 		spam.WithTypeSafe(spam.NewTypeSafeClient(), func(result spam.TypeSafeResult) {
 			m.TypeSafeAssessments.WithLabelValues(result.Mode, result.Status).Inc()

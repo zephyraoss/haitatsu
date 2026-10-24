@@ -20,6 +20,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/dkimkey"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
+	"github.com/zephyraoss/haitatsu/internal/events"
 	"github.com/zephyraoss/haitatsu/internal/mailaddr"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
@@ -59,12 +60,17 @@ func (j entOutboundJobs) HasOutboundJob(ctx context.Context, messageID string) (
 	return j.client.OutboundJob.Query().Where(outboundjob.MessageIDEQ(messageID)).Exist(ctx)
 }
 
+type EventEmitter interface {
+	Emit(ctx context.Context, eventType string, mailboxID string, payload map[string]any) error
+}
+
 type Handler struct {
 	client  *ent.Client
 	store   Store
 	metrics *metrics.Metrics
 	hosted  hostedDomainChecker
 	jobs    outboundJobChecker
+	events  EventEmitter
 }
 
 type Recipient struct {
@@ -80,6 +86,11 @@ func NewHandler(client *ent.Client, store Store, metrics *metrics.Metrics) *Hand
 		hosted:  dkimHostedDomains{client: client},
 		jobs:    entOutboundJobs{client: client},
 	}
+}
+
+func (h *Handler) WithEvents(events EventEmitter) *Handler {
+	h.events = events
+	return h
 }
 
 func (h *Handler) ParseRecipient(ctx context.Context, address string) (Recipient, bool, bool) {
@@ -133,13 +144,34 @@ func (h *Handler) Record(ctx context.Context, recipients []Recipient, raw []byte
 			SetSizeBytes(int64(len(raw))).
 			SetDetails(details))
 	}
-	if _, err := h.client.BounceEvent.CreateBulk(creates...).Save(ctx); err != nil {
+	recorded, err := h.client.BounceEvent.CreateBulk(creates...).Save(ctx)
+	if err != nil {
 		return err
 	}
-	for range creates {
+	for _, bounce := range recorded {
 		h.metrics.MessageBounced()
+		h.emitDomainBounce(ctx, bounce)
 	}
 	return nil
+}
+
+func (h *Handler) emitDomainBounce(ctx context.Context, bounce *ent.BounceEvent) {
+	if h.events == nil {
+		return
+	}
+	job, err := h.client.OutboundJob.Query().Where(outboundjob.MessageIDEQ(bounce.MessageID), outboundjob.SenderDomainNEQ("")).First(ctx)
+	if err != nil {
+		return
+	}
+	_ = h.events.Emit(ctx, events.MessageBounced, "", map[string]any{
+		"event":           events.MessageBounced,
+		"source":          "dsn",
+		"message_id":      bounce.MessageID,
+		"sender_domain":   job.SenderDomain,
+		"recipients":      job.Recipients,
+		"bounce_event_id": bounce.ID,
+		"details":         bounce.Details,
+	})
 }
 
 func uniqueRecipients(recipients []Recipient) []Recipient {

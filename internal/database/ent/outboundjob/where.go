@@ -69,6 +69,11 @@ func MailboxID(v string) predicate.OutboundJob {
 	return predicate.OutboundJob(sql.FieldEQ(FieldMailboxID, v))
 }
 
+// SenderDomain applies equality check predicate on the "sender_domain" field. It's identical to SenderDomainEQ.
+func SenderDomain(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldEQ(FieldSenderDomain, v))
+}
+
 // MessageID applies equality check predicate on the "message_id" field. It's identical to MessageIDEQ.
 func MessageID(v string) predicate.OutboundJob {
 	return predicate.OutboundJob(sql.FieldEQ(FieldMessageID, v))
@@ -177,6 +182,71 @@ func MailboxIDEqualFold(v string) predicate.OutboundJob {
 // MailboxIDContainsFold applies the ContainsFold predicate on the "mailbox_id" field.
 func MailboxIDContainsFold(v string) predicate.OutboundJob {
 	return predicate.OutboundJob(sql.FieldContainsFold(FieldMailboxID, v))
+}
+
+// SenderDomainEQ applies the EQ predicate on the "sender_domain" field.
+func SenderDomainEQ(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldEQ(FieldSenderDomain, v))
+}
+
+// SenderDomainNEQ applies the NEQ predicate on the "sender_domain" field.
+func SenderDomainNEQ(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldNEQ(FieldSenderDomain, v))
+}
+
+// SenderDomainIn applies the In predicate on the "sender_domain" field.
+func SenderDomainIn(vs ...string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldIn(FieldSenderDomain, vs...))
+}
+
+// SenderDomainNotIn applies the NotIn predicate on the "sender_domain" field.
+func SenderDomainNotIn(vs ...string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldNotIn(FieldSenderDomain, vs...))
+}
+
+// SenderDomainGT applies the GT predicate on the "sender_domain" field.
+func SenderDomainGT(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldGT(FieldSenderDomain, v))
+}
+
+// SenderDomainGTE applies the GTE predicate on the "sender_domain" field.
+func SenderDomainGTE(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldGTE(FieldSenderDomain, v))
+}
+
+// SenderDomainLT applies the LT predicate on the "sender_domain" field.
+func SenderDomainLT(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldLT(FieldSenderDomain, v))
+}
+
+// SenderDomainLTE applies the LTE predicate on the "sender_domain" field.
+func SenderDomainLTE(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldLTE(FieldSenderDomain, v))
+}
+
+// SenderDomainContains applies the Contains predicate on the "sender_domain" field.
+func SenderDomainContains(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldContains(FieldSenderDomain, v))
+}
+
+// SenderDomainHasPrefix applies the HasPrefix predicate on the "sender_domain" field.
+func SenderDomainHasPrefix(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldHasPrefix(FieldSenderDomain, v))
+}
+
+// SenderDomainHasSuffix applies the HasSuffix predicate on the "sender_domain" field.
+func SenderDomainHasSuffix(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldHasSuffix(FieldSenderDomain, v))
+}
+
+// SenderDomainEqualFold applies the EqualFold predicate on the "sender_domain" field.
+func SenderDomainEqualFold(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldEqualFold(FieldSenderDomain, v))
+}
+
+// SenderDomainContainsFold applies the ContainsFold predicate on the "sender_domain" field.
+func SenderDomainContainsFold(v string) predicate.OutboundJob {
+	return predicate.OutboundJob(sql.FieldContainsFold(FieldSenderDomain, v))
 }
 
 // MessageIDEQ applies the EQ predicate on the "message_id" field.

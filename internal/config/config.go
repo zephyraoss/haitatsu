@@ -391,6 +391,9 @@ type LimitsConfig struct {
 	DefaultOutboundPerHour        int64 `pkl:"default_outbound_per_hour" json:"default_outbound_per_hour"`
 	DefaultOutboundPerDay         int64 `pkl:"default_outbound_per_day" json:"default_outbound_per_day"`
 	DefaultOutboundRecipients     int64 `pkl:"default_outbound_recipients_per_message" json:"default_outbound_recipients_per_message"`
+	DomainOutboundPerHour         int64 `pkl:"domain_outbound_per_hour" json:"domain_outbound_per_hour"`
+	DomainOutboundPerDay          int64 `pkl:"domain_outbound_per_day" json:"domain_outbound_per_day"`
+	DomainOutboundRecipients      int64 `pkl:"domain_outbound_recipients_per_message" json:"domain_outbound_recipients_per_message"`
 }
 
 func (c Config) InboundHostnames() []string {
@@ -478,6 +481,15 @@ func (c LimitsConfig) withOutboundDefaults() LimitsConfig {
 	}
 	if c.DefaultOutboundRecipients == 0 {
 		c.DefaultOutboundRecipients = 50
+	}
+	if c.DomainOutboundPerHour == 0 {
+		c.DomainOutboundPerHour = c.DefaultOutboundPerHour
+	}
+	if c.DomainOutboundPerDay == 0 {
+		c.DomainOutboundPerDay = c.DefaultOutboundPerDay
+	}
+	if c.DomainOutboundRecipients == 0 {
+		c.DomainOutboundRecipients = c.DefaultOutboundRecipients
 	}
 	return c
 }
@@ -617,6 +629,9 @@ func (c Config) Validate() error {
 	}
 	if c.Limits.DefaultOutboundPerHour < 0 || c.Limits.DefaultOutboundPerDay < 0 || c.Limits.DefaultOutboundRecipients < 0 {
 		problems = append(problems, "limits.default_outbound_* must be >= 0")
+	}
+	if c.Limits.DomainOutboundPerHour < 0 || c.Limits.DomainOutboundPerDay < 0 || c.Limits.DomainOutboundRecipients < 0 {
+		problems = append(problems, "limits.domain_outbound_* must be >= 0")
 	}
 	if c.IMAP.MaxConnectionsPerIP < 0 {
 		problems = append(problems, "imap.max_connections_per_ip must be >= 0")

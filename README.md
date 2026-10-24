@@ -7,6 +7,7 @@ Haitatsu is a simple email server written in Go. It receives and stores mail, ex
 - IMAP4rev1 with stable per-folder UIDs, IDLE push, server-side SEARCH, MOVE, UIDPLUS, ESEARCH, SPECIAL-USE, LIST-STATUS, and label folders under `Labels/`
 - SMTP inbound with SPF, DKIM, DMARC (relaxed and strict alignment), DNSBL, sender allow/block lists, per-IP connection and rate limits
 - SMTP submission with PLAIN and LOGIN auth, DKIM signing, Bcc stripping, per-mailbox outbound limits, send-as for routed aliases
+- Domain-level transactional sending through the REST API, with no backing mailbox
 - Relay delivery with exponential backoff over roughly two days, permanent failure notifications
 - REST API with cursor pagination, constant-time service token auth
 - TLS from automatic ACME certificates (HTTP-01, TLS-ALPN-01, or DNS-01 through Cloudflare), or read straight out of a certmagic-layout S3 bucket that something else (such as Caddy) already keeps current, for any number of hostnames
@@ -128,7 +129,7 @@ Listener addresses, database settings, S3, TLS, and worker enablement require a 
 | Block | Keys |
 |-------|------|
 | `database` | `driver`, `dsn`, `auth_token`, `namespace` |
-| `limits` | `max_message_size_bytes`, `max_inbound_recipients`, `max_submission_recipients`, `max_connections_per_ip`, `max_inbound_connections`, `inbound_messages_per_minute_per_ip`, `default_outbound_per_hour`, `default_outbound_per_day`, `default_outbound_recipients_per_message` |
+| `limits` | `max_message_size_bytes`, `max_inbound_recipients`, `max_submission_recipients`, `max_connections_per_ip`, `max_inbound_connections`, `inbound_messages_per_minute_per_ip`, `default_outbound_per_hour`, `default_outbound_per_day`, `default_outbound_recipients_per_message`, `domain_outbound_per_hour`, `domain_outbound_per_day`, `domain_outbound_recipients_per_message` |
 | `relay` | `addr`, `username`, `password`, `from_host`, `max_attempts`, `max_retry_minutes`, `timeout_seconds` |
 | `webhooks` | `default_timeout_seconds`, `secret`, `endpoints`, `max_attempts` |
 | `spam` | `junk_threshold`, `reject_threshold`, `dnsbl_zones`, `dnsbl_score`, `require_helo`, `typesafe` |
@@ -139,6 +140,8 @@ Listener addresses, database settings, S3, TLS, and worker enablement require a 
 TLS has four modes. `manual` loads `cert_file` and `key_file`. `acme` obtains certificates for `public_hostname` and every name in `storage.hostnames` itself using HTTP-01 or TLS-ALPN-01 on the listener host, cached under `acme_cache_path` (default `/var/lib/haitatsu/certmagic`). Setting `acme_cloudflare_api_token` to a Cloudflare API token with `Zone.DNS:Edit` on the hostname's zone switches `acme` to DNS-01, so issuance works even when something else owns ports 80 and 443. `storage` issues nothing and instead reads certificates from the S3 bucket in `tls.storage`, in the layout certmagic writes (`<prefix>/certificates/<issuer>/<host>/<host>.crt` and `.key`), for `public_hostname` plus every name in `storage.hostnames`, re-reading them every `refresh_interval_minutes` (and every 30 seconds while any are still missing, so it can start before the issuer has produced them). Use `storage` when a reverse proxy such as Caddy already owns ports 80 and 443 and keeps a shared certificate store, so replicas serve the same certificate without any of them talking to the CA; the bucket credentials only need read access. `off` disables TLS and allows plaintext IMAP authentication, which is only for local development. Submission never accepts AUTH over an unencrypted connection unless `submission.allow_insecure_auth` is explicitly set to `true`.
 
 Per-mailbox outbound limits override the defaults through the `outbound_limits` field on the mailbox API using the keys `per_hour`, `per_day`, and `recipients_per_message`.
+
+`POST /api/v1/domains/{domain}/outbound` sends transactional mail as any address in a domain that has a DKIM key, without a mailbox behind it. It takes the same body as the mailbox outbound endpoint, and both the envelope `from` and every header `From` address must be in that domain. Nothing is copied to a Sent folder or charged against a quota, so the stored message is removed by cleanup once delivery finishes. Each domain shares one budget set by the `domain_outbound_*` limits, which fall back to the matching `default_outbound_*` values when unset. Bounces arrive as `message.bounced` webhook events instead of notification mail, with `source` set to `relay` when the relay rejects the message permanently or exhausts its retries, and `dsn` when a delivery status notification comes back to the VERP return path. Both carry `message_id`, `sender_domain`, and `recipients`, and `dsn` events add the parsed `details` and `bounce_event_id`. Route them by adding a `message.bounced` entry to `webhooks.endpoints`.
 
 ### Per-inbox spam thresholds
 

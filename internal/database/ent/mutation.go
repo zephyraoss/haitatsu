@@ -13303,6 +13303,7 @@ type OutboundJobMutation struct {
 	typ              string
 	id               *string
 	mailbox_id       *string
+	sender_domain    *string
 	message_id       *string
 	return_path      *string
 	recipients       *[]string
@@ -13460,6 +13461,42 @@ func (m *OutboundJobMutation) OldMailboxID(ctx context.Context) (v string, err e
 // ResetMailboxID resets all changes to the "mailbox_id" field.
 func (m *OutboundJobMutation) ResetMailboxID() {
 	m.mailbox_id = nil
+}
+
+// SetSenderDomain sets the "sender_domain" field.
+func (m *OutboundJobMutation) SetSenderDomain(s string) {
+	m.sender_domain = &s
+}
+
+// SenderDomain returns the value of the "sender_domain" field in the mutation.
+func (m *OutboundJobMutation) SenderDomain() (r string, exists bool) {
+	v := m.sender_domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSenderDomain returns the old "sender_domain" field's value of the OutboundJob entity.
+// If the OutboundJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboundJobMutation) OldSenderDomain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSenderDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSenderDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSenderDomain: %w", err)
+	}
+	return oldValue.SenderDomain, nil
+}
+
+// ResetSenderDomain resets all changes to the "sender_domain" field.
+func (m *OutboundJobMutation) ResetSenderDomain() {
+	m.sender_domain = nil
 }
 
 // SetMessageID sets the "message_id" field.
@@ -13979,9 +14016,12 @@ func (m *OutboundJobMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OutboundJobMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.mailbox_id != nil {
 		fields = append(fields, outboundjob.FieldMailboxID)
+	}
+	if m.sender_domain != nil {
+		fields = append(fields, outboundjob.FieldSenderDomain)
 	}
 	if m.message_id != nil {
 		fields = append(fields, outboundjob.FieldMessageID)
@@ -14026,6 +14066,8 @@ func (m *OutboundJobMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case outboundjob.FieldMailboxID:
 		return m.MailboxID()
+	case outboundjob.FieldSenderDomain:
+		return m.SenderDomain()
 	case outboundjob.FieldMessageID:
 		return m.MessageID()
 	case outboundjob.FieldReturnPath:
@@ -14059,6 +14101,8 @@ func (m *OutboundJobMutation) OldField(ctx context.Context, name string) (ent.Va
 	switch name {
 	case outboundjob.FieldMailboxID:
 		return m.OldMailboxID(ctx)
+	case outboundjob.FieldSenderDomain:
+		return m.OldSenderDomain(ctx)
 	case outboundjob.FieldMessageID:
 		return m.OldMessageID(ctx)
 	case outboundjob.FieldReturnPath:
@@ -14096,6 +14140,13 @@ func (m *OutboundJobMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMailboxID(v)
+		return nil
+	case outboundjob.FieldSenderDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSenderDomain(v)
 		return nil
 	case outboundjob.FieldMessageID:
 		v, ok := value.(string)
@@ -14267,6 +14318,9 @@ func (m *OutboundJobMutation) ResetField(name string) error {
 	switch name {
 	case outboundjob.FieldMailboxID:
 		m.ResetMailboxID()
+		return nil
+	case outboundjob.FieldSenderDomain:
+		m.ResetSenderDomain()
 		return nil
 	case outboundjob.FieldMessageID:
 		m.ResetMessageID()

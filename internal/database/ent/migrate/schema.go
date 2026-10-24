@@ -565,6 +565,7 @@ var (
 	OutboundJobsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "mailbox_id", Type: field.TypeString},
+		{Name: "sender_domain", Type: field.TypeString, Default: ""},
 		{Name: "message_id", Type: field.TypeString},
 		{Name: "return_path", Type: field.TypeString},
 		{Name: "recipients", Type: field.TypeJSON},
@@ -586,17 +587,22 @@ var (
 			{
 				Name:    "outboundjob_status_next_attempt_at",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[5], OutboundJobsColumns[9]},
+				Columns: []*schema.Column{OutboundJobsColumns[6], OutboundJobsColumns[10]},
 			},
 			{
 				Name:    "outboundjob_locked_until",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[8]},
+				Columns: []*schema.Column{OutboundJobsColumns[9]},
 			},
 			{
 				Name:    "outboundjob_message_id",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[2]},
+				Columns: []*schema.Column{OutboundJobsColumns[3]},
+			},
+			{
+				Name:    "outboundjob_sender_domain_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundJobsColumns[2], OutboundJobsColumns[12]},
 			},
 		},
 	}
