@@ -29,6 +29,20 @@ func (_c *OutboundJobCreate) SetMailboxID(v string) *OutboundJobCreate {
 	return _c
 }
 
+// SetSenderDomain sets the "sender_domain" field.
+func (_c *OutboundJobCreate) SetSenderDomain(v string) *OutboundJobCreate {
+	_c.mutation.SetSenderDomain(v)
+	return _c
+}
+
+// SetNillableSenderDomain sets the "sender_domain" field if the given value is not nil.
+func (_c *OutboundJobCreate) SetNillableSenderDomain(v *string) *OutboundJobCreate {
+	if v != nil {
+		_c.SetSenderDomain(*v)
+	}
+	return _c
+}
+
 // SetMessageID sets the "message_id" field.
 func (_c *OutboundJobCreate) SetMessageID(v string) *OutboundJobCreate {
 	_c.mutation.SetMessageID(v)
@@ -200,6 +214,10 @@ func (_c *OutboundJobCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *OutboundJobCreate) defaults() {
+	if _, ok := _c.mutation.SenderDomain(); !ok {
+		v := outboundjob.DefaultSenderDomain
+		_c.mutation.SetSenderDomain(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := outboundjob.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -226,6 +244,9 @@ func (_c *OutboundJobCreate) defaults() {
 func (_c *OutboundJobCreate) check() error {
 	if _, ok := _c.mutation.MailboxID(); !ok {
 		return &ValidationError{Name: "mailbox_id", err: errors.New(`ent: missing required field "OutboundJob.mailbox_id"`)}
+	}
+	if _, ok := _c.mutation.SenderDomain(); !ok {
+		return &ValidationError{Name: "sender_domain", err: errors.New(`ent: missing required field "OutboundJob.sender_domain"`)}
 	}
 	if _, ok := _c.mutation.MessageID(); !ok {
 		return &ValidationError{Name: "message_id", err: errors.New(`ent: missing required field "OutboundJob.message_id"`)}
@@ -287,6 +308,10 @@ func (_c *OutboundJobCreate) createSpec() (*OutboundJob, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MailboxID(); ok {
 		_spec.SetField(outboundjob.FieldMailboxID, field.TypeString, value)
 		_node.MailboxID = value
+	}
+	if value, ok := _c.mutation.SenderDomain(); ok {
+		_spec.SetField(outboundjob.FieldSenderDomain, field.TypeString, value)
+		_node.SenderDomain = value
 	}
 	if value, ok := _c.mutation.MessageID(); ok {
 		_spec.SetField(outboundjob.FieldMessageID, field.TypeString, value)
@@ -393,6 +418,18 @@ func (u *OutboundJobUpsert) SetMailboxID(v string) *OutboundJobUpsert {
 // UpdateMailboxID sets the "mailbox_id" field to the value that was provided on create.
 func (u *OutboundJobUpsert) UpdateMailboxID() *OutboundJobUpsert {
 	u.SetExcluded(outboundjob.FieldMailboxID)
+	return u
+}
+
+// SetSenderDomain sets the "sender_domain" field.
+func (u *OutboundJobUpsert) SetSenderDomain(v string) *OutboundJobUpsert {
+	u.Set(outboundjob.FieldSenderDomain, v)
+	return u
+}
+
+// UpdateSenderDomain sets the "sender_domain" field to the value that was provided on create.
+func (u *OutboundJobUpsert) UpdateSenderDomain() *OutboundJobUpsert {
+	u.SetExcluded(outboundjob.FieldSenderDomain)
 	return u
 }
 
@@ -608,6 +645,20 @@ func (u *OutboundJobUpsertOne) SetMailboxID(v string) *OutboundJobUpsertOne {
 func (u *OutboundJobUpsertOne) UpdateMailboxID() *OutboundJobUpsertOne {
 	return u.Update(func(s *OutboundJobUpsert) {
 		s.UpdateMailboxID()
+	})
+}
+
+// SetSenderDomain sets the "sender_domain" field.
+func (u *OutboundJobUpsertOne) SetSenderDomain(v string) *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetSenderDomain(v)
+	})
+}
+
+// UpdateSenderDomain sets the "sender_domain" field to the value that was provided on create.
+func (u *OutboundJobUpsertOne) UpdateSenderDomain() *OutboundJobUpsertOne {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateSenderDomain()
 	})
 }
 
@@ -1015,6 +1066,20 @@ func (u *OutboundJobUpsertBulk) SetMailboxID(v string) *OutboundJobUpsertBulk {
 func (u *OutboundJobUpsertBulk) UpdateMailboxID() *OutboundJobUpsertBulk {
 	return u.Update(func(s *OutboundJobUpsert) {
 		s.UpdateMailboxID()
+	})
+}
+
+// SetSenderDomain sets the "sender_domain" field.
+func (u *OutboundJobUpsertBulk) SetSenderDomain(v string) *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.SetSenderDomain(v)
+	})
+}
+
+// UpdateSenderDomain sets the "sender_domain" field to the value that was provided on create.
+func (u *OutboundJobUpsertBulk) UpdateSenderDomain() *OutboundJobUpsertBulk {
+	return u.Update(func(s *OutboundJobUpsert) {
+		s.UpdateSenderDomain()
 	})
 }
 

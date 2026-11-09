@@ -14,6 +14,7 @@ func (OutboundJob) Fields() []ent.Field {
 	return []ent.Field{
 		ulidField(),
 		field.String("mailbox_id"),
+		field.String("sender_domain").Default(""),
 		field.String("message_id"),
 		field.String("return_path"),
 		field.JSON("recipients", []string{}),
@@ -33,5 +34,6 @@ func (OutboundJob) Indexes() []ent.Index {
 		index.Fields("status", "next_attempt_at"),
 		index.Fields("locked_until"),
 		index.Fields("message_id"),
+		index.Fields("sender_domain", "created_at"),
 	}
 }

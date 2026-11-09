@@ -565,6 +565,7 @@ var (
 	OutboundJobsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
 		{Name: "mailbox_id", Type: field.TypeString},
+		{Name: "sender_domain", Type: field.TypeString, Default: ""},
 		{Name: "message_id", Type: field.TypeString},
 		{Name: "return_path", Type: field.TypeString},
 		{Name: "recipients", Type: field.TypeJSON},
@@ -586,17 +587,22 @@ var (
 			{
 				Name:    "outboundjob_status_next_attempt_at",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[5], OutboundJobsColumns[9]},
+				Columns: []*schema.Column{OutboundJobsColumns[6], OutboundJobsColumns[10]},
 			},
 			{
 				Name:    "outboundjob_locked_until",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[8]},
+				Columns: []*schema.Column{OutboundJobsColumns[9]},
 			},
 			{
 				Name:    "outboundjob_message_id",
 				Unique:  false,
-				Columns: []*schema.Column{OutboundJobsColumns[2]},
+				Columns: []*schema.Column{OutboundJobsColumns[3]},
+			},
+			{
+				Name:    "outboundjob_sender_domain_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OutboundJobsColumns[2], OutboundJobsColumns[12]},
 			},
 		},
 	}
@@ -665,6 +671,31 @@ var (
 			},
 		},
 	}
+	// SMTPCredentialsColumns holds the columns for the "smtp_credentials" table.
+	SMTPCredentialsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true},
+		{Name: "username", Type: field.TypeString, Unique: true},
+		{Name: "name", Type: field.TypeString},
+		{Name: "hash", Type: field.TypeString},
+		{Name: "domains", Type: field.TypeJSON},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SMTPCredentialsTable holds the schema information for the "smtp_credentials" table.
+	SMTPCredentialsTable = &schema.Table{
+		Name:       "smtp_credentials",
+		Columns:    SMTPCredentialsColumns,
+		PrimaryKey: []*schema.Column{SMTPCredentialsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "smtpcredential_revoked_at",
+				Unique:  false,
+				Columns: []*schema.Column{SMTPCredentialsColumns[6]},
+			},
+		},
+	}
 	// SchemaMigrationsColumns holds the columns for the "schema_migrations" table.
 	SchemaMigrationsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true},
@@ -726,6 +757,7 @@ var (
 		OutboundJobsTable,
 		RoutesTable,
 		RoutingRulesTable,
+		SMTPCredentialsTable,
 		SchemaMigrationsTable,
 		SenderRulesTable,
 	}

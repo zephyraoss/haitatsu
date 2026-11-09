@@ -42,3 +42,10 @@ func TestLimitFallbacks(t *testing.T) {
 		t.Fatal("limits block should win over smtp block")
 	}
 }
+
+func TestDomainOutboundLimitsFallBackToMailboxDefaults(t *testing.T) {
+	limits := LimitsConfig{DefaultOutboundPerHour: 10, DomainOutboundPerDay: 500}.withOutboundDefaults()
+	if limits.DomainOutboundPerHour != 10 || limits.DomainOutboundPerDay != 500 || limits.DomainOutboundRecipients != 50 {
+		t.Fatalf("unexpected domain limits %+v", limits)
+	}
+}

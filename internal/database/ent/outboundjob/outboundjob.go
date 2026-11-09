@@ -15,6 +15,8 @@ const (
 	FieldID = "id"
 	// FieldMailboxID holds the string denoting the mailbox_id field in the database.
 	FieldMailboxID = "mailbox_id"
+	// FieldSenderDomain holds the string denoting the sender_domain field in the database.
+	FieldSenderDomain = "sender_domain"
 	// FieldMessageID holds the string denoting the message_id field in the database.
 	FieldMessageID = "message_id"
 	// FieldReturnPath holds the string denoting the return_path field in the database.
@@ -45,6 +47,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldMailboxID,
+	FieldSenderDomain,
 	FieldMessageID,
 	FieldReturnPath,
 	FieldRecipients,
@@ -69,6 +72,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultSenderDomain holds the default value on creation for the "sender_domain" field.
+	DefaultSenderDomain string
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// DefaultAttempts holds the default value on creation for the "attempts" field.
@@ -94,6 +99,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByMailboxID orders the results by the mailbox_id field.
 func ByMailboxID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMailboxID, opts...).ToFunc()
+}
+
+// BySenderDomain orders the results by the sender_domain field.
+func BySenderDomain(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSenderDomain, opts...).ToFunc()
 }
 
 // ByMessageID orders the results by the message_id field.

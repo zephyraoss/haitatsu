@@ -21,6 +21,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/message"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/outboundjob"
+	"github.com/zephyraoss/haitatsu/internal/events"
 	"github.com/zephyraoss/haitatsu/internal/metrics"
 )
 
@@ -32,6 +33,10 @@ type Notifier interface {
 	OutboundFailure(ctx context.Context, mailboxID string, messageID string, data map[string]any) error
 }
 
+type EventEmitter interface {
+	Emit(ctx context.Context, eventType string, mailboxID string, payload map[string]any) error
+}
+
 type Sender func(ctx context.Context, cfg config.RelayConfig, from string, recipients []string, raw []byte) error
 
 type Worker struct {
@@ -41,6 +46,7 @@ type Worker struct {
 	cfg      func() config.RelayConfig
 	metrics  *metrics.Metrics
 	notifier Notifier
+	events   EventEmitter
 	workerID string
 	backend  database.Backend
 	send     Sender
@@ -48,12 +54,13 @@ type Worker struct {
 }
 
 type claimedJob struct {
-	ID         string
-	MailboxID  string
-	MessageID  string
-	ReturnPath string
-	Recipients []string
-	Attempts   int
+	ID           string
+	MailboxID    string
+	SenderDomain string
+	MessageID    string
+	ReturnPath   string
+	Recipients   []string
+	Attempts     int
 }
 
 type deliveryResult struct {
@@ -75,6 +82,11 @@ func NewWorker(db *sql.DB, client *ent.Client, store RelayStore, cfg func() conf
 
 func (w *Worker) WithHostname(hostname string) *Worker {
 	w.hostname = hostname
+	return w
+}
+
+func (w *Worker) WithEvents(events EventEmitter) *Worker {
+	w.events = events
 	return w
 }
 
@@ -153,7 +165,7 @@ WHERE id = (
   FOR UPDATE SKIP LOCKED
   LIMIT 1
 )
-RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
+RETURNING id, mailbox_id, sender_domain, message_id, return_path, recipients, attempts
 `
 	now := time.Now().UTC()
 	lockedUntil := now.Add(w.cfg().Timeout() + 4*time.Minute)
@@ -172,7 +184,7 @@ WHERE id = (
 AND status IN ('queued', 'retry', 'processing')
 AND (next_attempt_at IS NULL OR datetime(next_attempt_at) <= datetime(?))
 AND (locked_until IS NULL OR datetime(locked_until) <= datetime(?))
-RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
+RETURNING id, mailbox_id, sender_domain, message_id, return_path, recipients, attempts
 `
 		args = []any{w.workerID, lockedUntil, now, now, now, now, now}
 	}
@@ -180,7 +192,7 @@ RETURNING id, mailbox_id, message_id, return_path, recipients, attempts
 
 	var job claimedJob
 	var recipients []byte
-	if err := row.Scan(&job.ID, &job.MailboxID, &job.MessageID, &job.ReturnPath, &recipients, &job.Attempts); err != nil {
+	if err := row.Scan(&job.ID, &job.MailboxID, &job.SenderDomain, &job.MessageID, &job.ReturnPath, &recipients, &job.Attempts); err != nil {
 		if err == sql.ErrNoRows {
 			return claimedJob{}, false, nil
 		}
@@ -321,10 +333,29 @@ func (w *Worker) finish(ctx context.Context, job claimedJob, result deliveryResu
 		failed = true
 	}
 	_, err := update.Save(ctx)
-	if err == nil && failed && w.notifier != nil {
-		_ = w.notifier.OutboundFailure(ctx, job.MailboxID, job.MessageID, result.errorMap())
+	if err == nil && failed {
+		w.reportFailure(ctx, job, result)
 	}
 	return err
+}
+
+func (w *Worker) reportFailure(ctx context.Context, job claimedJob, result deliveryResult) {
+	if job.SenderDomain == "" {
+		if w.notifier != nil {
+			_ = w.notifier.OutboundFailure(ctx, job.MailboxID, job.MessageID, result.errorMap())
+		}
+		return
+	}
+	if w.events != nil {
+		_ = w.events.Emit(ctx, events.MessageBounced, "", map[string]any{
+			"event":         events.MessageBounced,
+			"source":        "relay",
+			"message_id":    job.MessageID,
+			"sender_domain": job.SenderDomain,
+			"recipients":    job.Recipients,
+			"error":         result.errorMap(),
+		})
+	}
 }
 
 func relayAuth(cfg config.RelayConfig) smtp.Auth {

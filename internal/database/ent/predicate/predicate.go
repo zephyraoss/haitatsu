@@ -60,6 +60,9 @@ type Route func(*sql.Selector)
 // RoutingRule is the predicate function for routingrule builders.
 type RoutingRule func(*sql.Selector)
 
+// SMTPCredential is the predicate function for smtpcredential builders.
+type SMTPCredential func(*sql.Selector)
+
 // SchemaMigration is the predicate function for schemamigration builders.
 type SchemaMigration func(*sql.Selector)
 

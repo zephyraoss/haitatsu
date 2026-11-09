@@ -20,6 +20,8 @@ type OutboundJob struct {
 	ID string `json:"id,omitempty"`
 	// MailboxID holds the value of the "mailbox_id" field.
 	MailboxID string `json:"mailbox_id,omitempty"`
+	// SenderDomain holds the value of the "sender_domain" field.
+	SenderDomain string `json:"sender_domain,omitempty"`
 	// MessageID holds the value of the "message_id" field.
 	MessageID string `json:"message_id,omitempty"`
 	// ReturnPath holds the value of the "return_path" field.
@@ -54,7 +56,7 @@ func (*OutboundJob) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case outboundjob.FieldAttempts:
 			values[i] = new(sql.NullInt64)
-		case outboundjob.FieldID, outboundjob.FieldMailboxID, outboundjob.FieldMessageID, outboundjob.FieldReturnPath, outboundjob.FieldStatus, outboundjob.FieldLockedBy:
+		case outboundjob.FieldID, outboundjob.FieldMailboxID, outboundjob.FieldSenderDomain, outboundjob.FieldMessageID, outboundjob.FieldReturnPath, outboundjob.FieldStatus, outboundjob.FieldLockedBy:
 			values[i] = new(sql.NullString)
 		case outboundjob.FieldLockedUntil, outboundjob.FieldNextAttemptAt, outboundjob.FieldCreatedAt, outboundjob.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -84,6 +86,12 @@ func (_m *OutboundJob) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field mailbox_id", values[i])
 			} else if value.Valid {
 				_m.MailboxID = value.String
+			}
+		case outboundjob.FieldSenderDomain:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sender_domain", values[i])
+			} else if value.Valid {
+				_m.SenderDomain = value.String
 			}
 		case outboundjob.FieldMessageID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -195,6 +203,9 @@ func (_m *OutboundJob) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("mailbox_id=")
 	builder.WriteString(_m.MailboxID)
+	builder.WriteString(", ")
+	builder.WriteString("sender_domain=")
+	builder.WriteString(_m.SenderDomain)
 	builder.WriteString(", ")
 	builder.WriteString("message_id=")
 	builder.WriteString(_m.MessageID)

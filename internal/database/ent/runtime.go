@@ -25,6 +25,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/schema"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/smtpcredential"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -337,20 +338,24 @@ func init() {
 	outboundattempt.DefaultID = outboundattemptDescID.Default.(func() string)
 	outboundjobFields := schema.OutboundJob{}.Fields()
 	_ = outboundjobFields
+	// outboundjobDescSenderDomain is the schema descriptor for sender_domain field.
+	outboundjobDescSenderDomain := outboundjobFields[2].Descriptor()
+	// outboundjob.DefaultSenderDomain holds the default value on creation for the sender_domain field.
+	outboundjob.DefaultSenderDomain = outboundjobDescSenderDomain.Default.(string)
 	// outboundjobDescStatus is the schema descriptor for status field.
-	outboundjobDescStatus := outboundjobFields[5].Descriptor()
+	outboundjobDescStatus := outboundjobFields[6].Descriptor()
 	// outboundjob.DefaultStatus holds the default value on creation for the status field.
 	outboundjob.DefaultStatus = outboundjobDescStatus.Default.(string)
 	// outboundjobDescAttempts is the schema descriptor for attempts field.
-	outboundjobDescAttempts := outboundjobFields[6].Descriptor()
+	outboundjobDescAttempts := outboundjobFields[7].Descriptor()
 	// outboundjob.DefaultAttempts holds the default value on creation for the attempts field.
 	outboundjob.DefaultAttempts = outboundjobDescAttempts.Default.(int)
 	// outboundjobDescCreatedAt is the schema descriptor for created_at field.
-	outboundjobDescCreatedAt := outboundjobFields[11].Descriptor()
+	outboundjobDescCreatedAt := outboundjobFields[12].Descriptor()
 	// outboundjob.DefaultCreatedAt holds the default value on creation for the created_at field.
 	outboundjob.DefaultCreatedAt = outboundjobDescCreatedAt.Default.(func() time.Time)
 	// outboundjobDescUpdatedAt is the schema descriptor for updated_at field.
-	outboundjobDescUpdatedAt := outboundjobFields[12].Descriptor()
+	outboundjobDescUpdatedAt := outboundjobFields[13].Descriptor()
 	// outboundjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	outboundjob.DefaultUpdatedAt = outboundjobDescUpdatedAt.Default.(func() time.Time)
 	// outboundjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -403,6 +408,22 @@ func init() {
 	routingruleDescID := routingruleFields[0].Descriptor()
 	// routingrule.DefaultID holds the default value on creation for the id field.
 	routingrule.DefaultID = routingruleDescID.Default.(func() string)
+	smtpcredentialFields := schema.SMTPCredential{}.Fields()
+	_ = smtpcredentialFields
+	// smtpcredentialDescCreatedAt is the schema descriptor for created_at field.
+	smtpcredentialDescCreatedAt := smtpcredentialFields[7].Descriptor()
+	// smtpcredential.DefaultCreatedAt holds the default value on creation for the created_at field.
+	smtpcredential.DefaultCreatedAt = smtpcredentialDescCreatedAt.Default.(func() time.Time)
+	// smtpcredentialDescUpdatedAt is the schema descriptor for updated_at field.
+	smtpcredentialDescUpdatedAt := smtpcredentialFields[8].Descriptor()
+	// smtpcredential.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	smtpcredential.DefaultUpdatedAt = smtpcredentialDescUpdatedAt.Default.(func() time.Time)
+	// smtpcredential.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	smtpcredential.UpdateDefaultUpdatedAt = smtpcredentialDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// smtpcredentialDescID is the schema descriptor for id field.
+	smtpcredentialDescID := smtpcredentialFields[0].Descriptor()
+	// smtpcredential.DefaultID holds the default value on creation for the id field.
+	smtpcredential.DefaultID = smtpcredentialDescID.Default.(func() string)
 	senderruleFields := schema.SenderRule{}.Fields()
 	_ = senderruleFields
 	// senderruleDescAction is the schema descriptor for action field.

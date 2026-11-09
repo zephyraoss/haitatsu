@@ -225,6 +225,18 @@ func (f RoutingRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RoutingRuleMutation", m)
 }
 
+// The SMTPCredentialFunc type is an adapter to allow the use of ordinary
+// function as SMTPCredential mutator.
+type SMTPCredentialFunc func(context.Context, *ent.SMTPCredentialMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SMTPCredentialFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SMTPCredentialMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SMTPCredentialMutation", m)
+}
+
 // The SchemaMigrationFunc type is an adapter to allow the use of ordinary
 // function as SchemaMigration mutator.
 type SchemaMigrationFunc func(context.Context, *ent.SchemaMigrationMutation) (ent.Value, error)

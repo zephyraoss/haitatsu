@@ -129,3 +129,20 @@ func TestSubmitRejectsLocalRecipientOverQuota(t *testing.T) {
 		t.Fatalf("rejected submission queued %+v", jobs)
 	}
 }
+
+func TestSubmitForDomainDeliversLocalRecipientsWithoutRelay(t *testing.T) {
+	client, _ := testutil.NewClient(t)
+	h := newLocalHarness(t, client)
+	raw := []byte("From: receipts@example.test\r\nTo: bob@other.test, dave@remote.test\r\nSubject: receipt\r\n\r\nthanks\r\n")
+	if _, err := h.submission.SubmitForDomain(context.Background(), "example.test", "receipts@example.test", raw, nil); err != nil {
+		t.Fatal(err)
+	}
+	inbox := h.folderBlobs(t, h.bob.ID, "INBOX")
+	if len(inbox) != 1 || !strings.Contains(inbox[0], "auth=pass smtp.mailfrom=receipts@example.test") {
+		t.Fatalf("bob inbox = %q, want one locally delivered receipt", inbox)
+	}
+	jobs := h.relayJobs(t)
+	if len(jobs) != 1 || jobs[0].SenderDomain != "example.test" || !slices.Equal(jobs[0].Recipients, []string{"dave@remote.test"}) {
+		t.Fatalf("relay jobs = %+v, want only the remote recipient", jobs)
+	}
+}

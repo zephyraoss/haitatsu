@@ -34,6 +34,7 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/database/ent/routingrule"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/schemamigration"
 	"github.com/zephyraoss/haitatsu/internal/database/ent/senderrule"
+	"github.com/zephyraoss/haitatsu/internal/database/ent/smtpcredential"
 
 	stdsql "database/sql"
 )
@@ -79,6 +80,8 @@ type Client struct {
 	Route *RouteClient
 	// RoutingRule is the client for interacting with the RoutingRule builders.
 	RoutingRule *RoutingRuleClient
+	// SMTPCredential is the client for interacting with the SMTPCredential builders.
+	SMTPCredential *SMTPCredentialClient
 	// SchemaMigration is the client for interacting with the SchemaMigration builders.
 	SchemaMigration *SchemaMigrationClient
 	// SenderRule is the client for interacting with the SenderRule builders.
@@ -112,6 +115,7 @@ func (c *Client) init() {
 	c.OutboundJob = NewOutboundJobClient(c.config)
 	c.Route = NewRouteClient(c.config)
 	c.RoutingRule = NewRoutingRuleClient(c.config)
+	c.SMTPCredential = NewSMTPCredentialClient(c.config)
 	c.SchemaMigration = NewSchemaMigrationClient(c.config)
 	c.SenderRule = NewSenderRuleClient(c.config)
 }
@@ -224,6 +228,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
+		SMTPCredential:      NewSMTPCredentialClient(cfg),
 		SchemaMigration:     NewSchemaMigrationClient(cfg),
 		SenderRule:          NewSenderRuleClient(cfg),
 	}, nil
@@ -263,6 +268,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		OutboundJob:         NewOutboundJobClient(cfg),
 		Route:               NewRouteClient(cfg),
 		RoutingRule:         NewRoutingRuleClient(cfg),
+		SMTPCredential:      NewSMTPCredentialClient(cfg),
 		SchemaMigration:     NewSchemaMigrationClient(cfg),
 		SenderRule:          NewSenderRuleClient(cfg),
 	}, nil
@@ -297,7 +303,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AppPassword, c.AuditEvent, c.AuthLockout, c.BounceEvent, c.DKIMKey,
 		c.EventLog, c.ExportJob, c.Folder, c.ImportJob, c.Label, c.Mailbox,
 		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundAttempt,
-		c.OutboundJob, c.Route, c.RoutingRule, c.SchemaMigration, c.SenderRule,
+		c.OutboundJob, c.Route, c.RoutingRule, c.SMTPCredential, c.SchemaMigration,
+		c.SenderRule,
 	} {
 		n.Use(hooks...)
 	}
@@ -310,7 +317,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AppPassword, c.AuditEvent, c.AuthLockout, c.BounceEvent, c.DKIMKey,
 		c.EventLog, c.ExportJob, c.Folder, c.ImportJob, c.Label, c.Mailbox,
 		c.MailboxMessage, c.MailboxMessageLabel, c.Message, c.OutboundAttempt,
-		c.OutboundJob, c.Route, c.RoutingRule, c.SchemaMigration, c.SenderRule,
+		c.OutboundJob, c.Route, c.RoutingRule, c.SMTPCredential, c.SchemaMigration,
+		c.SenderRule,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -355,6 +363,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Route.mutate(ctx, m)
 	case *RoutingRuleMutation:
 		return c.RoutingRule.mutate(ctx, m)
+	case *SMTPCredentialMutation:
+		return c.SMTPCredential.mutate(ctx, m)
 	case *SchemaMigrationMutation:
 		return c.SchemaMigration.mutate(ctx, m)
 	case *SenderRuleMutation:
@@ -2758,6 +2768,139 @@ func (c *RoutingRuleClient) mutate(ctx context.Context, m *RoutingRuleMutation) 
 	}
 }
 
+// SMTPCredentialClient is a client for the SMTPCredential schema.
+type SMTPCredentialClient struct {
+	config
+}
+
+// NewSMTPCredentialClient returns a client for the SMTPCredential from the given config.
+func NewSMTPCredentialClient(c config) *SMTPCredentialClient {
+	return &SMTPCredentialClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `smtpcredential.Hooks(f(g(h())))`.
+func (c *SMTPCredentialClient) Use(hooks ...Hook) {
+	c.hooks.SMTPCredential = append(c.hooks.SMTPCredential, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `smtpcredential.Intercept(f(g(h())))`.
+func (c *SMTPCredentialClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SMTPCredential = append(c.inters.SMTPCredential, interceptors...)
+}
+
+// Create returns a builder for creating a SMTPCredential entity.
+func (c *SMTPCredentialClient) Create() *SMTPCredentialCreate {
+	mutation := newSMTPCredentialMutation(c.config, OpCreate)
+	return &SMTPCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SMTPCredential entities.
+func (c *SMTPCredentialClient) CreateBulk(builders ...*SMTPCredentialCreate) *SMTPCredentialCreateBulk {
+	return &SMTPCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SMTPCredentialClient) MapCreateBulk(slice any, setFunc func(*SMTPCredentialCreate, int)) *SMTPCredentialCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SMTPCredentialCreateBulk{err: fmt.Errorf("calling to SMTPCredentialClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SMTPCredentialCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SMTPCredentialCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SMTPCredential.
+func (c *SMTPCredentialClient) Update() *SMTPCredentialUpdate {
+	mutation := newSMTPCredentialMutation(c.config, OpUpdate)
+	return &SMTPCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SMTPCredentialClient) UpdateOne(_m *SMTPCredential) *SMTPCredentialUpdateOne {
+	mutation := newSMTPCredentialMutation(c.config, OpUpdateOne, withSMTPCredential(_m))
+	return &SMTPCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SMTPCredentialClient) UpdateOneID(id string) *SMTPCredentialUpdateOne {
+	mutation := newSMTPCredentialMutation(c.config, OpUpdateOne, withSMTPCredentialID(id))
+	return &SMTPCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SMTPCredential.
+func (c *SMTPCredentialClient) Delete() *SMTPCredentialDelete {
+	mutation := newSMTPCredentialMutation(c.config, OpDelete)
+	return &SMTPCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SMTPCredentialClient) DeleteOne(_m *SMTPCredential) *SMTPCredentialDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SMTPCredentialClient) DeleteOneID(id string) *SMTPCredentialDeleteOne {
+	builder := c.Delete().Where(smtpcredential.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SMTPCredentialDeleteOne{builder}
+}
+
+// Query returns a query builder for SMTPCredential.
+func (c *SMTPCredentialClient) Query() *SMTPCredentialQuery {
+	return &SMTPCredentialQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSMTPCredential},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SMTPCredential entity by its id.
+func (c *SMTPCredentialClient) Get(ctx context.Context, id string) (*SMTPCredential, error) {
+	return c.Query().Where(smtpcredential.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SMTPCredentialClient) GetX(ctx context.Context, id string) *SMTPCredential {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SMTPCredentialClient) Hooks() []Hook {
+	return c.hooks.SMTPCredential
+}
+
+// Interceptors returns the client interceptors.
+func (c *SMTPCredentialClient) Interceptors() []Interceptor {
+	return c.inters.SMTPCredential
+}
+
+func (c *SMTPCredentialClient) mutate(ctx context.Context, m *SMTPCredentialMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SMTPCredentialCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SMTPCredentialUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SMTPCredentialUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SMTPCredentialDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SMTPCredential mutation op: %q", m.Op())
+	}
+}
+
 // SchemaMigrationClient is a client for the SchemaMigration schema.
 type SchemaMigrationClient struct {
 	config
@@ -3029,14 +3172,14 @@ type (
 	hooks struct {
 		AppPassword, AuditEvent, AuthLockout, BounceEvent, DKIMKey, EventLog, ExportJob,
 		Folder, ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel,
-		Message, OutboundAttempt, OutboundJob, Route, RoutingRule, SchemaMigration,
-		SenderRule []ent.Hook
+		Message, OutboundAttempt, OutboundJob, Route, RoutingRule, SMTPCredential,
+		SchemaMigration, SenderRule []ent.Hook
 	}
 	inters struct {
 		AppPassword, AuditEvent, AuthLockout, BounceEvent, DKIMKey, EventLog, ExportJob,
 		Folder, ImportJob, Label, Mailbox, MailboxMessage, MailboxMessageLabel,
-		Message, OutboundAttempt, OutboundJob, Route, RoutingRule, SchemaMigration,
-		SenderRule []ent.Interceptor
+		Message, OutboundAttempt, OutboundJob, Route, RoutingRule, SMTPCredential,
+		SchemaMigration, SenderRule []ent.Interceptor
 	}
 )
 
