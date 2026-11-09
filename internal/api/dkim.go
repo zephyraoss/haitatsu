@@ -44,6 +44,9 @@ func (h *Handler) listDKIMKeys(c fiber.Ctx) error {
 		return problem(c, fiber.StatusBadRequest, "invalid_cursor", "Cursor is invalid")
 	}
 	query := h.client.DKIMKey.Query().Order(dkimkey.ByCreatedAt(entsql.OrderDesc()), dkimkey.ByID(entsql.OrderDesc())).Limit(limit + 1)
+	if domain := strings.ToLower(strings.TrimSpace(c.Query("domain"))); domain != "" {
+		query.Where(dkimkey.DomainEQ(domain))
+	}
 	if hasCursor {
 		query.Where(cursorPredicate[predicate.DKIMKey](dkimkey.FieldCreatedAt, dkimkey.FieldID, cur))
 	}
@@ -96,6 +99,13 @@ func (h *Handler) getDKIMKey(c fiber.Ctx) error {
 		return entProblem(c, err, "dkim_key_not_found", "DKIM key not found")
 	}
 	return data(c, dkimResponse(item))
+}
+
+func (h *Handler) deleteDKIMKey(c fiber.Ctx) error {
+	if err := h.client.DKIMKey.DeleteOneID(c.Params("id")).Exec(c.Context()); err != nil {
+		return entProblem(c, err, "dkim_key_not_found", "DKIM key not found")
+	}
+	return empty(c)
 }
 
 func generateDKIMKeyPair() (string, string, error) {

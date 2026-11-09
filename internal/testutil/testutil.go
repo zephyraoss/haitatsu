@@ -5,14 +5,19 @@ import (
 	stdsql "database/sql"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 
 	"github.com/zephyraoss/haitatsu/internal/database/ent"
+	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
 )
 
@@ -84,6 +89,36 @@ func NewClient(t testing.TB) (*ent.Client, *stdsql.DB) {
 		t.Fatal(err)
 	}
 	return client, db
+}
+
+func NewPostgresClient(t testing.TB) *ent.Client {
+	t.Helper()
+	dsn := os.Getenv("HAITATSU_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("HAITATSU_TEST_POSTGRES_DSN is not set")
+	}
+	admin, err := stdsql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { admin.Close() })
+	schema := "test_" + strings.ToLower(ids.New().String())
+	if _, err := admin.Exec("CREATE SCHEMA " + schema); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = admin.Exec("DROP SCHEMA " + schema + " CASCADE") })
+	config, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.RuntimeParams["search_path"] = schema
+	db := stdlib.OpenDB(*config)
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { client.Close() })
+	if err := client.Schema.Create(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return client
 }
 
 func NewMailStore(t testing.TB, client *ent.Client) *mailstore.Store {

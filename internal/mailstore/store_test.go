@@ -3,6 +3,7 @@ package mailstore_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -129,6 +130,29 @@ func TestAttachEnforcesQuota(t *testing.T) {
 	_, err := store.Attach(ctx, mailstore.Attach{MailboxID: mbox.ID, MessageID: seedMessage(t, client, 30).ID, FolderID: inbox.ID, SizeBytes: 30, EnforceQuota: true})
 	if err != mailstore.ErrOverQuota {
 		t.Fatalf("expected ErrOverQuota, got %v", err)
+	}
+}
+
+func TestAttachEnforcesQuotaOnPostgres(t *testing.T) {
+	ctx := context.Background()
+	client := testutil.NewPostgresClient(t)
+	store := testutil.NewMailStore(t, client)
+	for _, quota := range []int64{0, 100} {
+		mbox := testutil.SeedMailbox(t, store, fmt.Sprintf("quota%d@example.com", quota))
+		if _, err := client.Mailbox.UpdateOneID(mbox.ID).SetQuotaBytes(quota).Save(ctx); err != nil {
+			t.Fatal(err)
+		}
+		inbox, _ := store.FolderByName(ctx, mbox.ID, "INBOX")
+		if _, err := store.Attach(ctx, mailstore.Attach{MailboxID: mbox.ID, MessageID: seedMessage(t, client, 80).ID, FolderID: inbox.ID, SizeBytes: 80, EnforceQuota: true}); err != nil {
+			t.Fatalf("quota %d: %v", quota, err)
+		}
+		_, err := store.Attach(ctx, mailstore.Attach{MailboxID: mbox.ID, MessageID: seedMessage(t, client, 30).ID, FolderID: inbox.ID, SizeBytes: 30, EnforceQuota: true})
+		if quota == 0 && err != nil {
+			t.Fatalf("unlimited mailbox rejected attach: %v", err)
+		}
+		if quota > 0 && !errors.Is(err, mailstore.ErrOverQuota) {
+			t.Fatalf("expected ErrOverQuota, got %v", err)
+		}
 	}
 }
 

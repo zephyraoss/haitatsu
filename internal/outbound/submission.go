@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/mail"
 	"net/textproto"
+	"slices"
 	"strings"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 	"github.com/zephyraoss/haitatsu/internal/ids"
 	"github.com/zephyraoss/haitatsu/internal/mailparse"
 	"github.com/zephyraoss/haitatsu/internal/mailstore"
+	"github.com/zephyraoss/haitatsu/internal/routing"
+	"github.com/zephyraoss/haitatsu/internal/spam"
 )
 
 var ErrDKIMKeyNotFound = errors.New("dkim key not found")
@@ -35,9 +38,18 @@ var ErrRateLimited = errors.New("outbound rate limit exceeded")
 var ErrTooManyRecipients = errors.New("too many recipients")
 var ErrInvalidHeader = errors.New("invalid header field name")
 var ErrOverQuota = mailstore.ErrOverQuota
+var ErrRecipientOverQuota = errors.New("recipient mailbox over quota")
 
 type BlobStore interface {
 	PutMessage(ctx context.Context, key string, data []byte) error
+}
+
+type LocalRouter interface {
+	Resolve(ctx context.Context, recipient string) (routing.Result, bool, error)
+}
+
+type LocalDeliverer interface {
+	Deliver(ctx context.Context, raw []byte, recipients []routing.Result, assessment spam.Assessment) (*ent.Message, error)
 }
 
 type Limits struct {
@@ -53,6 +65,8 @@ type Submission struct {
 	publicHostname string
 	instanceName   string
 	defaults       func() Limits
+	router         LocalRouter
+	local          LocalDeliverer
 }
 
 func NewSubmission(client *ent.Client, blobs BlobStore, store *mailstore.Store, publicHostname string, instanceName string, defaults func() Limits) *Submission {
@@ -60,6 +74,12 @@ func NewSubmission(client *ent.Client, blobs BlobStore, store *mailstore.Store, 
 		defaults = func() Limits { return Limits{} }
 	}
 	return &Submission{client: client, blobs: blobs, store: store, publicHostname: publicHostname, instanceName: instanceName, defaults: defaults}
+}
+
+func (s *Submission) WithLocalDelivery(router LocalRouter, deliverer LocalDeliverer) *Submission {
+	s.router = router
+	s.local = deliverer
+	return s
 }
 
 func (s *Submission) SenderAllowed(ctx context.Context, mbox *ent.Mailbox, address string) (bool, error) {
@@ -128,6 +148,13 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	if err != nil {
 		return nil, err
 	}
+	local, remote, err := s.splitRecipients(ctx, recipients, int64(len(signed)))
+	if err != nil {
+		return nil, err
+	}
+	if err := s.deliverLocally(ctx, mbox, signed, local); err != nil {
+		return nil, err
+	}
 
 	objectKey := messageObjectKey(time.Now().UTC(), messageID)
 	if err := s.blobs.PutMessage(ctx, objectKey, signed); err != nil {
@@ -141,7 +168,7 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 	if err != nil {
 		return nil, err
 	}
-	msg, attach, item, err := s.enqueueInTx(ctx, tx, mbox, sent.ID, domain, messageID, traceID, objectKey, signed, recipients)
+	msg, attach, item, err := s.enqueueInTx(ctx, tx, mbox, sent.ID, domain, messageID, traceID, objectKey, signed, len(recipients), remote)
 	if err != nil {
 		_ = tx.Rollback()
 		return nil, err
@@ -156,12 +183,12 @@ func (s *Submission) Submit(ctx context.Context, mailboxID string, from string, 
 // enqueueInTx re-checks the send limits and quota under a mailbox row lock so
 // that concurrent submissions for the same mailbox cannot all pass the checks
 // before any of them records its job.
-func (s *Submission) enqueueInTx(ctx context.Context, tx *ent.Tx, mbox *ent.Mailbox, sentFolderID string, domain string, messageID string, traceID string, objectKey string, signed []byte, recipients []string) (*ent.Message, mailstore.Attach, *ent.MailboxMessage, error) {
+func (s *Submission) enqueueInTx(ctx context.Context, tx *ent.Tx, mbox *ent.Mailbox, sentFolderID string, domain string, messageID string, traceID string, objectKey string, signed []byte, recipientCount int, relayRecipients []string) (*ent.Message, mailstore.Attach, *ent.MailboxMessage, error) {
 	client := tx.Client()
 	if err := mailstore.LockMailbox(ctx, tx, mbox.ID); err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
-	if err := s.enforceLimits(ctx, client, mbox, len(recipients)); err != nil {
+	if err := s.enforceLimits(ctx, client, mbox, recipientCount); err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
 	msg, err := createMessage(ctx, client, messageID, traceID, objectKey, signed, mailparse.Parse(signed))
@@ -173,10 +200,54 @@ func (s *Submission) enqueueInTx(ctx context.Context, tx *ent.Tx, mbox *ent.Mail
 	if err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
-	if _, err := client.OutboundJob.Create().SetMailboxID(mbox.ID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, domain)).SetRecipients(recipients).Save(ctx); err != nil {
+	if len(relayRecipients) == 0 {
+		return msg, attach, item, nil
+	}
+	if _, err := client.OutboundJob.Create().SetMailboxID(mbox.ID).SetMessageID(msg.ID).SetReturnPath(ReturnPath(msg.ID, domain)).SetRecipients(relayRecipients).Save(ctx); err != nil {
 		return nil, mailstore.Attach{}, nil, err
 	}
 	return msg, attach, item, nil
+}
+
+func (s *Submission) splitRecipients(ctx context.Context, recipients []string, size int64) ([]routing.Result, []string, error) {
+	if s.router == nil || s.local == nil {
+		return nil, recipients, nil
+	}
+	var local []routing.Result
+	var remote []string
+	for _, recipient := range recipients {
+		result, ok, err := s.router.Resolve(ctx, recipient)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			remote = append(remote, recipient)
+			continue
+		}
+		result.Mailboxes = slices.DeleteFunc(result.Mailboxes, func(mbox *ent.Mailbox) bool {
+			return mailstore.OverQuotaWith(mbox, size)
+		})
+		if len(result.Mailboxes) == 0 {
+			return nil, nil, ErrRecipientOverQuota
+		}
+		local = append(local, result)
+	}
+	return local, remote, nil
+}
+
+func (s *Submission) deliverLocally(ctx context.Context, sender *ent.Mailbox, signed []byte, recipients []routing.Result) error {
+	if len(recipients) == 0 {
+		return nil
+	}
+	assessment := spam.Assessment{
+		AuthResults: map[string]any{"auth": "pass", "submitted_by": sender.ID},
+		Header:      s.publicHostname + "; auth=pass smtp.auth=" + sender.PrimaryAddress,
+	}
+	_, err := s.local.Deliver(ctx, signed, recipients, assessment)
+	if errors.Is(err, mailstore.ErrOverQuota) {
+		return ErrRecipientOverQuota
+	}
+	return err
 }
 
 func (s *Submission) enforceLimits(ctx context.Context, client *ent.Client, mbox *ent.Mailbox, recipientCount int) error {

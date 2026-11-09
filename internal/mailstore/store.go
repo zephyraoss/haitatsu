@@ -163,7 +163,9 @@ func addUsedBytes(ctx context.Context, client *ent.Client, mailboxID string, siz
 			mailbox.Or(
 				mailbox.QuotaBytesLTE(0),
 				func(s *sql.Selector) {
-					s.Where(sql.ExprP(s.C(mailbox.FieldUsedBytes)+" + ? <= "+s.C(mailbox.FieldQuotaBytes), size))
+					s.Where(sql.P(func(b *sql.Builder) {
+						b.Ident(s.C(mailbox.FieldUsedBytes)).WriteString(" + ").Arg(size).WriteString(" <= ").Ident(s.C(mailbox.FieldQuotaBytes))
+					}))
 				},
 			),
 		).

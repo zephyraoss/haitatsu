@@ -6,7 +6,7 @@ Haitatsu is a simple email server written in Go. It receives and stores mail, ex
 
 - IMAP4rev1 with stable per-folder UIDs, IDLE push, server-side SEARCH, MOVE, UIDPLUS, ESEARCH, SPECIAL-USE, LIST-STATUS, and label folders under `Labels/`
 - SMTP inbound with SPF, DKIM, DMARC (relaxed and strict alignment), DNSBL, sender allow/block lists, per-IP connection and rate limits
-- SMTP submission with PLAIN and LOGIN auth, DKIM signing, Bcc stripping, per-mailbox outbound limits, send-as for routed aliases
+- SMTP submission with PLAIN and LOGIN auth, DKIM signing, Bcc stripping, per-mailbox outbound limits, send-as for routed aliases, and direct delivery to recipients hosted on the same server without going through the relay
 - Relay delivery with exponential backoff over roughly two days, permanent failure notifications
 - REST API with cursor pagination, constant-time service token auth
 - TLS from automatic ACME certificates (HTTP-01, TLS-ALPN-01, or DNS-01 through Cloudflare), or read straight out of a certmagic-layout S3 bucket that something else (such as Caddy) already keeps current, for any number of hostnames

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"strings"
 
@@ -155,11 +156,15 @@ func outboundProblem(c fiber.Ctx, err error) error {
 	if errors.Is(err, outbound.ErrInvalidHeader) {
 		return problem(c, fiber.StatusUnprocessableEntity, "invalid_header", "Message contains an invalid header field name")
 	}
+	if errors.Is(err, outbound.ErrRecipientOverQuota) {
+		return problem(c, fiber.StatusUnprocessableEntity, "recipient_over_quota", "Recipient mailbox is over quota")
+	}
 	if errors.Is(err, outbound.ErrOverQuota) {
 		return problem(c, fiber.StatusRequestEntityTooLarge, "over_quota", "Mailbox is over quota")
 	}
 	if ent.IsNotFound(err) {
 		return problem(c, fiber.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
+	slog.Error("outbound message failed", "mailbox_id", c.Params("mailbox_id"), "error", err)
 	return problem(c, fiber.StatusInternalServerError, "outbound_failed", "Failed to create outbound message")
 }

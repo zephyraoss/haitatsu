@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/mail"
 	"time"
@@ -191,6 +192,7 @@ func (s *session) Mail(from string, _ *smtp.MailOptions) error {
 	}
 	allowed, err := s.backend.submission.SenderAllowed(context.Background(), s.mailbox, addr.Address)
 	if err != nil {
+		slog.Error("submission sender check failed", "mailbox_id", s.mailbox.ID, "error", err)
 		return temporaryError()
 	}
 	if !allowed {
@@ -221,10 +223,11 @@ func (s *session) Data(r io.Reader) error {
 	}
 	raw, err := io.ReadAll(r)
 	if err != nil {
+		slog.Error("submission message read failed", "mailbox_id", s.mailbox.ID, "error", err)
 		return temporaryError()
 	}
 	if _, err := s.backend.submission.Submit(context.Background(), s.mailbox.ID, s.mailFrom, raw, s.recipients); err != nil {
-		return submissionError(err)
+		return submissionError(s.mailbox.ID, err)
 	}
 	return nil
 }
@@ -242,7 +245,7 @@ func (s *session) Logout() error {
 	return nil
 }
 
-func submissionError(err error) error {
+func submissionError(mailboxID string, err error) error {
 	switch {
 	case errors.Is(err, outbound.ErrSenderNotAllowed):
 		return &smtp.SMTPError{Code: 553, EnhancedCode: smtp.EnhancedCode{5, 7, 1}, Message: "sender not allowed"}
@@ -254,9 +257,12 @@ func submissionError(err error) error {
 		return &smtp.SMTPError{Code: 450, EnhancedCode: smtp.EnhancedCode{4, 7, 1}, Message: "outbound rate limit exceeded"}
 	case errors.Is(err, outbound.ErrTooManyRecipients):
 		return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 5, 3}, Message: "too many recipients"}
+	case errors.Is(err, outbound.ErrRecipientOverQuota):
+		return &smtp.SMTPError{Code: 452, EnhancedCode: smtp.EnhancedCode{4, 2, 2}, Message: "recipient mailbox over quota"}
 	case errors.Is(err, outbound.ErrOverQuota):
 		return &smtp.SMTPError{Code: 552, EnhancedCode: smtp.EnhancedCode{5, 2, 2}, Message: "mailbox over quota"}
 	}
+	slog.Error("submission failed", "mailbox_id", mailboxID, "error", err)
 	return temporaryError()
 }
 

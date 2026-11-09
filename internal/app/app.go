@@ -115,6 +115,7 @@ func New(ctx context.Context, opts Options) (*App, error) {
 	resolver := routing.NewResolver(db.Ent())
 	ruleEngine := rules.New(db.Ent(), mail, eventService)
 	messageService := messages.NewService(db.Ent(), blobStore, mail, eventService, ruleEngine, m, cfg.Server.PublicHostname, cfg.Server.InstanceName)
+	submissionService.WithLocalDelivery(resolver, messageService)
 	notificationService := notifications.New(db.Ent(), messageService, func() config.NotificationConfig { return holder.Get().Notifications }, cfg.Server.PublicHostname)
 	relayWorker := outbound.NewWorker(db.SQL(), db.Ent(), blobStore, func() config.RelayConfig { return holder.Get().Relay }, m, notificationService, cfg.Server.InstanceName, db.Backend()).WithHostname(cfg.Server.PublicHostname)
 	bounceHandler := bounce.NewHandler(db.Ent(), blobStore, m)

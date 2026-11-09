@@ -106,7 +106,7 @@ tls {
     use_ssl = false
     prefix = "certmagic"
     issuer = "acme-v02.api.letsencrypt.org-directory"
-    hostnames = new Listing<String> { "mx.zephyra.email" }
+    hostnames = new Listing<String> { "mail.tegami.ax" }
     refresh_interval_minutes = 60
   }
 }

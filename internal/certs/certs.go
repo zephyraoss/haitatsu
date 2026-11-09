@@ -121,6 +121,7 @@ func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 	}
 	magic := certmagic.NewDefault()
 	magic.Storage = &certmagic.FileStorage{Path: acmeCachePath(opts.TLS)}
+	magic.DefaultServerName = opts.PublicHostname
 	issuer := certmagic.ACMEIssuer{
 		CA:                        acmeCA(opts.TLS.ACMECA),
 		Email:                     opts.TLS.ACMEEmail,
@@ -139,9 +140,7 @@ func acmeTLSConfig(ctx context.Context, opts Options) (*tls.Config, error) {
 	if err := magic.ManageAsync(ctx, acmeHostnames(opts)); err != nil {
 		return nil, err
 	}
-	tlsConfig := magic.TLSConfig()
-	tlsConfig.ServerName = opts.PublicHostname
-	return tlsConfig, nil
+	return magic.TLSConfig(), nil
 }
 
 func acmeHostnames(opts Options) []string {

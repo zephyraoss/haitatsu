@@ -121,6 +121,7 @@ func Register(router fiber.Router, client *ent.Client, db *sql.DB, store Message
 	v1.Get("/dkim", h.listDKIMKeys)
 	v1.Post("/dkim", h.createDKIMKey)
 	v1.Get("/dkim/:id", h.getDKIMKey)
+	v1.Delete("/dkim/:id", h.deleteDKIMKey)
 
 	v1.Get("/rules/sender", h.listSenderRules)
 	v1.Post("/rules/sender", h.createSenderRule)
