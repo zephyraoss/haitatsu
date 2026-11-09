@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -34,6 +35,11 @@ import (
 )
 
 const maxAppPasswords = 50
+
+const (
+	minChosenAppPasswordLen = 10
+	maxChosenAppPasswordLen = 256
+)
 
 var (
 	mailboxStatuses = []string{"active", "disabled"}
@@ -151,8 +157,9 @@ type routeRequest struct {
 }
 
 type appPasswordRequest struct {
-	Name   string   `json:"name"`
-	Scopes []string `json:"scopes"`
+	Name     string   `json:"name"`
+	Scopes   []string `json:"scopes"`
+	Password string   `json:"password"`
 }
 
 type folderRequest struct {
@@ -409,6 +416,12 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 	if !validProtocolScopes(req.Scopes) {
 		return problem(c, fiber.StatusBadRequest, "invalid_app_password_scope", "App password scopes must be protocol scopes")
 	}
+	if req.Password != "" && (len(req.Password) < minChosenAppPasswordLen || len(req.Password) > maxChosenAppPasswordLen) {
+		return problem(c, fiber.StatusBadRequest, "invalid_app_password", fmt.Sprintf("Chosen passwords must be %d to %d bytes", minChosenAppPasswordLen, maxChosenAppPasswordLen))
+	}
+	if strings.ContainsFunc(req.Password, unicode.IsControl) {
+		return problem(c, fiber.StatusBadRequest, "invalid_app_password", "Chosen passwords must not contain control characters")
+	}
 
 	active, err := h.client.AppPassword.Query().Where(apppassword.MailboxIDEQ(c.Params("mailbox_id")), apppassword.RevokedAtIsNil(), apppassword.DeletedAtIsNil()).Count(c.Context())
 	if err != nil {
@@ -418,9 +431,13 @@ func (h *Handler) createAppPassword(c fiber.Ctx) error {
 		return problem(c, fiber.StatusConflict, "app_password_limit_reached", fmt.Sprintf("Mailboxes may have at most %d active app passwords", maxAppPasswords))
 	}
 
-	password, err := passwordauth.GeneratePassword()
-	if err != nil {
-		return problem(c, fiber.StatusInternalServerError, "app_password_generate_failed", "Failed to generate app password")
+	password := req.Password
+	if password == "" {
+		generated, err := passwordauth.GeneratePassword()
+		if err != nil {
+			return problem(c, fiber.StatusInternalServerError, "app_password_generate_failed", "Failed to generate app password")
+		}
+		password = generated
 	}
 	hash, err := passwordauth.HashPassword(password)
 	if err != nil {
